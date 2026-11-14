@@ -253,7 +253,9 @@ def write_markdown(report: dict, out: Path) -> None:
             f"Months left out of that factor as sensor gaps: {', '.join(e['sensor_gap_months']) or 'none'}.",
             "",
             "Sensor gap days (the sensor reported under "
-            f"{hz.GAP_MAX_RATIO} fire cell-days per MODIS one while MODIS had at least {hz.GAP_MIN_MODIS}):",
+            f"{hz.GAP_MAX_RATIO} fire cell-days per MODIS one while MODIS had at least {hz.GAP_MIN_MODIS}, or under "
+            f"{hz.GAP_MAX_TWIN_RATIO} per cell-day of the other VIIRS sensor while that one had at least "
+            f"{hz.GAP_MIN_TWIN}):",
             *(f"- {stream}: {', '.join(days) or 'none'}" for stream, days in e["sensor_gap_days"].items()),
             "",
             "MODIS against the VIIRS-equivalent of the same year (1.0 = the sensors agree; Terra alone in brackets):",

@@ -44,9 +44,14 @@ coarser one, but a coarse sensor cannot recover fires it never saw.
    All three are fitted on 2012-02 .. 2021-12, when both sensors flew and MODIS orbits were stable.
 5. **Sensor gap days.** A day when a VIIRS sensor reports under 0.6 fire cell-days per MODIS one,
    while MODIS has at least 100, is a day the sensor was not really observing (it normally reports
-   about two). Such days are left out of the fit, and in the record that day is taken from MODIS
-   instead of being read as a quiet day. The same outages show up independently in both countries:
-   S-NPP in late March 2012, late July to early August 2022, and July 2024.
+   about two). So is a day when it reports under a tenth of what the other VIIRS sensor does, while
+   that one has at least 50: the two carry the same instrument 50 minutes apart, and this second
+   sign catches outages on days with too little fire for the first. Such days are left out of the
+   fit, and in the record that day is taken from MODIS instead of being read as a quiet day. Most
+   outages show up independently in both countries: S-NPP in late July to early August 2022 and in
+   July 2024, NOAA-20 on 19-22 July and 30 September 2023. S-NPP's gap of 24-26 March 2012 is
+   flagged in Ukraine only: Argentina had too little fire on those days to tell. The full lists are
+   in [VALIDATION.md](VALIDATION.md).
 6. **NOAA-20 continues the record.** Suomi NPP stopped delivering data on 2 November 2026. NOAA-20
    carries the same instrument in the same orbit and is tied to S-NPP with one factor. Months where
    the two disagree by more than 20% are treated as sensor gaps, left out of that factor and
