@@ -659,3 +659,9 @@ html {
 .stage.is-street .globe-region-label {
   display: none;
 }
+
+.stage-legend a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

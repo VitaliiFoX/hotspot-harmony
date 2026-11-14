@@ -277,7 +277,8 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
       zoom: fittingZoom(element),
       maxZoom: 17,
       renderWorldCopies: false,
-      attributionControl: { compact: false },
+      // The credits live in the legend, once; MapLibre's own attribution line would repeat them.
+      attributionControl: false,
       // The wheel scrolls the page; Cmd (Mac) or Ctrl + wheel zooms the globe. On touch screens one finger
       // scrolls the page and two fingers move the globe. The desktop overlay that MapLibre shows on a plain
       // wheel is hidden in globe.css: the shortcut is written in the legend instead.
@@ -470,7 +471,12 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
           </li>
         </ul>
         <p className="legend-hint">{`${ZOOM_KEY} + scroll zooms the globe; scroll alone moves down the page.`}</p>
-        <p>Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Borders, places and streets: © OpenStreetMap contributors, via OpenFreeMap.</p>
+        <p>
+          Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Map:{" "}
+          <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" "}
+          <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">© OpenMapTiles</a>, data{" "}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>.
+        </p>
       </div>
     </section>
   );
