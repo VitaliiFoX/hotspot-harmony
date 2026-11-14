@@ -262,7 +262,7 @@ def main() -> None:
 
     cfg = load_config(args.config)
     agg = args.data / "agg"
-    results = hz.harmonize_all(duckdb.connect(), agg / "cell_day.parquet", cfg.region_names())
+    results = hz.harmonize_all(duckdb.connect(), agg / "cell_day.parquet", cfg.countries())
     report = {
         "generated_at_utc": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "unit": UNIT,

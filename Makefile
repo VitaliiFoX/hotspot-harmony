@@ -17,11 +17,11 @@ aggregate:
 	uv run python -m pipeline.aggregate $(CONFIG_ARG)
 
 harmonize:
-	uv run python -m pipeline.harmonize
+	uv run python -m pipeline.harmonize $(CONFIG_ARG)
 
 # writes data/agg/harmonization_report.json, docs/VALIDATION.md and docs/sensor_jump_before_after.png
 validate:
-	uv run python -m pipeline.validate
+	uv run python -m pipeline.validate $(CONFIG_ARG)
 
 # Export downloaded CSV files as JSON, e.g.: make json COUNTRY=Ukraine YEAR=2024 FORMAT=geojson
 json:
