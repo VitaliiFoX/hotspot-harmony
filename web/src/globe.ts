@@ -207,6 +207,11 @@ export function nightPolygon(ms: number, steps = 180): { type: "Polygon"; coordi
   return { type: "Polygon", coordinates: [ring] };
 }
 
+/** The terminator alone, west to east, without the closing edge over the dark pole: drawn blurred to soften it. */
+export function terminatorLine(ms: number, steps = 180): { type: "LineString"; coordinates: [number, number][] } {
+  return { type: "LineString", coordinates: nightPolygon(ms, steps).coordinates[0].slice(0, steps + 1) };
+}
+
 /** The latitude where Web Mercator ends, atan(sinh(pi)). */
 export const MERCATOR_LIMIT = 85.0511;
 

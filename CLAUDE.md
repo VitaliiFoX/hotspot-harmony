@@ -68,7 +68,9 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 - The globe shows hotspots of one UTC day through the chosen hour, from `/api/hotspots/day` and `/api/hotspots/days`. They are drawn in one warm colour (`--hotspot`), because blue does not read on the ocean. That colour stays on the globe and its date panel; the calendar keeps the blue ramp.
 - The day and hour are mirrored in the address too (`&date=YYYY-MM-DD&hour=HH`).
 - The GIBS `Reference_Features_15m` and `Reference_Labels_15m` overlays were tried on 2026-11-14 and dropped: many tiles come back opaque black or fail with 500.
-- Headless Chrome with `--virtual-time-budget` draws the globe but not its hotspot and night layers (the MapLibre worker does not finish in virtual time). Judge the globe in a real browser.
+- Headless Chrome with `--virtual-time-budget` draws the globe but not its hotspot, night, border or label layers (the MapLibre worker does not finish in virtual time). Use `node scripts/globe_screenshot.mjs`, which drives Chrome in real time and can move the map through `window.__hhMap` (dev server only).
+- Borders, place labels and, from zoom 8, the street map come from OpenStreetMap vector tiles served free and without a key by OpenFreeMap (`tiles.openfreemap.org`); the street layers are the OpenFreeMap "Liberty" style, loaded at runtime and renamed `street-*`. Credit: "© OpenStreetMap contributors, via OpenFreeMap". At street zoom the glass cards turn solid (`.stage.is-street`).
+- GIBS tiles are declared with `tileSize: 128` on purpose: the map then fetches one zoom level deeper, so the imagery is sharp on high-density screens.
 - Look at the page after a visual change: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --window-size=1320,1600 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:5173/?theme=light"`. Headless Chrome will not go narrower than 500 px.
 
 ## Harmonization

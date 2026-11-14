@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
   MERCATOR_LIMIT, countHotspots, dayKey, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
-  moveToMonth, nightPolygon, parseDateParam, parseHourParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
+  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseHourParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
 describe("monthGrid", () => {
@@ -171,6 +171,11 @@ describe("night side", () => {
   it("keeps every vertex inside Web Mercator, even at an equinox when the terminator runs pole to pole", () => {
     const ring = nightPolygon(Date.UTC(2025, 2, 20, 12), 36).coordinates[0];
     expect(Math.max(...ring.map(([, lat]) => Math.abs(lat)))).toBe(MERCATOR_LIMIT);
+  });
+  it("gives the terminator as a line that leaves out the edge over the pole", () => {
+    const line = terminatorLine(juneNoon, 4).coordinates;
+    expect(line.map(([lon]) => lon)).toEqual([-180, -90, 0, 90, 180]);
+    expect(line[2][1]).toBeCloseTo(-66.56, 1);
   });
   it("closes over the north pole in December", () => {
     const ring = nightPolygon(Date.UTC(2025, 11, 21, 12), 4).coordinates[0];
