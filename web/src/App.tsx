@@ -6,6 +6,7 @@ import {
 import { AnomalyTiles } from "./components/AnomalyTiles";
 import { CalendarHeatmap, CalendarTable } from "./components/CalendarHeatmap";
 import { ChartCard } from "./components/ChartCard";
+import { calendarCsv, downloadBlob, exportName } from "./exports";
 import { DateTimePanel } from "./components/DateTimePanel";
 import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
@@ -236,6 +237,14 @@ export function App() {
         : undefined;
   const year = highlightYear ?? calendar?.anomaly.year ?? 0;
 
+  // Parts every exported file is named by: what, where, when and which record.
+  const fileParts = filters && calendar ? [filters.region, filters.start, filters.end, calendar.series] : [];
+  function saveCalendarCsv() {
+    if (!calendar || !filters || !area || "problem" in area) return;
+    const csv = calendarCsv(calendar, { region: filters.region, box: area.bbox });
+    downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
+  }
+
   return (
     <>
       <GlobeBoundary>
@@ -345,6 +354,12 @@ export function App() {
                 />
               }
               table={<CalendarTable months={calendar.months} unit={unit} />}
+              pngName={exportName(["burning-activity-calendar", ...fileParts], "png")}
+              downloads={
+                <button type="button" className="ghost download" onClick={saveCalendarCsv}>
+                  Download calendar data (CSV)
+                </button>
+              }
             />
 
             <div className="pair">
@@ -363,6 +378,7 @@ export function App() {
                 }
                 chart={<SeasonalChart months={calendar.months} climatology={calendar.climatology} year={year} unit={unit} />}
                 table={<SeasonalTable months={calendar.months} climatology={calendar.climatology} year={year} unit={unit} />}
+                pngName={exportName([`season-${year}`, ...fileParts], "png")}
               />
               <ChartCard
                 title="Burning per year"
@@ -371,6 +387,7 @@ export function App() {
                   <YearlyChart yearly={calendar.yearly} unit={unit} sensorSwitch={sensorSwitch} />
                 }
                 table={<YearlyTable yearly={calendar.yearly} unit={unit} />}
+                pngName={exportName(["burning-per-year", ...fileParts], "png")}
               />
             </div>
           </main>

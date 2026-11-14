@@ -708,3 +708,18 @@ tbody th {
     flex: 1 1 calc(50% - 3px);
   }
 }
+
+/* Downloads under a chart: quiet, right-aligned, out of the way of the chart itself. */
+.card-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--grid);
+}
+button.download {
+  height: 30px;
+  font-size: 13px;
+}
