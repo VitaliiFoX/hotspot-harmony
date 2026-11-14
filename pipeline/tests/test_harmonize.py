@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from pipeline import harmonize as hz
-from pipeline.validate import compare, interval_by_size, leave_one_year_out, scores, seam
+from pipeline.validate import compare, interval_by_size, leave_one_year_out, scores, sensor_jump
 
 
 def cell_days(stream, dates, frp=5.0, has_day=1, matched=0, lat=48.1, lon=30.1, cell_id=1):
@@ -49,8 +49,8 @@ def test_record_takes_each_period_from_one_sensor():
 
     assert list(used.stream) == ["modis_terra", "modis", "modis", "viirs_noaa20"]
     assert list(used.weight.round(3)) == [2.5, 1.0, 1.0, 0.9]  # Terra scaled, reference = 1, NOAA-20 = 0.9*2*0.5
-    naive = out[out.in_naive].sort_values("local_date")
-    assert list(naive.stream) == ["modis", "modis", "viirs_snpp", "viirs_noaa20"]  # the usual uncorrected splice
+    raw = out[out.in_raw].sort_values("local_date")
+    assert list(raw.stream) == ["modis", "modis", "viirs_snpp", "viirs_snpp"]  # the raw record
 
     cells = hz.monthly_cells(out, cell_deg=0.25)
     assert list(cells.sensor_used) == ["modis_terra", "modis", "modis", "viirs_noaa20"]
@@ -71,7 +71,7 @@ def test_sensor_gap_months_are_left_out_of_the_noaa20_factor():
     assert factor == pytest.approx(1.0)  # without the gap month the two sensors agree exactly
 
 
-def test_validation_scores_and_seam(overlap):
+def test_validation_scores_and_sensor_jump(overlap):
     viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
     loyo = compare(leave_one_year_out(viirs, modis), modis)
     s = scores(loyo)
@@ -83,7 +83,7 @@ def test_validation_scores_and_seam(overlap):
     years = [f"{y}-06-15" for y in range(2007, 2017)]
     df = hz.prepare(pd.concat([cell_days("modis", years), cell_days("viirs_snpp", years * 3)], ignore_index=True))
     df["weight"] = np.where(df.stream == "modis", 1.0, 1 / 3)
-    df["in_naive"] = ((df.stream == "modis") & (df.y < 2012)) | ((df.stream == "viirs_snpp") & (df.y >= 2012))
+    df["in_raw"] = ((df.stream == "modis") & (df.y < 2012)) | ((df.stream == "viirs_snpp") & (df.y >= 2012))
     df["in_series"] = df.stream == "modis"
-    assert seam(df) == {"raw": {"before": 1.0, "after": 3.0, "jump_ratio": 3.0},
+    assert sensor_jump(df) == {"raw": {"before": 1.0, "after": 3.0, "jump_ratio": 3.0},
                         "harmonized": {"before": 1.0, "after": 1.0, "jump_ratio": 1.0}}  # fmt: skip

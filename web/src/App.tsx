@@ -1,525 +1,253 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { API_URL, ApiError, USE_FIXTURES, getMeta, isAbortError, postCalendar } from './api/client';
-import type { CalendarRequest, CalendarResponse, Meta } from './api/types';
-import { modeLabel } from './charts/calendarOption';
-import { exportCalendarPng } from './charts/exportPng';
-import { AnomalyBlock } from './components/AnomalyBlock';
-import { AreaForm } from './components/AreaForm';
-import { CalendarPanel } from './components/CalendarPanel';
-import { ChartsPanel } from './components/ChartsPanel';
-import { DateRange } from './components/DateRange';
-import { ExportPanel } from './components/ExportPanel';
-import { HeadlineBlock } from './components/HeadlineBlock';
-import { MapPanel } from './components/MapPanel';
-import { ATTRIBUTION, MethodPanel } from './components/MethodPanel';
-import { Segmented } from './components/Segmented';
-import { buildExamples, defaultArea, defaultCountry } from './lib/examples';
-import { formatCount } from './lib/format';
+import { useEffect, useMemo, useState } from "react";
 import {
-  coverageOf,
-  geometryAreaKm2,
-  normalizeGeometry,
-  type AreaGeometry,
-  type BBox,
-} from './lib/geometry';
-import { buildHeadline, unusualMonths } from './lib/headline';
-import {
-  buildMonthGrid,
-  isEmptyResult,
-  rawRecord,
-  visiblePeriods,
-  type ColorScale,
-  type RecordMode,
-} from './lib/monthGrid';
-import { decodeHash, encodeGeometry, encodeHash } from './lib/urlState';
-import { firstDay, lastDay, lastTwelveMonths, parseYM, type YM } from './lib/ym';
+  type Bbox, type Calendar, type Meta, type SeriesName, boxPolygon, fetchCalendar, fetchHotspotsCsv, fetchMeta,
+} from "./api";
+import { AnomalyTiles } from "./components/AnomalyTiles";
+import { CalendarHeatmap, CalendarTable } from "./components/CalendarHeatmap";
+import { ChartCard } from "./components/ChartCard";
+import { type FilterState, Filters } from "./components/Filters";
+import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
+import { YearlyChart, YearlyTable } from "./components/YearlyChart";
+import { type ThemeChoice, useDarkMode } from "./hooks";
+import { type ScaleMode, lastDay, monthLabel } from "./scale";
 
-interface Range {
-  start: string | null;
-  end: string | null;
-}
-
-interface MetaState {
-  attempt: number;
-  meta: Meta | null;
-  error: ApiError | null;
-}
-
-interface CalendarState {
-  key: string;
-  data: CalendarResponse | null;
-  error: ApiError | null;
-}
-
-const FALLBACK_SERIES = { start: '2000-11', end: '2025-12' };
-
-function toApiError(error: unknown): ApiError {
-  if (error instanceof ApiError) return error;
-  return new ApiError('invalid', error instanceof Error ? error.message : 'Unexpected error.');
-}
-
-function errorTitle(error: ApiError): string {
-  if (error.kind === 'network') return 'The API cannot be reached';
-  if (error.status === 422) return 'No data for this area';
-  if (error.status === 400) return 'The request was not accepted';
-  return 'Something went wrong';
-}
-
-/** The hash as the browser holds it, decoded; empty when it cannot be decoded. */
-function currentHash(): string {
-  const raw = window.location.hash.replace(/^#/, '');
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return '';
+/** The typed box as numbers, or the reason it cannot be used. */
+function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } {
+  const [west, south, east, north] = box.map(Number);
+  if (box.some((text) => text.trim() === "") || [west, south, east, north].some(Number.isNaN)) {
+    return { problem: "Fill in all four edges of the area." };
   }
+  if (west >= east) return { problem: "West must be smaller than east." };
+  if (south >= north) return { problem: "South must be smaller than north." };
+  if (west < -180 || east > 180 || south < -90 || north > 90) return { problem: "The area is off the map." };
+  return { bbox: [west, south, east, north] };
 }
 
 export function App() {
-  const [initial] = useState(() => decodeHash(window.location.hash));
-  const [geometry, setGeometry] = useState<AreaGeometry | null>(
-    initial.geometry ? normalizeGeometry(initial.geometry) : null,
+  const [themeChoice, setThemeChoice] = useState<ThemeChoice>(
+    () => (new URLSearchParams(window.location.search).get("theme") as ThemeChoice | null) ?? "auto",
   );
-  const [range, setRange] = useState<Range>({ start: initial.start, end: initial.end });
-  const [mode, setMode] = useState<RecordMode>(initial.raw ? 'raw' : 'harmonized');
-  const [scale, setScale] = useState<ColorScale>('log');
-  const [highlight, setHighlight] = useState<YM | null>(null);
-
-  const [metaAttempt, setMetaAttempt] = useState(0);
-  const [metaState, setMetaState] = useState<MetaState | null>(null);
-  const [calendarAttempt, setCalendarAttempt] = useState(0);
-  const [calendarState, setCalendarState] = useState<CalendarState | null>(null);
-
-  // --- API description -------------------------------------------------------
-  useEffect(() => {
-    const controller = new AbortController();
-    getMeta(controller.signal).then(
-      (meta) => {
-        setMetaState({ attempt: metaAttempt, meta, error: null });
-        // First visit without a shared link: show the whole default country.
-        setGeometry((current) => current ?? defaultArea(meta));
-      },
-      (error: unknown) => {
-        if (isAbortError(error)) return;
-        setMetaState({ attempt: metaAttempt, meta: null, error: toApiError(error) });
-      },
-    );
-    return () => controller.abort();
-  }, [metaAttempt]);
-
-  const metaLoading = metaState === null || metaState.attempt !== metaAttempt;
-  const meta = metaState?.meta ?? null;
-  const metaError = metaLoading ? null : (metaState?.error ?? null);
-  const series = meta?.series ?? FALLBACK_SERIES;
-  const unit = meta?.unit_short || 'fire cell-days';
-
-  // --- Calendar request ------------------------------------------------------
-  const rangeError =
-    range.start && range.end && range.start > range.end
-      ? 'The first month must not be after the last month.'
-      : null;
-
-  const request = useMemo<{ key: string; body: CalendarRequest } | null>(() => {
-    if (!meta || !geometry || rangeError) return null;
-    const body: CalendarRequest = { geometry };
-    if (range.start) body.start = range.start;
-    if (range.end) body.end = range.end;
-    const key = [
-      encodeGeometry(geometry),
-      range.start ?? '',
-      range.end ?? '',
-      calendarAttempt,
-    ].join('|');
-    return { key, body };
-  }, [meta, geometry, range.start, range.end, rangeError, calendarAttempt]);
+  const dark = useDarkMode(themeChoice);
+  const [meta, setMeta] = useState<Meta | null>(null);
+  const [filters, setFilters] = useState<FilterState | null>(null);
+  const [calendar, setCalendar] = useState<Calendar | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [scaleMode, setScaleMode] = useState<ScaleMode>("linear");
+  const [highlightYear, setHighlightYear] = useState<number | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!request) return undefined;
+    fetchMeta()
+      .then((loaded) => {
+        setMeta(loaded);
+        const region = loaded.regions[0];
+        if (!region || !loaded.default_series || !loaded.first_month || !loaded.last_month) {
+          setError("The API has no data yet. Run `make data`, then restart `make api`.");
+          return;
+        }
+        // A link can carry a view: ?region=Ukraine&box=29,50,32,51.5&start=2010-01&end=2025-12&series=raw
+        const query = new URLSearchParams(window.location.search);
+        const linked = loaded.regions.find((r) => r.name === query.get("region")) ?? region;
+        const box = query.get("box")?.split(",") ?? [];
+        const series = query.get("series") as SeriesName | null;
+        setFilters({
+          region: linked.name,
+          box: (box.length === 4 ? box : linked.bbox.map(String)) as FilterState["box"],
+          start: query.get("start") ?? loaded.first_month,
+          end: query.get("end") ?? loaded.last_month,
+          series: series && loaded.series.includes(series) ? series : loaded.default_series,
+        });
+      })
+      .catch((reason: Error) => setError(`Cannot reach the API: ${reason.message}. Start it with \`make api\`.`));
+  }, []);
+
+  // Keep the address in step with the filters, so the current view can be shared as a link.
+  useEffect(() => {
+    if (!filters) return;
+    const query = new URLSearchParams(window.location.search);
+    query.set("region", filters.region);
+    query.set("box", filters.box.join(","));
+    query.set("start", filters.start);
+    query.set("end", filters.end);
+    query.set("series", filters.series);
+    window.history.replaceState(null, "", `?${query.toString().replaceAll("%2C", ",")}`);
+  }, [filters]);
+
+  const area = useMemo(() => (filters ? readBox(filters.box) : null), [filters]);
+  const problem = area && "problem" in area ? area.problem : null;
+
+  useEffect(() => {
+    if (!filters || !area || "problem" in area) return;
     const controller = new AbortController();
-    // A short delay so that a burst of edits sends one request.
-    const timer = setTimeout(() => {
-      postCalendar(request.body, controller.signal).then(
-        (data) => setCalendarState({ key: request.key, data, error: null }),
-        (error: unknown) => {
-          if (isAbortError(error)) return;
-          setCalendarState({ key: request.key, data: null, error: toApiError(error) });
-        },
-      );
-    }, 200);
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      fetchCalendar(
+        { geometry: boxPolygon(area.bbox), start: filters.start, end: filters.end, series: filters.series },
+        controller.signal,
+      )
+        .then((result) => {
+          setCalendar(result);
+          setError(null);
+          setHighlightYear((year) => (year && result.yearly.some((y) => y.year === year) ? year : result.anomaly.year));
+        })
+        .catch((reason: Error) => {
+          if (reason.name !== "AbortError") setError(reason.message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    }, 300);
     return () => {
-      clearTimeout(timer);
+      window.clearTimeout(timer);
       controller.abort();
     };
-  }, [request]);
+  }, [filters, area]);
 
-  const calendarLoading = request !== null && calendarState?.key !== request.key;
-  const calendarError =
-    request !== null && !calendarLoading ? (calendarState?.error ?? null) : null;
-  // While a new request runs, the previous answer stays on screen (dimmed).
-  const data = request !== null ? (calendarState?.data ?? null) : null;
-
-  // --- Shareable state in the URL hash --------------------------------------
-  useEffect(() => {
-    const hash = encodeHash({
-      geometry,
-      start: range.start,
-      end: range.end,
-      raw: mode === 'raw',
-    });
-    if (currentHash() === hash) return;
-    const url = hash ? `#${hash}` : window.location.pathname + window.location.search;
-    window.history.replaceState(null, '', url);
-  }, [geometry, range.start, range.end, mode]);
-
-  useEffect(() => {
-    const onHashChange = () => {
-      const next = decodeHash(window.location.hash);
-      if (next.geometry) {
-        const incoming = normalizeGeometry(next.geometry);
-        setGeometry((current) =>
-          current && encodeGeometry(current) === encodeGeometry(incoming) ? current : incoming,
+  async function download() {
+    if (!filters || !area || "problem" in area) return;
+    setDownloading(true);
+    setExportNote(null);
+    try {
+      const start = `${filters.start}-01`;
+      const end = lastDay(filters.end);
+      const { blob, truncated } = await fetchHotspotsCsv({ geometry: boxPolygon(area.bbox), start, end });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `hotspots_${start}_${end}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      if (truncated && meta) {
+        setExportNote(
+          `The export stops at ${meta.csv_row_limit.toLocaleString("en-US")} hotspots. Choose a smaller area or a shorter period to get all of them.`,
         );
       }
-      setRange((current) =>
-        current.start === next.start && current.end === next.end
-          ? current
-          : { start: next.start, end: next.end },
-      );
-      setMode(next.raw ? 'raw' : 'harmonized');
-    };
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+    } catch (reason) {
+      setExportNote(`The export failed: ${(reason as Error).message}`);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
-  // --- Derived values --------------------------------------------------------
-  const examples = useMemo(() => buildExamples(meta), [meta]);
-  const countries = useMemo(() => meta?.countries ?? [], [meta]);
-  const grid = useMemo(() => (data ? buildMonthGrid(data.months, data.climatology) : null), [data]);
-  const periods = useMemo(() => {
-    if (!grid || !meta) return [];
-    const record = mode === 'raw' ? rawRecord(meta.series.start) : meta.record;
-    return visiblePeriods(record, grid.first, grid.last);
-  }, [grid, meta, mode]);
-  const headline = useMemo(
-    () =>
-      data
-        ? buildHeadline({
-            anomaly: data.anomaly,
-            climatology: data.climatology,
-            months: data.months,
-            topMonths: data.top_months,
-            unit,
-          })
-        : null,
-    [data, unit],
-  );
-
-  const coverage = useMemo(
-    () =>
-      geometry && meta
-        ? coverageOf(
-            geometry,
-            meta.countries.map((c) => c.bbox as BBox),
-          )
-        : null,
-    [geometry, meta],
-  );
-  const countryNames = countries.map((c) => c.name).join(', ');
-  const reportCountry = data?.countries[0] ?? defaultCountry(meta)?.name ?? null;
-  const areaKm2 = geometry ? geometryAreaKm2(geometry) : null;
-  const empty = grid ? isEmptyResult(grid) : false;
-
-  const handleGeometry = useCallback((next: AreaGeometry | null) => {
-    setGeometry(next ? normalizeGeometry(next) : null);
-    setHighlight(null);
-  }, []);
-
-  const handleRange = useCallback((next: Range) => {
-    setRange(next);
-    setHighlight(null);
-  }, []);
-
-  const seriesEnd = parseYM(series.end) ?? { year: 2025, month: 12 };
-  const seriesStart = parseYM(series.start) ?? { year: 2000, month: 11 };
-  const csvDefaults = lastTwelveMonths(seriesEnd);
-
-  const exportPng =
-    grid && meta && data
-      ? () =>
-          exportCalendarPng(
-            {
-              grid,
-              mode,
-              scale,
-              periods,
-              record: meta.record,
-              unit,
-              exportInfo: {
-                title: 'Hotspot Harmony: burning activity calendar',
-                subtitle: [
-                  data.countries.join(', ') || 'Selected area',
-                  areaKm2 !== null ? `about ${formatCount(Math.round(areaKm2))} km²` : '',
-                  `${unit} per month, ${modeLabel(mode)}`,
-                  scale === 'deviation'
-                    ? 'colour: ratio to the usual level'
-                    : `${scale} colour scale`,
-                ]
-                  .filter((part) => part !== '')
-                  .join(' · '),
-                attribution: meta.attribution || ATTRIBUTION,
-              },
-            },
-            `hotspot-harmony-calendar-${mode}.png`,
-          )
-      : null;
+  const unit = calendar?.series === "harmonized" ? "harmonized hotspots" : "hotspots";
+  const switchYear = meta ? Number(meta.raw_sensor_switch.slice(0, 4)) : 0;
+  const year = highlightYear ?? calendar?.anomaly.year ?? 0;
 
   return (
-    <div className="app">
-      <a className="skip-link" href="#results">
-        Skip to results
-      </a>
-      <header className="site-header">
-        <div className="site-header__inner">
-          <h1 className="brand">
-            <span className="brand__mark" aria-hidden="true" />
-            Hotspot Harmony
-          </h1>
-          <p className="tagline">
-            One comparable record of satellite fire hotspots, 2000 to today, for any area you draw.
-          </p>
-          {USE_FIXTURES ? (
-            <p className="badge" title="VITE_USE_FIXTURES=1">
-              Demo data: synthetic numbers, no backend
-            </p>
-          ) : null}
+    <div className="page">
+      <header className="top">
+        <div>
+          <h1>Hotspot Harmony</h1>
+          <p className="subtitle">Burning activity calendar from satellite fire hotspots, 2000 to 2025</p>
         </div>
+        <label className="theme">
+          <span>Theme</span>
+          <select value={themeChoice} onChange={(event) => setThemeChoice(event.target.value as ThemeChoice)}>
+            <option value="auto">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
       </header>
 
-      <main className="layout">
-        <section className="column column--area" aria-labelledby="area-heading">
-          <div className="card card--flush">
-            <h2 id="area-heading" className="card__title">
-              Choose an area
-            </h2>
-            <MapPanel countries={countries} geometry={geometry} onGeometryChange={handleGeometry} />
-            {coverage === 'outside' ? (
-              <p className="callout callout--warning" role="status">
-                This area is outside the regions with data, so there is nothing to show for it.
-                {countryNames ? ` Data is available for: ${countryNames}.` : ''}
-              </p>
-            ) : null}
-            {coverage === 'partial' ? (
-              <p className="callout" role="status">
-                Part of this area lies outside the regions with data. Only the part inside is
-                counted.
-              </p>
-            ) : null}
-            <AreaForm examples={examples} geometry={geometry} onGeometry={handleGeometry} />
-            <DateRange
-              seriesStart={series.start}
-              seriesEnd={series.end}
-              start={range.start}
-              end={range.end}
-              onChange={handleRange}
-              error={rangeError}
+      {meta && filters && (
+        <Filters
+          meta={meta}
+          value={filters}
+          onChange={setFilters}
+          onDownload={download}
+          downloading={downloading}
+          problem={problem}
+        />
+      )}
+
+      {error && (
+        <p className="notice notice-error" role="alert">
+          {error}
+        </p>
+      )}
+      {exportNote && <p className="notice">{exportNote}</p>}
+      {calendar?.warnings.map((warning) => (
+        <p className="notice" key={warning}>
+          {warning}
+        </p>
+      ))}
+      {calendar?.series === "raw" && meta && (
+        <p className="notice">
+          {`This is the raw record: MODIS before ${monthLabel(meta.raw_sensor_switch)}, VIIRS S-NPP from then on. VIIRS reports about three times more hotspots for the same fires, so values before and after that month cannot be compared.`}
+        </p>
+      )}
+
+      {!calendar && !error && <p className="notice">Loading the record...</p>}
+
+      {calendar && (
+        <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
+          <AnomalyTiles anomaly={calendar.anomaly} climatology={calendar.climatology} unit={unit} />
+
+          <ChartCard
+            title="Burning activity calendar"
+            subtitle={`Monthly ${unit} in the area, ${calendar.cells_used.toLocaleString("en-US")} grid cells with burning`}
+            options={
+              <div className="segmented" role="group" aria-label="Colour scale">
+                {(["linear", "log"] as ScaleMode[]).map((mode) => (
+                  <button key={mode} type="button" aria-pressed={scaleMode === mode} onClick={() => setScaleMode(mode)}>
+                    {mode === "log" ? "Log scale" : "Linear scale"}
+                  </button>
+                ))}
+              </div>
+            }
+            chart={
+              <CalendarHeatmap
+                months={calendar.months}
+                climatology={calendar.climatology}
+                unit={unit}
+                mode={scaleMode}
+                dark={dark}
+                highlightYear={year}
+                onHighlightYear={setHighlightYear}
+              />
+            }
+            table={<CalendarTable months={calendar.months} unit={unit} />}
+          />
+
+          <div className="pair">
+            <ChartCard
+              title={`${year} against the usual season`}
+              subtitle={`Monthly ${unit}; median and middle half over all years`}
+              options={
+                <label className="inline">
+                  <span>Year</span>
+                  <select value={year} onChange={(event) => setHighlightYear(Number(event.target.value))}>
+                    {calendar.yearly.map((item) => (
+                      <option key={item.year}>{item.year}</option>
+                    ))}
+                  </select>
+                </label>
+              }
+              chart={<SeasonalChart months={calendar.months} climatology={calendar.climatology} year={year} unit={unit} />}
+              table={<SeasonalTable months={calendar.months} climatology={calendar.climatology} year={year} unit={unit} />}
+            />
+            <ChartCard
+              title="Burning per year"
+              subtitle={`Yearly ${unit} within the selected period`}
+              chart={
+                <YearlyChart
+                  yearly={calendar.yearly}
+                  unit={unit}
+                  sensorSwitch={
+                    calendar.series === "raw" ? { year: switchYear, label: "VIIRS replaces MODIS" } : undefined
+                  }
+                />
+              }
+              table={<YearlyTable yearly={calendar.yearly} unit={unit} />}
             />
           </div>
-        </section>
+        </main>
+      )}
 
-        <section
-          className="column column--results"
-          id="results"
-          aria-labelledby="results-heading"
-          aria-busy={metaLoading || calendarLoading}
-          tabIndex={-1}
-        >
-          <h2 id="results-heading" className="visually-hidden">
-            Results
-          </h2>
-
-          <p className="visually-hidden" role="status">
-            {metaLoading
-              ? 'Connecting to the data service.'
-              : calendarLoading
-                ? 'Loading the calendar for this area.'
-                : data
-                  ? 'Calendar loaded.'
-                  : ''}
-          </p>
-
-          {metaLoading ? (
-            <div className="card state">
-              <span className="spinner" aria-hidden="true" />
-              <p>Connecting to the data service&hellip;</p>
-            </div>
-          ) : null}
-
-          {metaError ? (
-            <div className="card state state--error" role="alert">
-              <h2>{errorTitle(metaError)}</h2>
-              <p>{metaError.message}</p>
-              {metaError.kind === 'network' ? (
-                <p className="note">
-                  Check that the backend is running at <code>{API_URL}</code>, then try again.
-                </p>
-              ) : null}
-              <button
-                type="button"
-                className="button button--primary"
-                onClick={() => setMetaAttempt((n) => n + 1)}
-              >
-                Try again
-              </button>
-            </div>
-          ) : null}
-
-          {meta && !geometry ? (
-            <div className="card state">
-              <h2>No area selected</h2>
-              <p>
-                Draw a polygon on the map, pick an example area, or enter a bounding box or a centre
-                with a radius.
-              </p>
-            </div>
-          ) : null}
-
-          {meta && geometry && calendarLoading && !data ? (
-            <div className="card state">
-              <span className="spinner" aria-hidden="true" />
-              <p>Loading the calendar for this area&hellip;</p>
-            </div>
-          ) : null}
-
-          {calendarError ? (
-            <div className="card state state--error" role="alert">
-              <h2>{errorTitle(calendarError)}</h2>
-              <p>{calendarError.message}</p>
-              {calendarError.kind === 'network' ? (
-                <p className="note">
-                  Check that the backend is running at <code>{API_URL}</code>, then try again.
-                </p>
-              ) : null}
-              {calendarError.status === 422 || calendarError.status === 400 ? null : (
-                <button
-                  type="button"
-                  className="button button--primary"
-                  onClick={() => setCalendarAttempt((n) => n + 1)}
-                >
-                  Try again
-                </button>
-              )}
-            </div>
-          ) : null}
-
-          {meta && data && grid && headline ? (
-            <div className={`results${calendarLoading ? ' results--stale' : ''}`}>
-              <section className="card" aria-labelledby="summary-heading">
-                <h2 id="summary-heading" className="visually-hidden">
-                  Summary
-                </h2>
-                <HeadlineBlock
-                  headline={headline}
-                  topMonths={empty ? [] : unusualMonths(data.top_months ?? [])}
-                  highlight={highlight}
-                  onHighlight={setHighlight}
-                />
-                <p className="area-facts">
-                  {formatCount(data.cells_used)} grid {data.cells_used === 1 ? 'cell' : 'cells'} of{' '}
-                  {meta.grid.cell_deg}&deg;
-                  {data.countries.length > 0 ? ` in ${data.countries.join(', ')}` : ''}
-                  {areaKm2 !== null ? `, area about ${formatCount(Math.round(areaKm2))} km²` : ''}.
-                  Unit: {data.unit || meta.unit}.
-                </p>
-                {empty ? (
-                  <p className="callout" role="status">
-                    No hotspots were detected here in this period. That is a valid result, not an
-                    error: the calendar below is simply empty.
-                  </p>
-                ) : null}
-              </section>
-
-              <section className="card" aria-labelledby="calendar-heading">
-                <div className="card__head">
-                  <h2 id="calendar-heading">Burning activity calendar</h2>
-                  <p className="note">
-                    {unit} per month: one grid cell of about 1 km with fire on one day counts as
-                    one.
-                  </p>
-                </div>
-
-                <div className="record-switch">
-                  <Segmented
-                    legend="Record"
-                    value={mode}
-                    onChange={setMode}
-                    prominent
-                    options={[
-                      { value: 'harmonized', label: 'Harmonized' },
-                      { value: 'raw', label: 'Raw (uncorrected)' },
-                    ]}
-                  />
-                  <p className="record-switch__why">
-                    {mode === 'raw'
-                      ? 'Raw: MODIS counts until January 2012, VIIRS counts after. VIIRS sees several times more hotspots, so everything jumps in 2012 without any change on the ground.'
-                      : 'Harmonized: every period is converted to what MODIS would have counted, so 2003 and 2025 can be compared. Switch to Raw to see the artificial 2012 jump this removes.'}
-                  </p>
-                </div>
-
-                <CalendarPanel
-                  grid={grid}
-                  mode={mode}
-                  scale={scale}
-                  onScale={setScale}
-                  periods={periods}
-                  record={meta.record}
-                  unit={unit}
-                  highlight={highlight}
-                />
-              </section>
-
-              <section className="card" aria-labelledby="anomaly-heading">
-                <h2 id="anomaly-heading">Latest month against the usual level</h2>
-                <AnomalyBlock anomaly={data.anomaly} unit={unit} />
-              </section>
-
-              <ChartsPanel
-                grid={grid}
-                climatology={data.climatology}
-                yearly={data.yearly}
-                mode={mode}
-                unit={unit}
-              />
-            </div>
-          ) : null}
-
-          {meta ? (
-            <section className="card" aria-labelledby="export-heading">
-              <h2 id="export-heading">Export</h2>
-              <ExportPanel
-                key={`${csvDefaults.start}-${csvDefaults.end}`}
-                geometry={geometry}
-                defaultStart={csvDefaults.start}
-                defaultEnd={csvDefaults.end}
-                minDate={firstDay(seriesStart)}
-                maxDate={lastDay(seriesEnd)}
-                onExportPng={exportPng}
-              />
-            </section>
-          ) : null}
-
-          <MethodPanel report={meta?.report} country={reportCountry} unit={unit} />
-        </section>
-      </main>
-
-      <footer className="site-footer">
-        <p>
-          Data: {meta?.attribution || ATTRIBUTION}. Basemap &copy; OpenStreetMap contributors,
-          OpenFreeMap.
-        </p>
-        <p>
-          Hotspots are thermal anomalies, not confirmed fires or burned area. Not affiliated with or
-          endorsed by NASA.
-        </p>
+      <footer className="credit">
+        Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). This project is not affiliated with or endorsed by NASA.
       </footer>
     </div>
   );

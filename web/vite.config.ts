@@ -1,25 +1,10 @@
-import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
 
+// In development the API runs on :8000 (`make api`) and is reached through this proxy.
+// In production set VITE_API_URL to the API's origin.
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5173, strictPort: true },
-  build: {
-    // The map and chart libraries are large; keep them in their own cacheable chunks.
-    chunkSizeWarningLimit: 1200,
-    rolldownOptions: {
-      output: {
-        codeSplitting: {
-          groups: [
-            { name: 'maplibre', test: /node_modules[\\/]maplibre-gl/ },
-            { name: 'charts', test: /node_modules[\\/](echarts|zrender)/ },
-          ],
-        },
-      },
-    },
-  },
-  test: {
-    environment: 'node',
-    include: ['src/**/*.test.ts'],
-  },
+  server: { proxy: { "/api": "http://localhost:8000" } },
+  test: { environment: "node" },
 });

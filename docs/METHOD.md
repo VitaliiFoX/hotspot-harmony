@@ -10,7 +10,7 @@ report different amounts of them. VIIRS sees small fires that MODIS misses, and 
 detections on a fire that MODIS reports once. Splice the two archives and every area shows a jump
 in 2012 that never happened on the ground.
 
-![Yearly totals, uncorrected vs harmonized](seam_before_after.png)
+![Yearly totals, raw record vs harmonized record](sensor_jump_before_after.png)
 
 ## Unit
 
@@ -66,8 +66,8 @@ corrections automatically, which a single ratio per country cannot do.
   year and month.
 - **An independent sensor.** NOAA-20 never took part in fitting `p`, `k`, `r`; it is still checked
   against MODIS.
-- **Seam check.** Mean yearly total of 2012-2016 over 2007-2011, uncorrected splice against
-  harmonized.
+- **Sensor jump check.** Mean yearly total of 2012-2016 over 2007-2011, raw record against
+  harmonized record.
 - **Two baselines** in the same table: VIIRS as delivered, and one scaling factor per country.
 - **Uncertainty in the app.** The 90% range shown next to a harmonized month comes from the same
   held-out predictions, by size of the value: small areas are noisier and get wider ranges. Months

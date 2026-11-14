@@ -1,0 +1,32 @@
+---
+status: accepted
+---
+
+# Harmonize to MODIS-equivalent fire cell-days, with a weight per VIIRS cell-day
+
+The harmonized record counts fire cell-days (a 1 km cell with a hotspot on one local solar day) in
+the amount MODIS Terra + Aqua would have reported. Each VIIRS fire cell-day gets a weight from its
+fire power, day or night, and calendar month, fitted on the overlap period 2012-02 to 2021-12. We
+chose this over one factor per cell because the VIIRS-to-MODIS ratio depends on how strong the
+fires are and on the season: on Ukraine, on years the model did not see, it misses by about half
+as much per month as a single factor does (`docs/VALIDATION.md`, written by `make validate`).
+Decided by the team on 2026-11-14.
+
+## Considered options
+
+- **VIIRS-equivalent hotspot counts, one factor per 0.25 degree cell** (the original plan). Simpler,
+  and the record would continue in VIIRS units with no conversion. Rejected: scaling MODIS up
+  invents small fires it never saw, and one factor per cell cannot follow the seasonal change of
+  the ratio.
+- **A gradient-boosted model for the weight, and a model on area totals.** Tried on Ukraine
+  (`research/experiments/`): at best half a percentage point better, at worst a point worse, and
+  not explainable in one chart.
+
+## Consequences
+
+- The harmonized record is in fire cell-days while the raw record served by the API is in hotspots.
+  Raw and harmonized values differ in unit as well as in sensor; this is not settled yet.
+- The month of a harmonized value is the month of the local solar day, not the UTC month.
+- MODIS is the reference until 2021-12 and VIIRS NOAA-20 carries the record from 2022-01, because
+  S-NPP ended on 2026-11-02 and has gaps (July-August 2022, July 2024).
+- A region with too little overlap borrows the pooled calibration and is not validated.

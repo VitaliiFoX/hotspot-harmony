@@ -40,7 +40,7 @@ FIT = ("2012-02-01", "2021-12-31")  # S-NPP flying and MODIS orbits not yet drif
 TERRA_FIT = ("2003-01-01", "2011-12-31")  # both MODIS flying: used to scale the Terra-only start
 AQUA_START = "2002-07-04"  # first Aqua detections in the archive
 VIIRS_FROM = "2022-01-01"  # the record switches from MODIS to VIIRS NOAA-20 here
-NAIVE_SWITCH = "2012-02-01"  # the uncorrected splice people usually make: MODIS, then VIIRS as delivered
+RAW_SWITCH = "2012-02-01"  # the raw record: MODIS before this date, VIIRS S-NPP as delivered from it on
 N20_START = "2018-04-01"
 FRP_EDGES = [0, 1, 2, 4, 8, 16, 32, 64]  # MW, summed over a VIIRS cell-day
 MIN_FIT_CELLDAYS = 5000  # below this a country borrows the pooled calibration
@@ -144,7 +144,7 @@ def calibrate(frames: list[pd.DataFrame]) -> dict | None:
 
 
 def apply(df: pd.DataFrame, par: dict) -> pd.DataFrame:
-    """Add `weight`, `in_series` (belongs to the harmonized record) and `in_naive` (uncorrected splice)."""
+    """Add `weight`, `in_series` (belongs to the harmonized record) and `in_raw` (belongs to the raw record)."""
     df = df.copy()
     s, d = df.stream, df.local_date
     df["weight"] = np.nan
@@ -158,10 +158,9 @@ def apply(df: pd.DataFrame, par: dict) -> pd.DataFrame:
         | ((s == "modis") & (d >= AQUA_START) & (d < VIIRS_FROM))
         | ((s == "viirs_noaa20") & (d >= VIIRS_FROM))
     )
-    df["in_naive"] = (
-        ((s == "modis") & (d < NAIVE_SWITCH))
-        | ((s == "viirs_snpp") & (d >= NAIVE_SWITCH) & (d < VIIRS_FROM))
-        | ((s == "viirs_noaa20") & (d >= VIIRS_FROM))
+    df["in_raw"] = (
+        ((s == "modis") & (d < RAW_SWITCH))
+        | ((s == "viirs_snpp") & (d >= RAW_SWITCH))
     )
     return df
 
@@ -174,9 +173,9 @@ def sensor_used(year: pd.Series, month: pd.Series) -> pd.Series:
 
 def monthly_cells(df: pd.DataFrame, cell_deg: float) -> pd.DataFrame:
     """Weighted cell-days -> one row per 0.25 deg cell and month."""
-    d = df[df.in_series | df.in_naive]
+    d = df[df.in_series | df.in_raw]
     g = (
-        d.assign(h=d.weight.where(d.in_series, 0.0), r=d.in_naive.astype(int))
+        d.assign(h=d.weight.where(d.in_series, 0.0), r=d.in_raw.astype(int))
         .groupby(["country", "cell_id", "y", "m"])
         .agg(n_harmonized=("h", "sum"), n_raw=("r", "sum"))
         .reset_index()

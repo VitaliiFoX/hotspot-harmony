@@ -8,6 +8,10 @@ Built during the 2026 NASA Space Apps Challenge for the challenge
 
 **Demo:** not deployed yet.
 
+![The dashboard on the raw record for Argentina](docs/screenshots/dashboard-raw-argentina.png)
+
+*The raw record for Argentina. The step in 2012 is the sensor jump this project removes.*
+
 ## Why
 
 Satellites have recorded active fires since 2000, but the record is split between sensors that
@@ -22,26 +26,25 @@ on which satellite was flying.
 | Part | State |
 |---|---|
 | Ingest FIRMS country archives (2000-2025) | done |
-| Normalize MODIS and VIIRS to one point schema (Parquet) | done |
+| Normalize MODIS and VIIRS to one point schema | done |
+| Aggregate to grid cell x month x sensor | done |
 | Fire cell-days on a 1 km grid, local solar day | done |
-| Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) |
-| API (FastAPI): calendar for any polygon, CSV export | done |
-| Web app (map, calendar, anomalies, CSV export) | in progress, see `web/` |
-| Current-year data through the FIRMS Area API | not started |
-| Public deployment | not started |
-
-Ukraine is processed in full. Other countries in `config/regions.yaml` need `make data` first.
+| Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
+| API (FastAPI): calendar, anomaly, CSV export | done; serves the raw and the harmonized series |
+| Web app: filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done without a map: the area is a region or a box typed in degrees |
+| Map with a drawn area of interest | not started |
 
 ## Run it
 
 Requires [uv](https://docs.astral.sh/uv/) and `make`.
 
 ```bash
-make data COUNTRY=Ukraine  # download, normalize, aggregate, harmonize, validate (one country)
-make data                  # ...every country in config/regions.yaml
-make dev                   # API on http://localhost:8000 and web app on http://localhost:5173
+make data                  # download, normalize, aggregate, harmonize, validate every country in config/regions.yaml
+make data COUNTRY=Ukraine  # one country only
+make api                   # serve the API on http://localhost:8000 (endpoints listed at /docs)
+make web                   # serve the web app on http://localhost:5173 (needs `make api` running, and Node 24)
 make test                  # pytest
-make lint                  # ruff
+make lint                  # ruff + English-only check
 ```
 
 `make data` needs no account or key. It downloads public yearly CSV files from FIRMS
@@ -49,50 +52,44 @@ make lint                  # ruff
 
 To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) and run `make data`.
 
-## Work with the data
-
-Parquet is the one format for everything. After `make data`, every hotspot from every sensor sits in
-`data/points/` with the same columns (`lat`, `lon`, `acq_datetime_utc`, `satellite`,
-`confidence_class`, `frp`, `daynight`, `type`, `country`, plus `sensor` and `year` from the folder
-names), and the monthly grid counts are in `data/agg/cell_month.parquet`. Query them in place:
-
-```python
-import duckdb
-
-duckdb.sql("""
-    select sensor, year, count(*) as hotspots
-    from read_parquet('data/points/**/*.parquet', hive_partitioning = true)
-    where country = 'Ukraine' and confidence_class <> 'low' and type = 0
-    group by all order by all
-""").show()
-```
-
-`pandas.read_parquet("data/points")` works too. For a small slice in JSON or GeoJSON (a map layer,
-a sample to look at), use `make json COUNTRY=Ukraine YEAR=2024 FORMAT=geojson`; do not use JSON for
-the whole record, it is about 20 times larger than Parquet.
-
 ## Layout
 
 ```
 config/regions.yaml   countries, grid size, filters
 pipeline/             ingest -> normalize -> aggregate -> harmonize -> validate (+ tests)
-api/                  FastAPI over the Parquet files (+ tests)
-web/                  React + MapLibre + ECharts front end
-docs/                 METHOD.md, VALIDATION.md (generated), seam figure (generated)
-research/             experiments and notes that are not part of the product
+api/                  FastAPI service over the pipeline's output (+ tests)
+web/                  React + TypeScript dashboard (Vite); charts are hand-written SVG, no chart library
+docs/                 METHOD.md, ADRs, and VALIDATION.md + the sensor jump figure (both generated)
+research/             experiments that are not part of the pipeline
 data/                 generated, git-ignored (see data/README.md)
+CLAUDE.md             instructions for AI coding agents
+GLOSSARY.md           the project's vocabulary
+.claude/skills/       agent skills (see "Working with AI agents")
 ```
 
-## API
+## Working with AI agents
 
-| Endpoint | What |
+The repo is set up so that a coding agent can start work without a briefing:
+
+- [`CLAUDE.md`](CLAUDE.md) holds the rules, the data facts that are easy to get wrong, and the open decisions.
+- [`GLOSSARY.md`](GLOSSARY.md) fixes one word per concept, for people and agents alike.
+- [`.claude/skills/`](.claude/skills/) holds eleven skills from
+  [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `.claude/skills/NOTICE.md`).
+
+| Skill | Use |
 |---|---|
-| `POST /api/calendar` | `{geometry, start?, end?}` -> monthly harmonized record, climatology, latest-month anomaly, most unusual months, yearly totals |
-| `POST /api/hotspots.csv` | `{geometry, start, end}` -> raw detections inside the area (capped at 500,000 rows, `X-Truncated` header) |
-| `GET /api/meta` | countries, record periods, grid, the validation report |
-| `GET /api/health` | liveness |
+| `tdd`, `codebase-design` | build pipeline logic test-first |
+| `diagnosing-bugs` | find the cause of a wrong number or a failing step |
+| `research` | check a fact against primary sources and save a cited note |
+| `prototype` | answer a design question with throwaway code |
+| `domain-modeling`, `grilling` | sharpen terms and decisions, keep `GLOSSARY.md` and ADRs current |
+| `pr` | write a PR body that is fast to review |
+| `writing-for-agents` | edit `CLAUDE.md` or a skill |
+| `/grill-with-docs` | you type it: get interviewed about a design before building it |
+| `/handoff` | you type it: pack the session into a note for the next person or agent |
 
-Interactive docs at `http://localhost:8000/docs`.
+The agent picks up every skill except the last two on its own. Update the copies with
+`npx skills update`; `skills-lock.json` records where each one came from.
 
 ## Data
 
@@ -103,13 +100,24 @@ All data come from NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m):
 - VIIRS on Suomi NPP, January 2012 to November 2026
 - VIIRS on NOAA-20, from April 2018
 
+The record ends in December 2025, the last year in the FIRMS country archive. 2026 is out of scope.
+
 By default the pipeline keeps presumed vegetation fires (FIRMS `type = 0`) and drops
 low-confidence detections. Both filters are set in `config/regions.yaml`.
 
+## Contributing
+
+- **English only.** Code, comments, docs, UI text, commit messages, branch names, PR titles and
+  bodies, issues and review comments are written in English, whoever or whatever writes them.
+  CI fails when Cyrillic text shows up in a tracked file, a commit message, or a PR title or body.
+- Work on a branch and open a pull request against `main`.
+- Run `make test` and `make lint` before you push.
+
 ## Use of AI tools
 
-An AI coding assistant (Claude Code by Anthropic) is used to write pipeline code, tests and
-documentation in this repository.
+An AI coding assistant (Claude Code by Anthropic) is used to write the code, tests and
+documentation in this repository: the data pipeline, the API and the web app. No AI model runs
+inside the product; harmonization and anomalies are plain statistics.
 
 ## License
 

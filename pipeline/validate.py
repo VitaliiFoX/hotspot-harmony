@@ -5,13 +5,13 @@ Every number comes from data the model did not see:
     and compared with what MODIS actually reported;
   * NOAA-20 is checked against MODIS although it was never used to fit the weights;
   * the Terra-only scaling is checked the same way on 2003-2011;
-  * the seam check compares the years before and after the usual sensor switch (2012).
+  * the sensor jump check compares the years before and after the raw record switches sensors (2012).
 
 WAPE = sum|prediction - truth| / sum(truth): 0.08 means a typical miss of 8%.
 
 Output:
     data/agg/harmonization_report.json   read by the API and shown in the app
-    docs/seam_before_after.png           yearly totals, uncorrected splice vs harmonized
+    docs/sensor_jump_before_after.png           yearly totals, raw record vs harmonized record
 
 Usage:  uv run python -m pipeline.validate
 """
@@ -85,10 +85,10 @@ def interval_by_size(d: pd.DataFrame) -> list[dict]:
     return rows
 
 
-def seam(df: pd.DataFrame) -> dict | None:
-    """Mean yearly total in the five years before and after 2012, uncorrected splice vs harmonized."""
+def sensor_jump(df: pd.DataFrame) -> dict | None:
+    """Mean yearly total in the five years before and after 2012, raw record vs harmonized record."""
     out = {}
-    for name, mask, value in (("raw", df.in_naive, 1.0), ("harmonized", df.in_series, df.weight)):
+    for name, mask, value in (("raw", df.in_raw, 1.0), ("harmonized", df.in_series, df.weight)):
         yearly = (df.assign(v=value)[mask]).groupby("y").v.sum()
         before, after = yearly.reindex(range(2007, 2012)).mean(), yearly.reindex(range(2012, 2017)).mean()
         if not (before > 0 and after > 0):
@@ -135,12 +135,17 @@ def validate_country(df: pd.DataFrame, par: dict) -> dict:
          "terra_only_over_viirs_equiv": round(float(n_yr.modis_terra[y] / veq[y]), 3)}
         for y in n_yr.index if veq.get(y, 0) > 0 and n_yr.modis.get(y, 0) > 0
     ]  # fmt: skip
-    return {"validation": out, "seam": seam(df), "interval_by_size": interval_by_size(loyo), "modis_orbit_drift": drift}
+    return {
+        "validation": out,
+        "sensor_jump": sensor_jump(df),
+        "interval_by_size": interval_by_size(loyo),
+        "modis_orbit_drift": drift,
+    }
 
 
-def plot_seam(df: pd.DataFrame, country: str, report: dict, out: Path) -> None:
+def plot_sensor_jump(df: pd.DataFrame, country: str, report: dict, out: Path) -> None:
     surface, ink, ink2, grid = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
-    raw = df[df.in_naive].groupby("y").size()
+    raw = df[df.in_raw].groupby("y").size()
     harm = df[df.in_series].groupby("y").weight.sum()
     years = [y for y in harm.index if y > 2000]  # 2000 has two months only
     plt.rcParams.update({"font.size": 10, "text.color": ink, "axes.labelcolor": ink2, "xtick.color": ink2,
@@ -150,10 +155,10 @@ def plot_seam(df: pd.DataFrame, country: str, report: dict, out: Path) -> None:
     ax.axvline(2011.5, color=ink2, lw=1, ls=(0, (4, 3)))
     ax.text(2011.7, 0.97, "VIIRS data start (2012)", transform=ax.get_xaxis_transform(), va="top", fontsize=9,
             color=ink2)  # fmt: skip
-    for series, color, name in ((raw, "#eb6834", "Uncorrected splice: MODIS, then VIIRS as delivered"),
+    for series, color, name in ((raw, "#eb6834", "Raw record: MODIS, then VIIRS as delivered"),
                                 (harm, "#2a78d6", "Harmonized record")):  # fmt: skip
         ax.plot(years, series.reindex(years), color=color, lw=2, marker="o", ms=4.5, mec=surface, mew=1, label=name)
-    ax.annotate("uncorrected", (years[-1], raw.reindex(years).iloc[-1]), xytext=(8, 0), textcoords="offset points",
+    ax.annotate("raw", (years[-1], raw.reindex(years).iloc[-1]), xytext=(8, 0), textcoords="offset points",
                 va="center", fontsize=9)  # fmt: skip
     ax.annotate("harmonized", (years[-1], harm.reindex(years).iloc[-1]), xytext=(8, 0), textcoords="offset points",
                 va="center", fontsize=9)  # fmt: skip
@@ -167,12 +172,12 @@ def plot_seam(df: pd.DataFrame, country: str, report: dict, out: Path) -> None:
         ax.spines[side].set_visible(False)
     ax.set_ylabel("fire cell-days per year")
     ax.legend(loc="upper left", frameon=False, ncols=2, bbox_to_anchor=(-0.01, 1.09), handlelength=1.6)
-    ax.set_title(f"{country}: the sensor switch no longer shows up as a jump", loc="left", fontsize=12.5,
+    ax.set_title(f"{country}: the sensor jump is gone from the harmonized record", loc="left", fontsize=12.5,
                  fontweight="bold", pad=34)  # fmt: skip
-    sm = report["seam"]
+    sm = report["sensor_jump"]
     note = "Source: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m), vegetation fires only."
     if sm:
-        note = (f"Mean of 2012-2016 over mean of 2007-2011: {sm['raw']['jump_ratio']:.2f}x uncorrected, "
+        note = (f"Mean of 2012-2016 over mean of 2007-2011: {sm['raw']['jump_ratio']:.2f}x raw, "
                 f"{sm['harmonized']['jump_ratio']:.2f}x harmonized.\n") + note  # fmt: skip
     ax.text(0, -0.13, note, transform=ax.transAxes, fontsize=8.5, color=ink2, va="top")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -211,14 +216,14 @@ def write_markdown(report: dict, out: Path) -> None:
             if v:
                 cells = [f"{v['bias']:+.1%}"] + [f"{v[c]:.1%}" for c in WAPE_COLUMNS]
                 lines.append(f"| {label} | " + " | ".join(cells) + " |")
-        if e.get("seam"):
-            sm = e["seam"]
+        if e.get("sensor_jump"):
+            sm = e["sensor_jump"]
             lines += [
                 "",
-                "Seam check, mean yearly total 2012-2016 over 2007-2011:",
-                f"uncorrected splice {sm['raw']['jump_ratio']:.2f}x, harmonized {sm['harmonized']['jump_ratio']:.2f}x.",
+                "Sensor jump check, mean yearly total 2012-2016 over 2007-2011:",
+                f"raw record {sm['raw']['jump_ratio']:.2f}x, harmonized {sm['harmonized']['jump_ratio']:.2f}x.",
                 "",
-                "![Yearly totals, uncorrected vs harmonized](seam_before_after.png)",
+                "![Yearly totals, raw record vs harmonized record](sensor_jump_before_after.png)",
             ]
         lines += [
             "",
@@ -271,15 +276,15 @@ def main() -> None:
         entry = {"calibration": source, **hz.params_to_json(par, source)}
         if source == "own":
             entry.update(validate_country(df, par))
-            if not plotted and entry["seam"]:
-                plot_seam(df, country, entry, args.docs / "seam_before_after.png")
+            if not plotted and entry["sensor_jump"]:
+                plot_sensor_jump(df, country, entry, args.docs / "sensor_jump_before_after.png")
                 plotted = True
             v = entry["validation"]["viirs_to_modis_leave_one_year_out"]
             print(f"validate: {country:<12} held-out error {v['wape_country_year']:.1%} per year, "
-                  f"{v['wape_country_month']:.1%} per month (uncorrected VIIRS: "
+                  f"{v['wape_country_month']:.1%} per month (VIIRS as delivered: "
                   f"{entry['validation']['baseline_raw_viirs']['wape_country_month']:.0%}); "
-                  f"seam {entry['seam']['raw']['jump_ratio']:.2f}x -> "
-                  f"{entry['seam']['harmonized']['jump_ratio']:.2f}x")  # fmt: skip
+                  f"sensor jump {entry['sensor_jump']['raw']['jump_ratio']:.2f}x -> "
+                  f"{entry['sensor_jump']['harmonized']['jump_ratio']:.2f}x")  # fmt: skip
         else:
             entry["note"] = (
                 "Too little MODIS/VIIRS overlap downloaded for this country: calibration borrowed, not validated here."
@@ -291,7 +296,7 @@ def main() -> None:
     write_markdown(report, args.docs / "VALIDATION.md")
     print(f"validate: report -> {agg / 'harmonization_report.json'}, tables -> {args.docs / 'VALIDATION.md'}")
     if plotted:
-        print(f"validate: figure -> {args.docs / 'seam_before_after.png'}")
+        print(f"validate: figure -> {args.docs / 'sensor_jump_before_after.png'}")
 
 
 if __name__ == "__main__":
