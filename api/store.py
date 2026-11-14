@@ -2,16 +2,22 @@
 
 Two series can be served, each as one value per cell and month:
 
-    raw         built here from data/agg/cell_month.parquet: MODIS hotspots before RAW_SWITCH,
-                VIIRS S-NPP hotspots from RAW_SWITCH on. It still contains the sensor jump.
-    harmonized  read from data/agg/harmonized.parquet when the pipeline has written it.
+    harmonized  data/agg/harmonized.parquet, column n_harmonized: MODIS-equivalent fire cell-days.
+    raw         the same file, column n_raw: fire cell-days of MODIS before RAW_SWITCH and of VIIRS S-NPP
+                from RAW_SWITCH on, with no correction. It still contains the sensor jump.
+                Before the pipeline has written harmonized.parquet, the raw series falls back to hotspot
+                counts from data/agg/cell_month.parquet, in a different unit.
 
 Contract for data/agg/harmonized.parquet (one row per cell and month that has burning):
     cell_lat, cell_lon   centre of the cell, degrees
     country              region name as in config/regions.yaml
     year, month          calendar month (of the local solar day, see docs/METHOD.md)
     n_harmonized         the harmonized value
+    n_raw                fire cell-days of the raw record
+    sensor_used          sensor behind the harmonized value in that month
 A cell belongs to an area when its centre is inside it, so any grid size works.
+Months before RECORD_FIRST are dropped: the archive starts on 2000-11-01 UTC, and a local solar day can
+still fall on 31 October in the western hemisphere.
 """
 
 from dataclasses import dataclass
@@ -26,8 +32,15 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 from pipeline.config import Config
+from pipeline.harmonize import RECORD
 
 RAW_SWITCH = (2012, 2)  # first month the raw series takes from VIIRS S-NPP (it started on 2012-01-20)
+RECORD_FIRST = (2000, 11)  # first full month of the FIRMS archive
+UNITS = {
+    "harmonized": "MODIS-equivalent fire cell-days",
+    "raw": "fire cell-days",
+    "raw_hotspots": "hotspots",
+}
 CSV_COLUMNS = "lat, lon, acq_datetime_utc, sensor, satellite, confidence_class, frp, daynight, type, country"
 
 
@@ -86,26 +99,47 @@ class Store:
 
     def _load(self, agg: Path) -> None:
         switch = Span.index(*RAW_SWITCH)
-        sources = {
-            "raw": (
+        first = Span.index(*RECORD_FIRST)
+        ym = "year * 12 + month - 1"
+        harmonized = agg / "harmonized.parquet"
+        self.units: dict[str, str] = {}
+        sources: dict[str, tuple[Path, str]] = {}
+        if harmonized.exists():
+            sources["raw"] = (
+                harmonized,
+                f"select cell_lat, cell_lon, {ym} as ym, n_raw as value, null as sensor from read_parquet(?) "
+                f"where n_raw > 0 and {ym} >= {first}",
+            )
+            sources["harmonized"] = (
+                harmonized,
+                f"select cell_lat, cell_lon, {ym} as ym, n_harmonized as value, sensor_used as sensor "
+                f"from read_parquet(?) where {ym} >= {first}",
+            )
+            self.units = {"raw": UNITS["raw"], "harmonized": UNITS["harmonized"]}
+        elif (agg / "cell_month.parquet").exists():
+            sources["raw"] = (
                 agg / "cell_month.parquet",
-                f"""select cell_lat, cell_lon, year * 12 + month - 1 as ym, n_hotspots as value
+                f"""select cell_lat, cell_lon, {ym} as ym, n_hotspots as value, null as sensor
                     from read_parquet(?)
-                    where (sensor = 'modis' and year * 12 + month - 1 < {switch})
-                       or (sensor = 'viirs_snpp' and year * 12 + month - 1 >= {switch})""",
-            ),
-            "harmonized": (
-                agg / "harmonized.parquet",
-                "select cell_lat, cell_lon, year * 12 + month - 1 as ym, n_harmonized as value from read_parquet(?)",
-            ),
-        }
+                    where {ym} >= {first}
+                      and ((sensor = 'modis' and {ym} < {switch}) or (sensor = 'viirs_snpp' and {ym} >= {switch}))""",
+            )
+            self.units = {"raw": UNITS["raw_hotspots"]}
+        self.month_sensor: dict[str, dict[int, str]] = {}
         for name, (path, query) in sources.items():
-            if not path.exists():
-                continue
             self.con.execute(f"create table {name} as {query}", [path.as_posix()])
-            first, last = self.con.execute(f"select min(ym), max(ym) from {name}").fetchone()
-            if first is not None:
-                self.spans[name] = Span(first, last)
+            lo, hi = self.con.execute(f"select min(ym), max(ym) from {name}").fetchone()
+            if lo is None:
+                self.units.pop(name, None)
+                continue
+            self.spans[name] = Span(lo, hi)
+            if name == "raw":
+                self.month_sensor[name] = {
+                    m: "modis" if m < switch else "viirs_snpp" for m in Span(lo, hi).months()
+                }
+            else:
+                rows = self.con.execute(f"select ym, any_value(sensor) from {name} group by ym").fetchall()
+                self.month_sensor[name] = dict(rows)
 
     @property
     def series(self) -> list[str]:
@@ -174,9 +208,7 @@ class Store:
             return monthly.get(ym, 0.0)
 
         def sensor(ym: int) -> str | None:
-            if name != "raw":
-                return None
-            return "modis" if ym < Span.index(*RAW_SWITCH) else "viirs_snpp"
+            return self.month_sensor[name].get(ym)
 
         history = {m: np.array([value(ym) for ym in record.months() if ym % 12 == m]) for m in range(12)}
         climatology = [
@@ -211,6 +243,7 @@ class Store:
         ]
         return {
             "series": name,
+            "unit": self.units[name],
             "cells_used": cells_used,
             "warnings": warnings,
             "months": [
@@ -262,6 +295,8 @@ class Store:
             "regions": [{"name": r.name, "bbox": list(r.bbox)} for r in self.cfg.regions],
             "series": self.series,
             "default_series": self.default_series,
+            "units": self.units,
+            "harmonized_record": RECORD if "harmonized" in self.spans else None,
             "first_month": Span.label(span.first) if span else None,
             "last_month": Span.label(span.last) if span else None,
             "cell_deg": self.cfg.cell_deg,

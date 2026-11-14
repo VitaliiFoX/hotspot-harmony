@@ -130,8 +130,15 @@ export function App() {
     }
   }
 
-  const unit = calendar?.series === "harmonized" ? "harmonized hotspots" : "hotspots";
-  const switchYear = meta ? Number(meta.raw_sensor_switch.slice(0, 4)) : 0;
+  const unit = calendar?.unit ?? "";
+  // Where the yearly chart marks a change of sensor: the raw record jumps there, the harmonized one should not.
+  const viirsTakesOver = meta?.harmonized_record?.find((part) => part.sensor.startsWith("viirs"));
+  const sensorSwitch =
+    calendar?.series === "raw" && meta
+      ? { year: Number(meta.raw_sensor_switch.slice(0, 4)), label: "VIIRS S-NPP replaces MODIS" }
+      : viirsTakesOver
+        ? { year: Number(viirsTakesOver.from.slice(0, 4)), label: "VIIRS NOAA-20 takes over" }
+        : undefined;
   const year = highlightYear ?? calendar?.anomaly.year ?? 0;
 
   return (
@@ -175,7 +182,12 @@ export function App() {
       ))}
       {calendar?.series === "raw" && meta && (
         <p className="notice">
-          {`This is the raw record: MODIS before ${monthLabel(meta.raw_sensor_switch)}, VIIRS S-NPP from then on. VIIRS reports about three times more hotspots for the same fires, so values before and after that month cannot be compared.`}
+          {`Raw record: MODIS before ${monthLabel(meta.raw_sensor_switch)}, VIIRS S-NPP from then on, counted as ${calendar.unit} with no correction. VIIRS sees many small fires that MODIS misses, so the values jump at that month and cannot be compared across it.`}
+        </p>
+      )}
+      {calendar?.series === "harmonized" && meta?.harmonized_record && (
+        <p className="notice">
+          {`Harmonized record, in ${calendar.unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so ${meta.harmonized_record[0].from.slice(0, 4)} and ${meta.last_month?.slice(0, 4)} can be compared. ${meta.harmonized_record.map((part) => `${part.label}: ${part.to ? `${monthLabel(part.from)} to ${monthLabel(part.to)}` : `from ${monthLabel(part.from)}`}`).join("; ")}.`}
         </p>
       )}
 
@@ -187,7 +199,7 @@ export function App() {
 
           <ChartCard
             title="Burning activity calendar"
-            subtitle={`Monthly ${unit} in the area, ${calendar.cells_used.toLocaleString("en-US")} grid cells with burning`}
+            subtitle={`Monthly ${unit} in the area, over ${calendar.cells_used.toLocaleString("en-US")} grid cells with burning`}
             options={
               <div className="segmented" role="group" aria-label="Colour scale">
                 {(["linear", "log"] as ScaleMode[]).map((mode) => (
@@ -232,13 +244,7 @@ export function App() {
               title="Burning per year"
               subtitle={`Yearly ${unit} within the selected period`}
               chart={
-                <YearlyChart
-                  yearly={calendar.yearly}
-                  unit={unit}
-                  sensorSwitch={
-                    calendar.series === "raw" ? { year: switchYear, label: "VIIRS replaces MODIS" } : undefined
-                  }
-                />
+                <YearlyChart yearly={calendar.yearly} unit={unit} sensorSwitch={sensorSwitch} />
               }
               table={<YearlyTable yearly={calendar.yearly} unit={unit} />}
             />

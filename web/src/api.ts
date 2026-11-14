@@ -13,7 +13,13 @@ export type Meta = {
   cell_deg: number;
   raw_sensor_switch: string;
   csv_row_limit: number;
+  /** What one value means in each series, e.g. "fire cell-days". */
+  units: Partial<Record<SeriesName, string>>;
+  /** Which sensor speaks for which period in the harmonized record; null until it exists. */
+  harmonized_record: RecordPart[] | null;
 };
+
+export type RecordPart = { sensor: string; label: string; from: string; to: string | null };
 
 export type MonthValue = { year: number; month: number; value: number; sensor: string | null };
 export type Climatology = { month: number; median: number; p25: number; p75: number; years: number };
@@ -29,6 +35,7 @@ export type YearTotal = { year: number; value: number; complete: boolean };
 
 export type Calendar = {
   series: SeriesName;
+  unit: string;
   cells_used: number;
   warnings: string[];
   months: MonthValue[];

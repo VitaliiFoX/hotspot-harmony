@@ -8,9 +8,9 @@ Built during the 2026 NASA Space Apps Challenge for the challenge
 
 **Demo:** not deployed yet.
 
-![The dashboard on the raw record for Argentina](docs/screenshots/dashboard-raw-argentina.png)
+![The dashboard on the harmonized record for Ukraine](docs/screenshots/dashboard-harmonized-ukraine.png)
 
-*The raw record for Argentina. The step in 2012 is the sensor jump this project removes.*
+*The harmonized record for Ukraine. Switch to "Raw" and the yearly totals double from 2012, when VIIRS replaces MODIS; harmonized, they do not.*
 
 ## Why
 
@@ -30,7 +30,7 @@ on which satellite was flying.
 | Aggregate to grid cell x month x sensor | done |
 | Fire cell-days on a 1 km grid, local solar day | done |
 | Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
-| API (FastAPI): calendar, anomaly, CSV export | done; serves the raw and the harmonized series |
+| API (FastAPI): calendar, anomaly, CSV export | done; serves the raw and the harmonized series, both in fire cell-days |
 | Web app: filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done without a map: the area is a region or a box typed in degrees |
 | Map with a drawn area of interest | not started |
 

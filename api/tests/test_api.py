@@ -43,7 +43,14 @@ CELL_MONTHS = [  # cell, year, month, sensor, hotspots
     (C, 2013, 8, "viirs_snpp", 1000),  # outside the test area
     (A, 2013, 9, "viirs_noaa20", 99),  # NOAA-20 is not part of the raw series
 ]
-HARMONIZED = [(A, 2010, 8, 30.5), (A, 2013, 8, 60.0)]
+HARMONIZED = [  # cell, year, month, harmonized, raw (fire cell-days), sensor of the harmonized value
+    (A, 2000, 10, 0.5, 1, "modis_terra"),  # a local day on 31 October: before the archive starts
+    (A, 2010, 8, 30.5, 25, "modis"),
+    (B, 2010, 8, 0.0, 3, "modis"),
+    (A, 2013, 8, 60.0, 90, "modis"),
+    (B, 2013, 8, 4.0, 10, "modis"),
+    (C, 2013, 8, 500.0, 700, "modis"),  # outside the test area
+]
 POINTS = [  # lat, lon, time, sensor
     (0.4, 0.6, "2013-08-05 12:30:00", "viirs_snpp"),  # in the area, in the dates
     (0.6, 1.2, "2013-08-20 01:05:00", "modis"),  # in the area, in the dates
@@ -70,9 +77,12 @@ def build_data(root, harmonized=False):
         to '{root}/agg/cell_month.parquet' (format parquet)
     """)
     if harmonized:
-        rows = ", ".join(f"({lat}, {lon}, 'Testland', {y}, {m}, {v})" for (lat, lon), y, m, v in HARMONIZED)
+        rows = ", ".join(
+            f"({lat}, {lon}, 'Testland', {y}, {m}, {h}, {r}, '{s}')" for (lat, lon), y, m, h, r, s in HARMONIZED
+        )
         con.execute(f"""
-            copy (select * from (values {rows}) t(cell_lat, cell_lon, country, year, month, n_harmonized))
+            copy (select * from (values {rows})
+                  t(cell_lat, cell_lon, country, year, month, n_harmonized, n_raw, sensor_used))
             to '{root}/agg/harmonized.parquet' (format parquet)
         """)
     for i, (lat, lon, t, sensor) in enumerate(POINTS):
@@ -155,9 +165,41 @@ def test_yearly_totals_flag_years_that_are_not_fully_covered(client):
 def test_harmonized_series_is_served_when_the_pipeline_has_written_it(client_harmonized):
     body = calendar(client_harmonized).json()
     assert body["series"] == "harmonized"  # the default once it exists
+    assert body["unit"] == "MODIS-equivalent fire cell-days"
     months = {(m["year"], m["month"]): m for m in body["months"]}
-    assert (months[(2010, 8)]["value"], months[(2010, 8)]["sensor"]) == (30.5, None)
-    assert calendar(client_harmonized, series="raw").json()["series"] == "raw"
+    assert (months[(2010, 8)]["value"], months[(2010, 8)]["sensor"]) == (30.5, "modis")
+    assert months[(2013, 8)]["value"] == 64.0  # A + B; C is outside the area
+
+
+def test_raw_series_counts_fire_cell_days_once_the_harmonized_record_exists(client_harmonized):
+    body = calendar(client_harmonized, series="raw").json()
+    assert body["series"] == "raw"
+    assert body["unit"] == "fire cell-days"  # the same unit as the harmonized record, not hotspots
+    months = {(m["year"], m["month"]): m for m in body["months"]}
+    assert (months[(2010, 8)]["value"], months[(2010, 8)]["sensor"]) == (28.0, "modis")
+    assert (months[(2013, 8)]["value"], months[(2013, 8)]["sensor"]) == (100.0, "viirs_snpp")
+
+
+def test_without_the_harmonized_record_the_raw_series_counts_hotspots(client):
+    assert calendar(client).json()["unit"] == "hotspots"
+
+
+def test_the_record_starts_with_the_archive_in_november_2000(client_harmonized):
+    for series in ("harmonized", "raw"):
+        months = calendar(client_harmonized, series=series).json()["months"]
+        assert (months[0]["year"], months[0]["month"]) == (2010, 8)
+    assert client_harmonized.get("/api/meta").json()["first_month"] == "2010-08"
+
+
+def test_meta_names_the_unit_and_the_sensors_of_each_series(client_harmonized):
+    meta = client_harmonized.get("/api/meta").json()
+    assert meta["series"] == ["raw", "harmonized"]
+    assert meta["units"] == {"raw": "fire cell-days", "harmonized": "MODIS-equivalent fire cell-days"}
+    assert meta["harmonized_record"] == [
+        {"sensor": "modis_terra", "label": "MODIS Terra only, scaled", "from": "2000-11", "to": "2002-06"},
+        {"sensor": "modis", "label": "MODIS Terra + Aqua (reference)", "from": "2002-07", "to": "2021-12"},
+        {"sensor": "viirs_noaa20", "label": "VIIRS NOAA-20, harmonized", "from": "2022-01", "to": None},
+    ]
 
 
 def test_asking_for_a_missing_harmonized_series_is_an_error(client):
@@ -204,6 +246,7 @@ def test_meta_describes_what_the_api_can_answer(client):
     meta = client.get("/api/meta").json()
     assert meta["regions"] == [{"name": "Testland", "bbox": [0, 0, 10, 10]}]
     assert meta["series"] == ["raw"]
+    assert meta["units"] == {"raw": "hotspots"}
     assert (meta["first_month"], meta["last_month"]) == ("2010-08", "2013-08")
     assert meta["raw_sensor_switch"] == "2012-02"
 

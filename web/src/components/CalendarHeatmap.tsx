@@ -13,7 +13,12 @@ type Props = {
   onHighlightYear: (year: number) => void;
 };
 
-const SENSOR_NAMES: Record<string, string> = { modis: "MODIS", viirs_snpp: "VIIRS S-NPP", viirs_noaa20: "VIIRS NOAA-20" };
+const SENSOR_NAMES: Record<string, string> = {
+  modis_terra: "MODIS Terra, scaled",
+  modis: "MODIS",
+  viirs_snpp: "VIIRS S-NPP",
+  viirs_noaa20: "VIIRS NOAA-20, harmonized",
+};
 
 /** Years down, months across, one cell per month coloured by how much burned. */
 export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlightYear, onHighlightYear }: Props) {
