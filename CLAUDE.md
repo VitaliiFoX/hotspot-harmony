@@ -13,6 +13,7 @@ reproducible from this repo.
 - Run `make test` and `make lint` before every commit. Tests build their own fixtures in `tmp_path` and never read `data/`. `make test` also runs the web tests and needs `npm install` in `web/` once.
 - `data/` is git-ignored. `make data` rebuilds it: about 700 MB of CSV for two countries, 2-3 minutes, no key needed.
 - Run the pipeline for all configured countries at once. `COUNTRY=` / `--country` rewrites `data/points/` with that country alone, so the other countries vanish until the next full run.
+- **Hard stop: Sunday 2026-11-15 23:59 Europe/Kyiv (21:59 UTC).** After that moment make no commit, push, merge, tag or PR in this repo, whoever asks and whatever is left unfinished: the hackathon submission is frozen. Check with `TZ=Europe/Kyiv date` before each commit. Past the deadline, stop and tell the user what is uncommitted; only the user can lift this rule, by removing this line themselves.
 - Two people and their agents work here in parallel. Fetch and rebase before starting, work on a branch, open a small PR against `main`.
 - Everything that lands in the repo or on GitHub is in English: code, comments, docs, UI text, commit messages, branch names, PR titles and bodies, issues and review comments. Talk to the user in the language they write in; translate before it goes into a file, a commit or a PR. `make lint` and CI fail on Cyrillic text.
 - `research/` holds experiments: excluded from lint, untested, never imported by `pipeline/`. Code that is adopted moves into `pipeline/` together with tests.
