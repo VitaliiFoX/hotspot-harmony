@@ -151,9 +151,12 @@ const STYLE: StyleSpecification = {
       paint: { "text-color": "#ffffff", "text-halo-color": "rgba(0,0,0,0.75)", "text-halo-width": 1.2 },
     },
     {
+      // The region boxes are no longer drawn: the real country borders show where a region is. The layer
+      // stays, hidden, as the anchor the street map is inserted under; clicks still find a region by its box.
       id: "region-outline",
       type: "line",
       source: "regions",
+      layout: { visibility: "none" },
       paint: { "line-color": "rgba(255,255,255,0.6)", "line-width": 1.2 },
     },
     {
