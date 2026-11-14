@@ -665,3 +665,256 @@ html {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Compact cards on desktop: the globe is the subject, the cards should not crowd it. Touch screens
+   (under 900 px) keep the larger sizes and 44 px targets. */
+@media (min-width: 900px) {
+  .stage {
+    min-height: 640px;
+  }
+  .stage-head {
+    top: 20px;
+    left: 20px;
+    gap: 2px;
+    max-width: calc(100% - 300px - 64px);
+    padding: 12px 16px 14px;
+    border-radius: 18px;
+  }
+  .stage-head h1 {
+    font-size: 21px;
+  }
+  .stage-head p {
+    font-size: 13px;
+  }
+  .stage-actions {
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .stage-next,
+  .stage-toggle {
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: 17px;
+    font-size: 13px;
+  }
+  .stage .maplibregl-ctrl-top-left {
+    top: 152px;
+    left: 10px;
+  }
+  .stage .maplibregl-ctrl-group button {
+    width: 34px;
+    height: 34px;
+  }
+  .stage-legend {
+    left: 20px;
+    bottom: 20px;
+    gap: 6px;
+    max-width: 340px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    font-size: 11px;
+  }
+  .dt-panel {
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 22px;
+  }
+  .dt-date {
+    font-size: 19px;
+  }
+  .dt-secondary {
+    font-size: 12px;
+  }
+  .dt-round {
+    width: 32px;
+    height: 32px;
+  }
+  .dt-month-name {
+    font-size: 14px;
+  }
+  .dt-month-name select,
+  .dt-month select {
+    min-height: 32px;
+  }
+  .dt-days {
+    font-size: 10px;
+  }
+  .dt-day {
+    height: 32px;
+    font-size: 12px;
+    gap: 2px;
+  }
+  .dt-time-value {
+    font-size: 16px;
+  }
+  .stage .dt-time input[type="range"] {
+    height: 28px;
+  }
+  .dt-time-ends {
+    font-size: 11px;
+  }
+  .dt-readout {
+    padding: 10px 12px;
+  }
+  .dt-big {
+    font-size: 22px;
+  }
+  .dt-status {
+    font-size: 12px;
+  }
+  .dt-sensor {
+    font-size: 11px;
+  }
+}
+
+.dt-time-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stage .dt-time-input {
+  width: 64px;
+  height: 32px;
+  padding: 0 8px;
+  text-align: center;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-button);
+  color: var(--stage-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color-scheme: inherit;
+}
+.stage .dt-play {
+  width: 32px;
+  height: 32px;
+  color: var(--stage-ink);
+}
+.stage .dt-time-input:invalid {
+  border-color: var(--hotspot);
+}
+.stage .dt-play[aria-pressed="true"] {
+  background: var(--hotspot);
+  border-color: var(--hotspot);
+  color: #0b0b0b;
+}
+
+/* Folding: a small close button on each card, and a pill that brings it back. */
+.stage-fold {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 13px;
+  background: var(--glass-button);
+  color: var(--stage-ink-2);
+  cursor: pointer;
+}
+.stage .stage-fold:hover {
+  background: var(--glass-button-hover);
+  color: var(--stage-ink);
+}
+.stage-fold-panel {
+  top: 32px;
+  right: 32px;
+}
+.stage-fold-legend {
+  top: 8px;
+  right: 8px;
+}
+.stage-legend {
+  padding-right: 40px;
+}
+.stage-pill {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-solid);
+  box-shadow: var(--glass-shadow);
+  color: var(--stage-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.stage .stage-pill:hover {
+  background: var(--glass-button-hover);
+}
+.stage-pill strong {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--hotspot);
+  color: #0b0b0b;
+  font-variant-numeric: tabular-nums;
+}
+.stage-pill-panel {
+  top: 20px;
+  right: 20px;
+}
+.stage-pill-legend {
+  left: 20px;
+  bottom: 20px;
+}
+@media (max-width: 899px) {
+  .stage-fold {
+    display: none;
+  }
+  .stage-legend {
+    padding-right: 16px;
+  }
+}
+
+/* Zoom and compass buttons in the same glass as the cards, instead of MapLibre's white box. */
+.stage .maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: var(--glass-solid);
+  box-shadow: var(--glass-shadow);
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .stage:not(.is-street) .maplibregl-ctrl-group {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
+    backdrop-filter: blur(26px) saturate(180%);
+  }
+}
+.stage .maplibregl-ctrl-group:not(:empty) {
+  box-shadow: var(--glass-shadow);
+}
+.stage .maplibregl-ctrl-group button {
+  background-color: transparent;
+}
+.stage .maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--glass-line);
+}
+.stage .maplibregl-ctrl-group button:not(:disabled):hover {
+  background-color: var(--glass-button-hover);
+}
+/* MapLibre's icons are dark SVGs: on the dark stage they are inverted to white. */
+.stage .maplibregl-ctrl-group .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .stage .maplibregl-ctrl-group .maplibregl-ctrl-icon {
+    filter: none;
+  }
+}
+:root[data-theme="light"] .stage .maplibregl-ctrl-group .maplibregl-ctrl-icon {
+  filter: none;
+}

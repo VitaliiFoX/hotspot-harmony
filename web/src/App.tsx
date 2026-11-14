@@ -10,7 +10,7 @@ import { DateTimePanel } from "./components/DateTimePanel";
 import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
-import { DEFAULT_HOUR, clampDate, countHotspots, defaultDate, parseDateParam, parseHourParam } from "./globe";
+import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
@@ -38,9 +38,11 @@ export function App() {
   const [filters, setFilters] = useState<FilterState | null>(null);
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   const [date, setDate] = useState<string | null>(null);
-  const [hour, setHour] = useState<number>(
-    () => parseHourParam(new URLSearchParams(window.location.search).get("hour")) ?? DEFAULT_HOUR,
-  );
+  // Time of day on the globe, in minutes after 00:00 UTC.
+  const [time, setTime] = useState<number>(() => {
+    const query = new URLSearchParams(window.location.search);
+    return parseTimeParam(query.get("time"), query.get("hour")) ?? DEFAULT_TIME;
+  });
   const [monthDays, setMonthDays] = useState<MonthDays | null>(null);
   const [day, setDay] = useState<DayHotspots | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
@@ -104,9 +106,10 @@ export function App() {
     if (!date) return;
     const query = new URLSearchParams(window.location.search);
     query.set("date", date);
-    query.set("hour", String(hour).padStart(2, "0"));
-    window.history.replaceState(null, "", `?${query.toString().replaceAll("%2C", ",")}`);
-  }, [date, hour]);
+    query.delete("hour");
+    query.set("time", timeLabel(time));
+    window.history.replaceState(null, "", `?${query.toString().replaceAll("%2C", ",").replaceAll("%3A", ":")}`);
+  }, [date, time]);
 
   const month = date?.slice(0, 7) ?? null;
   useEffect(() => {
@@ -139,7 +142,7 @@ export function App() {
   }, [date]);
 
   // Changing the hour only filters the day already loaded.
-  const counts = useMemo(() => (day ? countHotspots(day.hotspots, hour, day.regions.length) : null), [day, hour]);
+  const counts = useMemo(() => (day ? countHotspots(day.hotspots, time, day.regions.length) : null), [day, time]);
 
   function pickRegion(name: string) {
     const region = meta?.regions.find((r) => r.name === name);
@@ -239,7 +242,7 @@ export function App() {
       <Globe
         regions={meta?.regions ?? []}
         date={date}
-        hour={hour}
+        time={time}
         day={day}
         counts={counts}
         focusRegion={filters?.region ?? null}
@@ -249,7 +252,7 @@ export function App() {
           date && firstDay && finalDay ? (
             <DateTimePanel
               date={date}
-              hour={hour}
+              time={time}
               firstDay={firstDay}
               lastDay={finalDay}
               monthDays={monthDays}
@@ -258,7 +261,7 @@ export function App() {
               loading={dayLoading}
               error={dayError}
               onDate={setDate}
-              onHour={setHour}
+              onTime={setTime}
             />
           ) : null
         }
