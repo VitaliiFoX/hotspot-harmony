@@ -5,14 +5,10 @@ Output data/agg/cell_month.parquet:
 A row exists only where at least one hotspot passed the filters; a missing row means zero.
 Months are UTC calendar months.
 
-<<<<<<< HEAD
 Output data/agg/cell_day.parquet (input of pipeline.harmonize):
     country, stream, local_date, gx, gy, lat, lon, frp, n_det, has_day, cell_id
 
-Usage:  uv run python -m pipeline.aggregate
-=======
 Usage:  uv run python -m pipeline.aggregate [--config config/world.yaml]
->>>>>>> e45be48 (feat(normalize): process every country found in data/raw in world mode)
 """
 
 import argparse

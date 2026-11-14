@@ -54,7 +54,7 @@ def download(url: str, dest: Path) -> str:
                 with open(tmp, "wb") as f:
                     for chunk in r.iter_content(1 << 20):
                         f.write(chunk)
-                tmp.rename(dest)
+                tmp.replace(dest)  # rename() fails on Windows when --force finds the file there
                 return "downloaded"
         except requests.RequestException as e:
             error = e
@@ -85,7 +85,7 @@ def extract_countries(zip_path: Path, archive: str, year: int, raw: Path, force:
             with z.open(member) as src, open(tmp, "wb") as out:
                 while chunk := src.read(1 << 20):
                     out.write(chunk)
-            tmp.rename(dest)
+            tmp.replace(dest)  # rename() fails on Windows when --force finds the file there
             written += 1
     return written
 
