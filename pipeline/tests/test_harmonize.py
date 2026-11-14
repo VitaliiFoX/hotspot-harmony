@@ -221,3 +221,13 @@ def test_validation_scores_and_sensor_jump(overlap):
     df["in_series"] = df.stream == "modis"
     assert sensor_jump(df) == {"raw": {"before": 1.0, "after": 3.0, "jump_ratio": 3.0},
                         "harmonized": {"before": 1.0, "after": 1.0, "jump_ratio": 1.0}}  # fmt: skip
+
+
+def test_harmonize_all_discovers_countries_when_none_given(tmp_path, overlap):
+    path = tmp_path / "cell_day.parquet"
+    con = duckdb.connect()
+    con.register("overlap_df", overlap)
+    con.execute(f"copy overlap_df to '{path.as_posix()}' (format parquet)")
+    results = hz.harmonize_all(con, path, None)
+    assert list(results) == ["Testland"]
+

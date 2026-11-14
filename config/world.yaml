@@ -1,0 +1,22 @@
+# Whole-world processing: every country in the FIRMS archive, downloaded as one zip per sensor and year.
+# Use with: make data CONFIG=config/world.yaml, then make api CONFIG=config/world.yaml.
+# Expect about 10 GB of downloads and about 50 GB of extracted CSV files in data/raw/.
+
+world: true
+
+regions:
+  # A single region spanning the globe, so the API and the web app treat every area as covered.
+  - name: World
+    bbox: [-180.0, -90.0, 180.0, 90.0]
+
+sensors:
+  modis: {archive: modis, first_year: 2000}
+  viirs_snpp: {archive: viirs-snpp, first_year: 2012}
+  viirs_noaa20: {archive: viirs-jpss1, first_year: 2018}
+
+grid:
+  cell_deg: 0.25
+
+filters:
+  drop_confidence: [low]
+  keep_types: [0]

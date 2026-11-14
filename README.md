@@ -30,9 +30,9 @@ on which satellite was flying.
 | Aggregate to grid cell x month x sensor | done |
 | Fire cell-days on a 1 km grid, local solar day | done |
 | Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
-| API (FastAPI): calendar, anomaly, CSV export | done; serves the raw and the harmonized series, both in fire cell-days |
-| Web app: filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done without a map: the area is a region or a box typed in degrees |
-| Map with a drawn area of interest | not started |
+| API (FastAPI): calendar, anomaly, CSV export, daily hotspots | done; serves the raw and the harmonized series in fire cell-days, plus daily hotspot counts and coordinates |
+| Web app: 3D satellite globe, date/hour picker, filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done; region boxes can be picked on the globe or typed in degrees |
+| Drawn polygon on the map | not started |
 
 ## Run it
 
@@ -51,6 +51,15 @@ make lint                  # ruff + English-only check
 (roughly 200 MB for Ukraine) and skips files that are already there.
 
 To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) and run `make data`.
+
+To process the whole world, use [`config/world.yaml`](config/world.yaml):
+
+```bash
+make data CONFIG=config/world.yaml   # every country, from one FIRMS zip per sensor and year
+make api CONFIG=config/world.yaml    # serve it; the region list then holds a single "World" entry
+```
+
+This downloads about 10 GB of zips and extracts about 50 GB of CSV files into `data/raw/`.
 
 ## Layout
 

@@ -1,26 +1,28 @@
 .PHONY: data ingest normalize aggregate harmonize validate json api web test lint
 
 # Limit to one country with: make data COUNTRY=Ukraine
+# Whole world with: make data CONFIG=config/world.yaml (and make api CONFIG=config/world.yaml)
 COUNTRY_ARG := $(if $(COUNTRY),--country $(COUNTRY))
+CONFIG_ARG := $(if $(CONFIG),--config $(CONFIG))
 
 data: ingest normalize aggregate harmonize validate
 
 ingest:
-	uv run python -m pipeline.ingest $(COUNTRY_ARG)
+	uv run python -m pipeline.ingest $(CONFIG_ARG) $(COUNTRY_ARG)
 
 normalize:
-	uv run python -m pipeline.normalize $(COUNTRY_ARG)
+	uv run python -m pipeline.normalize $(CONFIG_ARG) $(COUNTRY_ARG)
 
 aggregate:
-	uv run python -m pipeline.aggregate
+	uv run python -m pipeline.aggregate $(CONFIG_ARG)
 
 harmonize:
-	uv run python -m pipeline.harmonize
+	uv run python -m pipeline.harmonize $(CONFIG_ARG)
 
 # writes data/agg/harmonization_report.json, docs/VALIDATION.md and docs/sensor_jump_before_after.png
 # NESTED=1 also repeats the choice of detection weight for every held-out year: the figures to quote, about 20 minutes
 validate:
-	uv run python -m pipeline.validate $(if $(NESTED),--nested-choice)
+	uv run python -m pipeline.validate $(CONFIG_ARG) $(if $(NESTED),--nested-choice)
 
 # Export downloaded CSV files as JSON, e.g.: make json COUNTRY=Ukraine YEAR=2024 FORMAT=geojson
 json:
@@ -28,7 +30,7 @@ json:
 
 # http://localhost:8000/docs lists the endpoints
 api:
-	uv run uvicorn --factory api.main:app --reload --reload-dir api
+	HH_CONFIG=$(CONFIG) uv run uvicorn --factory api.main:app --reload --reload-dir api
 
 # http://localhost:5173, talks to `make api` through a dev proxy
 web:

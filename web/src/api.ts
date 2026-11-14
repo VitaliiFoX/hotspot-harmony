@@ -10,6 +10,9 @@ export type Meta = {
   default_series: SeriesName | null;
   first_month: string | null;
   last_month: string | null;
+  /** First and last UTC day with hotspots, "YYYY-MM-DD". */
+  first_day?: string | null;
+  last_day?: string | null;
   cell_deg: number;
   raw_sensor_switch: string;
   csv_row_limit: number;
@@ -42,6 +45,29 @@ export type Calendar = {
   climatology: Climatology[];
   anomaly: Anomaly;
   yearly: YearTotal[];
+};
+
+/** Hotspots of one sensor on each UTC day of a month, zeros included. */
+export type MonthDays = {
+  month: string;
+  sensor: string;
+  unit: string;
+  /** `day` is the day of the month; a full "YYYY-MM-DD" is accepted too. */
+  days: { day: number | string; value: number }[];
+};
+
+/** One hotspot: longitude, latitude, minute of the UTC day (0..1439), index into `regions`. */
+export type DayHotspot = [lon: number, lat: number, minute: number, regionIndex: number];
+
+/** The hotspots of one UTC day, sorted by minute. */
+export type DayHotspots = {
+  date: string;
+  sensor: string;
+  unit: string;
+  count: number;
+  truncated: boolean;
+  regions: string[];
+  hotspots: DayHotspot[];
 };
 
 export type Polygon = { type: "Polygon"; coordinates: number[][][] };
@@ -78,6 +104,18 @@ function post(path: string, body: unknown, signal?: AbortSignal): Promise<Respon
 
 export async function fetchMeta(): Promise<Meta> {
   const response = await fetch(`${BASE}/api/meta`);
+  if (!response.ok) throw await failure(response);
+  return response.json();
+}
+
+export async function fetchMonthDays(month: string, signal?: AbortSignal): Promise<MonthDays> {
+  const response = await fetch(`${BASE}/api/hotspots/days?month=${encodeURIComponent(month)}`, { signal });
+  if (!response.ok) throw await failure(response);
+  return response.json();
+}
+
+export async function fetchDayHotspots(date: string, signal?: AbortSignal): Promise<DayHotspots> {
+  const response = await fetch(`${BASE}/api/hotspots/day?date=${encodeURIComponent(date)}`, { signal });
   if (!response.ok) throw await failure(response);
   return response.json();
 }

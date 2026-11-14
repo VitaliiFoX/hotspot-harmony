@@ -4,17 +4,21 @@
     GET  /api/meta           regions, available series, months covered
     POST /api/calendar       month-by-month burning activity of an area of interest
     POST /api/hotspots.csv   the hotspots inside an area between two dates
+    GET  /api/hotspots/days  the hotspot count of each UTC day of one month, all regions together
+    GET  /api/hotspots/day   the hotspots of one UTC day, all regions together, earliest first
 
 Run locally:  make api   (needs `make data` first)
-Settings: HH_DATA_DIR (default ./data), HH_CORS_ORIGINS (comma-separated, default the Vite dev server).
+Settings: HH_DATA_DIR (default ./data), HH_CONFIG (default config/regions.yaml),
+          HH_CORS_ORIGINS (comma-separated, default the Vite dev server).
 """
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
@@ -38,9 +42,15 @@ class HotspotsRequest(BaseModel):
     end: str = Field(pattern=DAY, description="last day, YYYY-MM-DD (UTC), inclusive")
 
 
-def create_app(data_dir: Path | None = None, config_path: Path | None = None, csv_limit: int = 500_000) -> FastAPI:
+def create_app(
+    data_dir: Path | None = None,
+    config_path: Path | None = None,
+    csv_limit: int = 500_000,
+    day_limit: int = 50_000,
+) -> FastAPI:
     data_dir = Path(data_dir or os.environ.get("HH_DATA_DIR") or DEFAULT_DATA)
-    store = Store(data_dir, load_config(config_path or DEFAULT_CONFIG), csv_limit)
+    config_path = Path(config_path or os.environ.get("HH_CONFIG") or DEFAULT_CONFIG)
+    store = Store(data_dir, load_config(config_path), csv_limit)
     app = FastAPI(title="hotspot-harmony", description=__doc__.splitlines()[0])
     origins = os.environ.get("HH_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
     app.add_middleware(
@@ -50,6 +60,8 @@ def create_app(data_dir: Path | None = None, config_path: Path | None = None, cs
         allow_headers=["*"],
         expose_headers=["X-Truncated"],
     )
+    # A calendar answer is ~18 kB of JSON and a CSV export can be tens of MB: both shrink 5-10 times.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.exception_handler(ApiError)
     def api_error(_: Request, error: ApiError) -> JSONResponse:
@@ -78,6 +90,14 @@ def create_app(data_dir: Path | None = None, config_path: Path | None = None, cs
                 "X-Truncated": str(truncated).lower(),
             },
         )
+
+    @app.get("/api/hotspots/days")
+    def hotspot_days(month: Annotated[str, Query(pattern=MONTH, description="YYYY-MM (UTC)")]) -> dict:
+        return store.hotspot_days(month)
+
+    @app.get("/api/hotspots/day")
+    def hotspot_day(date: Annotated[str, Query(pattern=DAY, description="YYYY-MM-DD (UTC)")]) -> dict:
+        return store.hotspot_day(date, day_limit)
 
     return app
 

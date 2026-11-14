@@ -5,6 +5,7 @@ Everything here except this file is git-ignored and rebuilt by `make data`.
 | Path | Written by | Content |
 |---|---|---|
 | `raw/<archive>/<archive>_<year>_<Country>.csv` | `pipeline.ingest` | FIRMS country-year CSV files, as downloaded |
+| `raw/zips/<archive>_<year>_all_countries.zip` | `pipeline.ingest` (world mode) | FIRMS global zips; their country CSV files are extracted into `raw/<archive>/` |
 | `points/sensor=<id>/year=<yyyy>/*.parquet` | `pipeline.normalize` | all hotspots in one schema |
 | `agg/cell_month.parquet` | `pipeline.aggregate` | hotspots per grid cell, month and sensor |
 | `agg/cell_day.parquet` | `pipeline.aggregate` | fire cell-days: 1 km cell x local day x sensor stream |
