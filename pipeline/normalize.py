@@ -2,7 +2,7 @@
 
 Schema (one row per hotspot detection):
     lat, lon, acq_datetime_utc, satellite, confidence_raw, confidence_class (low|nominal|high),
-    frp, daynight, type, source (sp|nrt), country
+    frp, daynight, type, scan_km, track_km, local_date, source (sp|nrt), country
 plus the partition columns `sensor` (modis|viirs_snpp|viirs_noaa20) and `year`.
 
 Usage:  uv run python -m pipeline.normalize [--country Ukraine]
@@ -50,6 +50,12 @@ def normalize_sensor(con: duckdb.DuckDBPyConnection, files: list[Path], sensor_i
                    frp,
                    daynight,
                    cast(type as integer) as type,
+                   scan as scan_km,
+                   track as track_km,
+                   -- local solar date: a night overpass just before 00 UTC belongs to the same burning day
+                   cast(cast(acq_date as timestamp)
+                        + to_minutes(cast(substr({hhmm}, 1, 2) as integer) * 60 + cast(substr({hhmm}, 3, 2) as integer)
+                                     + cast(round(longitude * 4) as integer)) as date) as local_date,
                    'sp' as source,
                    regexp_extract(filename, '_[0-9]{{4}}_(.+)\\.csv$', 1) as country,
                    '{sensor_id}' as sensor,
