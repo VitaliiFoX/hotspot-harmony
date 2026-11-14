@@ -219,6 +219,7 @@ export function App() {
         day={day}
         counts={counts}
         focusRegion={filters?.region ?? null}
+        dark={dark}
         onPickRegion={pickRegion}
         panel={
           date && firstDay && finalDay ? (

@@ -1,7 +1,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../globe.css";
 import {
-  type GeoJSONSource, type LngLatBoundsLike, type StyleSpecification, MapLibreMap, Marker, NavigationControl, setWorkerUrl,
+  type GeoJSONSource, type LngLatBoundsLike, type SkySpecification, type StyleSpecification, MapLibreMap, Marker, NavigationControl, setWorkerUrl,
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -19,6 +19,8 @@ type Props = {
   counts: HourCounts | null;
   /** The region chosen in the filters; the globe eases to it when it changes. */
   focusRegion: string | null;
+  /** Page theme; the sky around the globe follows it. */
+  dark: boolean;
   onPickRegion: (name: string) => void;
   /** The date and time panel, floated in the stage's top right corner. */
   panel: ReactNode;
@@ -31,16 +33,26 @@ const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 const HOTSPOT = "#ff8a3d";
 const EMPTY = { type: "FeatureCollection" as const, features: [] };
 
+const ATMOSPHERE: SkySpecification["atmosphere-blend"] = ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0];
+const NIGHT_SKY: SkySpecification = {
+  "sky-color": "#0b1d3a",
+  "horizon-color": "#3d7bd9",
+  "fog-color": "#0b1d3a",
+  "sky-horizon-blend": 0.6,
+  "atmosphere-blend": ATMOSPHERE,
+};
+const DAY_SKY: SkySpecification = {
+  "sky-color": "#cfe0f3",
+  "horizon-color": "#ffffff",
+  "fog-color": "#cfe0f3",
+  "sky-horizon-blend": 0.6,
+  "atmosphere-blend": ATMOSPHERE,
+};
+
 const STYLE: StyleSpecification = {
   version: 8,
   projection: { type: "globe" },
-  sky: {
-    "sky-color": "#0b1d3a",
-    "horizon-color": "#3d7bd9",
-    "fog-color": "#0b1d3a",
-    "sky-horizon-blend": 0.6,
-    "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0],
-  },
+  sky: NIGHT_SKY,
   sources: {
     imagery: {
       type: "raster",
@@ -127,7 +139,7 @@ function fitRegion(map: MapLibreMap, region: Region): void {
  * The top of the page: a satellite globe of the selected day's hotspots through the selected hour,
  * with the region boxes, the night side, a legend and a table view.
  */
-export function Globe({ regions, date, hour, day, counts, focusRegion, onPickRegion, panel }: Props) {
+export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onPickRegion, panel }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
@@ -249,6 +261,10 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, onPickReg
     const region = regions.find((r) => r.name === focusRegion);
     if (region) fitRegion(map, region);
   }, [focusRegion, regions]);
+
+  useEffect(() => {
+    if (ready) mapRef.current?.setSky(dark ? NIGHT_SKY : DAY_SKY);
+  }, [ready, dark]);
 
   useEffect(() => {
     if (!showTable) mapRef.current?.resize();

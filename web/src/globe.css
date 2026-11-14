@@ -1,4 +1,4 @@
-/* The globe stage is dark in both themes, so its colours live here rather than in the theme roles. */
+/* The globe stage has its own colour roles: a starry night sky in dark mode, a pale daytime sky in light mode. */
 .stage {
   --hotspot: #ff8a3d;
   --space: #03050b;
@@ -16,6 +16,24 @@
   --selected-ink: #0a1020;
   --readout-bg: rgba(4, 8, 18, 0.34);
   --readout-border: rgba(255, 255, 255, 0.14);
+  --stage-scrim: rgba(3, 5, 11, 0.55);
+  --label-bg: rgba(3, 5, 11, 0.45);
+  --label-ink: rgba(255, 255, 255, 0.9);
+  --head-shadow: 0 1px 12px rgba(0, 0, 0, 0.6);
+  --focus: #fff;
+  --sheen: rgba(255, 255, 255, 0.22);
+  --round-highlight: rgba(255, 255, 255, 0.35);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  --option-bg: #10131a;
+  --option-ink: #fff;
+  --stars:
+    radial-gradient(1px 1px at 20px 30px, rgba(255, 255, 255, 0.8), transparent 60%),
+    radial-gradient(1px 1px at 140px 90px, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1.5px 1.5px at 220px 170px, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1px 1px at 60px 210px, rgba(255, 255, 255, 0.45), transparent 60%),
+    radial-gradient(1px 1px at 300px 40px, rgba(200, 220, 255, 0.55), transparent 60%),
+    radial-gradient(1.5px 1.5px at 400px 260px, rgba(255, 255, 255, 0.5), transparent 60%);
+  --stars-size: 320px 300px, 320px 300px, 320px 300px, 320px 300px, 460px 340px, 460px 340px;
 
   position: relative;
   isolation: isolate;
@@ -24,17 +42,71 @@
   color: var(--stage-ink);
   color-scheme: dark;
   background-color: var(--space);
-  background-image:
-    radial-gradient(1px 1px at 20px 30px, rgba(255, 255, 255, 0.8), transparent 60%),
-    radial-gradient(1px 1px at 140px 90px, rgba(255, 255, 255, 0.6), transparent 60%),
-    radial-gradient(1.5px 1.5px at 220px 170px, rgba(255, 255, 255, 0.7), transparent 60%),
-    radial-gradient(1px 1px at 60px 210px, rgba(255, 255, 255, 0.45), transparent 60%),
-    radial-gradient(1px 1px at 300px 40px, rgba(200, 220, 255, 0.55), transparent 60%),
-    radial-gradient(1.5px 1.5px at 400px 260px, rgba(255, 255, 255, 0.5), transparent 60%);
-  background-size: 320px 300px, 320px 300px, 320px 300px, 320px 300px, 460px 340px, 460px 340px;
+  background-image: var(--stars);
+  background-size: var(--stars-size);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .stage {
+    --space: #dce8f5;
+    --stage-ink: #0b0b0b;
+    --stage-ink-2: rgba(11, 11, 11, 0.68);
+    --glass: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.55) 42%, rgba(255, 255, 255, 0.7));
+    --glass-solid: rgba(255, 255, 255, 0.96);
+    --glass-border: rgba(11, 11, 11, 0.1);
+    --glass-line: rgba(11, 11, 11, 0.1);
+    --glass-button: rgba(11, 11, 11, 0.05);
+    --glass-button-hover: rgba(11, 11, 11, 0.1);
+    --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 18px 48px rgba(24, 48, 92, 0.16);
+    --selected-bg: #0b0b0b;
+    --selected-ink: #fff;
+    --readout-bg: rgba(255, 255, 255, 0.6);
+    --readout-border: rgba(11, 11, 11, 0.08);
+    --stage-scrim: rgba(255, 255, 255, 0.7);
+    --label-bg: rgba(255, 255, 255, 0.85);
+    --label-ink: #0b0b0b;
+    --head-shadow: none;
+    --focus: #0b0b0b;
+    --sheen: rgba(255, 255, 255, 0.7);
+    --round-highlight: rgba(255, 255, 255, 0.9);
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%230b0b0b' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+    --option-bg: #fff;
+    --option-ink: #0b0b0b;
+    --stars: radial-gradient(120% 90% at 50% 45%, #f7fbff, rgba(247, 251, 255, 0) 70%);
+    --stars-size: 100% 100%;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] .stage {
+  --space: #dce8f5;
+  --stage-ink: #0b0b0b;
+  --stage-ink-2: rgba(11, 11, 11, 0.68);
+  --glass: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.55) 42%, rgba(255, 255, 255, 0.7));
+  --glass-solid: rgba(255, 255, 255, 0.96);
+  --glass-border: rgba(11, 11, 11, 0.1);
+  --glass-line: rgba(11, 11, 11, 0.1);
+  --glass-button: rgba(11, 11, 11, 0.05);
+  --glass-button-hover: rgba(11, 11, 11, 0.1);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 18px 48px rgba(24, 48, 92, 0.16);
+  --selected-bg: #0b0b0b;
+  --selected-ink: #fff;
+  --readout-bg: rgba(255, 255, 255, 0.6);
+  --readout-border: rgba(11, 11, 11, 0.08);
+  --stage-scrim: rgba(255, 255, 255, 0.7);
+  --label-bg: rgba(255, 255, 255, 0.85);
+  --label-ink: #0b0b0b;
+  --head-shadow: none;
+  --focus: #0b0b0b;
+  --sheen: rgba(255, 255, 255, 0.7);
+  --round-highlight: rgba(255, 255, 255, 0.9);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%230b0b0b' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  --option-bg: #fff;
+  --option-ink: #0b0b0b;
+  --stars: radial-gradient(120% 90% at 50% 45%, #f7fbff, rgba(247, 251, 255, 0) 70%);
+  --stars-size: 100% 100%;
+  color-scheme: light;
 }
 .stage :focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -52,11 +124,11 @@
   visibility: hidden;
 }
 .stage .maplibregl-canvas:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .stage .maplibregl-cooperative-gesture-screen {
-  background: rgba(3, 5, 11, 0.55);
+  background: var(--stage-scrim);
   color: var(--stage-ink);
   font: inherit;
   font-size: 1.1rem;
@@ -68,7 +140,7 @@
   background: var(--glass-solid);
 }
 .stage .maplibregl-ctrl-attrib {
-  background: rgba(3, 5, 11, 0.55);
+  background: var(--stage-scrim);
   color: var(--stage-ink-2);
 }
 .stage .maplibregl-ctrl-attrib a {
@@ -83,8 +155,8 @@
   padding: 2px 6px;
   margin-bottom: 2px;
   border-radius: 6px;
-  background: rgba(3, 5, 11, 0.45);
-  color: rgba(255, 255, 255, 0.9);
+  background: var(--label-bg);
+  color: var(--label-ink);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -101,7 +173,7 @@
   justify-items: start;
   gap: 4px;
   max-width: calc(100% - 372px - 72px);
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6);
+  text-shadow: var(--head-shadow);
 }
 .stage-head h1 {
   font-size: 28px;
@@ -214,7 +286,7 @@
   box-shadow: 0 0 8px 2px rgba(255, 138, 61, 0.55);
 }
 .legend-dot.is-ringed {
-  outline: 1.5px solid #fff;
+  outline: 1.5px solid var(--stage-ink);
   outline-offset: 0;
 }
 
@@ -258,7 +330,7 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: radial-gradient(120% 55% at 18% 0%, rgba(255, 255, 255, 0.22), transparent 60%);
+  background: radial-gradient(120% 55% at 18% 0%, var(--sheen), transparent 60%);
   pointer-events: none;
 }
 .dt-panel > * {
@@ -305,7 +377,7 @@
   border: 1px solid var(--glass-border);
   border-radius: 50%;
   background: var(--glass-button);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 1px 0 var(--round-highlight);
   color: var(--stage-ink);
   cursor: pointer;
 }
@@ -329,9 +401,7 @@
   padding: 0 26px 0 10px;
   border: 1px solid transparent;
   border-radius: 14px;
-  background: transparent
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E")
-    no-repeat right 10px center;
+  background: transparent var(--select-arrow) no-repeat right 10px center;
   color: var(--stage-ink);
   font: inherit;
   font-variant-numeric: tabular-nums;
@@ -343,8 +413,8 @@
   background-color: var(--glass-button);
 }
 .dt-year option {
-  background: #10131a;
-  color: #fff;
+  background: var(--option-bg);
+  color: var(--option-ink);
 }
 
 .dt-calendar {
