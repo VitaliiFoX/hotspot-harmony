@@ -222,6 +222,26 @@ def test_a_day_the_sensor_did_not_observe_is_a_gap_not_a_quiet_day():
     assert by_day.loc["2023-07-02"].to_dict() == {"modis": 0.0, "viirs_noaa20": 150.0}  # 300 cell-days x 0.5
 
 
+def test_a_sensor_silent_while_its_twin_is_busy_is_a_gap_even_on_a_day_with_little_fire():
+    days = pd.date_range("2023-07-19", periods=4, freq="D")
+    modis = pd.concat([cell_days("modis", [d] * 20) for d in days])  # far under the 100 MODIS needs to be "busy"
+    snpp = pd.concat([cell_days("viirs_snpp", [d] * n) for d, n in zip(days, [60, 60, 40, 60], strict=True)])
+    # day 1 normal; day 2 silent beside 60 of the twin: a gap; day 3 silent beside 40: too little to tell;
+    # day 4 has 10 beside 60, a sixth and not under a tenth: a poor day, not a gap
+    n20 = pd.concat([cell_days("viirs_noaa20", [d] * n) for d, n in zip(days, [60, 0, 0, 10], strict=True)])
+    df = hz.prepare(pd.concat([modis, snpp, n20], ignore_index=True))
+    assert list(hz.gap_days(df, "viirs_noaa20")) == [pd.Timestamp("2023-07-20")]
+    assert len(hz.gap_days(df, "viirs_snpp")) == 0
+
+    par = {"p": pd.Series({df.b.iloc[0]: 0.5}), "k": 1.0, "r": np.ones(367), "n20_to_snpp": 1.0,
+           "terra": pd.Series({7: 2.0})}  # fmt: skip
+    record = hz.apply(df, par)
+    by_day = record[record.in_series].groupby(["local_date", "stream"]).weight.sum().unstack(fill_value=0.0)
+    assert by_day.loc["2023-07-20"].to_dict() == {"modis": 20.0, "viirs_noaa20": 0.0}  # taken from MODIS
+    assert pd.Timestamp("2023-07-21") not in by_day.index  # stays a quiet day: nothing in the record
+    assert by_day.loc["2023-07-22"].to_dict() == {"modis": 0.0, "viirs_noaa20": 5.0}  # 10 cell-days x 0.5
+
+
 def test_sensor_gap_months_are_left_out_of_the_noaa20_factor():
     months = pd.period_range("2018-04", "2021-12", freq="M")
     snpp, n20 = [], []
@@ -262,3 +282,38 @@ def test_harmonize_all_discovers_countries_when_none_given(tmp_path, overlap):
     results = hz.harmonize_all(con, path, None)
     assert list(results) == ["Testland"]
 
+
+@pytest.fixture
+def three_years():
+    """One day of fire a year. VIIRS reports 200, 200 and 400 cell-days; MODIS reports 100 every year."""
+    july = {2013: 200, 2014: 200, 2015: 400}
+    viirs = pd.concat([cell_days("viirs_snpp", [f"{y}-07-01"] * n, matched=1) for y, n in july.items()])
+    modis = pd.concat([cell_days("modis", [f"{y}-07-01"] * 100) for y in july])
+    df = hz.prepare(pd.concat([viirs, modis], ignore_index=True))
+    return df[df.stream == "viirs_snpp"], df[df.stream == "modis"]
+
+
+def test_a_held_out_year_is_predicted_from_the_other_years_only(three_years):
+    viirs, modis = three_years
+    # 2015 from 2013-2014: 200 MODIS / 400 VIIRS = 0.5 per cell-day, times its 400 cell-days = 200
+    # 2013 from 2014-2015: 200 / 600 = 1/3, times 200 = 66.67; 2014 the same
+    held_out = leave_one_year_out(viirs, modis, TABLE_ONLY)[0]
+    assert held_out.groupby("y").w.sum().to_dict() == pytest.approx({2013: 200 / 3, 2014: 200 / 3, 2015: 200.0})
+    # misses of 33.33, 33.33 and 100 on a truth of 300. A fit on all three years would weigh a cell-day
+    # 300 / 800 and miss by 25, 25 and 50: 1/3
+    assert hz.held_out_month_errors(viirs, modis)["bins"] == pytest.approx(5 / 9, abs=1e-4)
+
+
+def test_the_choice_of_method_never_sees_the_held_out_year(three_years, monkeypatch):
+    viirs, modis = three_years
+    seen = []
+
+    def errors(train_viirs, train_modis, context=None, groups=3):
+        seen.append((sorted(train_viirs.y.unique()), sorted(train_modis.y.unique())))
+        return {"bins": 0.1}
+
+    monkeypatch.setattr(hz, "held_out_month_errors", errors)
+    held_out = leave_one_year_out(viirs, modis, {"method": "auto"})[0]
+    assert seen == [([2014, 2015], [2014, 2015]), ([2013, 2015], [2013, 2015]), ([2013, 2014], [2013, 2014])]
+    assert held_out.groupby("y").method.first().to_dict() == {2013: "bins", 2014: "bins", 2015: "bins"}
+    assert held_out.groupby("y").w.sum().to_dict() == pytest.approx({2013: 200 / 3, 2014: 200 / 3, 2015: 200.0})

@@ -33,12 +33,13 @@ coarser one, but a coarse sensor cannot recover fires it never saw.
        weight = k x share(what the cell-day looked like) x r(day of year)
 
    - `share` is how much of a MODIS fire cell-day this VIIRS cell-day stands for. It is measured,
-     not assumed: every MODIS cell-day is one unit, split equally among the VIIRS cell-days within
-     one cell the same day. Two ways to turn that into a rule are fitted:
-     - a **table** by fire power and day or night (the detection curve in VALIDATION.md: the
+     not assumed. Two rules for it are fitted:
+     - a **table** by fire power and day or night: the part of VIIRS cell-days of that kind that
+       MODIS also reported within one cell the same day (the detection curve in VALIDATION.md: the
        stronger the fire, the more likely MODIS also saw it);
-     - a **boosted weight**: a boosted regression model (scikit-learn) that also looks at the
-       number and confidence of the detections and the pixel size.
+     - a **boosted weight**: a boosted regression model (scikit-learn) whose target counts every
+       MODIS cell-day as one unit, split equally among the VIIRS cell-days within one cell the same
+       day; it also looks at the number and confidence of the detections and the pixel size.
    - `k` is one scale that makes totals match. MODIS also sees fires at hours when VIIRS is not
      overhead (Terra passes in the morning), which no VIIRS detection can stand in for.
    - `r` is the seasonal difference that remains. It follows the day of the year smoothly (each day
@@ -48,9 +49,14 @@ coarser one, but a coarse sensor cannot recover fires it never saw.
    All three are fitted on 2012-02 .. 2021-12, when both sensors flew and MODIS orbits were stable.
 5. **Sensor gap days.** A day when a VIIRS sensor reports under 0.6 fire cell-days per MODIS one,
    while MODIS has at least 100, is a day the sensor was not really observing (it normally reports
-   about two). Such days are left out of the fit, and in the record that day is taken from MODIS
-   instead of being read as a quiet day. The same outages show up independently in both countries:
-   S-NPP in late March 2012, late July to early August 2022, and July 2024.
+   about two). So is a day when it reports under a tenth of what the other VIIRS sensor does, while
+   that one has at least 50: the two carry the same instrument 50 minutes apart, and this second
+   sign catches outages on days with too little fire for the first. Such days are left out of the
+   fit, and in the record that day is taken from MODIS instead of being read as a quiet day. Most
+   outages show up independently in both countries: S-NPP in late July to early August 2022 and in
+   July 2024, NOAA-20 on 19-22 July and 30 September 2023. S-NPP's gap of 24-26 March 2012 is
+   flagged in Ukraine only: Argentina had too little fire on those days to tell. The full lists are
+   in [VALIDATION.md](VALIDATION.md).
 6. **NOAA-20 continues the record.** Suomi NPP stopped delivering data on 2 November 2026. NOAA-20
    carries the same instrument in the same orbit and is tied to S-NPP with one factor. Months where
    the two disagree by more than 20% are treated as sensor gaps, left out of that factor and
@@ -102,15 +108,19 @@ its value for a cell and month is added to the weighted cell-days, each counted 
   years and compared with what MODIS actually reported, at four scales: country and 1-degree tile,
   year and month. Sensor gap days are left out of the comparison, since a day the sensor did not
   observe says nothing about the method; the same check with those days counted is reported next
-  to it.
+  to it. The choice of method is part of the method, so the figures in VALIDATION.md come from
+  `make validate NESTED=1`, which makes that choice again for every held-out year from the other
+  years alone: no step has seen the year it is scored on. Plain `make validate` is much faster and
+  makes the choice once on all years; the report says which of the two wrote it.
 - **An independent sensor.** NOAA-20 never took part in fitting any of the models; it is still
   checked against MODIS.
 - **Sensor jump check.** Mean yearly total of 2012-2016 over 2007-2011, raw record against
   harmonized record.
 - **Two baselines** in the same table: VIIRS as delivered, and one scaling factor per country.
-- **Uncertainty in the app.** The 90% range shown next to a harmonized month comes from the same
-  held-out predictions, by size of the value: small areas are noisier and get wider ranges. Months
-  measured by the reference sensor carry no harmonization error.
+- **Uncertainty.** A 90% range for a harmonized month comes from the same held-out predictions, by
+  size of the value: small areas are noisier and get wider ranges (`interval_by_size` in
+  `data/agg/harmonization_report.json`). Months measured by the reference sensor carry no
+  harmonization error. The app does not show the range yet.
 
 ## What was tried
 
@@ -123,13 +133,12 @@ All figures are country x month error on Ukraine from leave-one-year-out, measur
 | FRP bins x calendar-month factor (the first version) | 8.0% |
 | + sensor gap days left out | 7.0% |
 | + season factor by day of year, +-15 days | 6.5% |
-
 | + the method chosen per country on held-out years (context model) | see VALIDATION.md |
 
 The boosted weight was measured with LightGBM, XGBoost, CatBoost and scikit-learn: the four agree to
 0.02 points, so the pipeline uses scikit-learn, which needs no extra system library. On Argentina the
-boosted weight is worse than the table (8.0% against 7.4% per month), which is why a method is chosen
-per country and nothing is switched on everywhere.
+boosted weight is worse than the table (VALIDATION.md lists both on years held out three at a time),
+which is why a method is chosen per country and nothing is switched on everywhere.
 
 Three things about the boosted models that cost time to find:
 

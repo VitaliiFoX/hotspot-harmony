@@ -76,11 +76,11 @@ One 1 km cell with at least one hotspot of one sensor on one local solar day. Th
 _Avoid_: active cell, footprint, fire-day
 
 **Sensor gap day**:
-A day when a VIIRS sensor was not really observing: it reports almost nothing while MODIS reports plenty. It is not a quiet day and is never counted as one.
+A day when a VIIRS sensor was not really observing: it reports almost nothing while MODIS, or the other VIIRS sensor, reports plenty. It is not a quiet day and is never counted as one.
 _Avoid_: outage day, missing day, zero day
 
 **Detection weight**:
-The share of a MODIS fire cell-day that one VIIRS fire cell-day stands for, set by its fire power, day or night, and time of year.
+The share of a MODIS fire cell-day that one VIIRS fire cell-day stands for, set by its fire power, day or night, and time of year; where the boosted model is used, also by the number and confidence of its detections and the pixel size.
 _Avoid_: calibration factor, k (that is only one part of it)
 
 **Context model**:

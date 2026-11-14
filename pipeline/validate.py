@@ -2,7 +2,10 @@
 
 Every number comes from data the model did not see:
   * leave-one-year-out: each overlap year is predicted from VIIRS by a model fitted on the other years
-    and compared with what MODIS actually reported;
+    and compared with what MODIS actually reported. With --nested-choice the method (table, boosted
+    weight, context model or a mean of two) is also chosen again for every year from the other years,
+    so it has not seen that year either; without it the choice is made once on all years and the report
+    says so;
   * NOAA-20 is checked against MODIS although it was never used to fit the weights;
   * the Terra-only scaling is checked the same way on 2003-2011;
   * the sensor jump check compares the years before and after the raw record switches sensors (2012).
@@ -13,7 +16,7 @@ Output:
     data/agg/harmonization_report.json   read by the API and shown in the app
     docs/sensor_jump_before_after.png           yearly totals, raw record vs harmonized record
 
-Usage:  uv run python -m pipeline.validate
+Usage:  uv run python -m pipeline.validate [--nested-choice]
 """
 
 import argparse
@@ -73,15 +76,26 @@ def leave_one_year_out(
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     """Every year predicted by models fitted on the other years, with the country's method (`par`).
 
-    Returns year, month, tile and predicted value `w`. `also` / `also_context` are a second set of rows
-    (e.g. with sensor gap days kept) scored with the same models, so a second comparison costs no refit.
+    With `par["method"] == "auto"` the method itself is chosen for every year from the other years alone, the
+    way `pipeline.harmonize` chooses it: a choice made on all years would have seen the held-out one.
+    Returns year, month, tile, predicted value `w` and the `method` used for that year. `also` / `also_context`
+    are a second set of rows (e.g. with sensor gap days kept) scored with the same models, so a second
+    comparison costs no refit.
     """
-    share = par["context_share"]
     folds, extra = [], []
     for year in sorted(viirs.y.unique()):
         train_modis = modis[modis.y != year]
+        method = par.get("method")
+        if method == "auto":
+            train_context = None if context is None else context[context.y != year]
+            method = hz.choose_method(hz.held_out_month_errors(viirs[viirs.y != year], train_modis, train_context))
+            year_par = {"weights": "boosted" if method.startswith("boosted") else "bins"}
+            share = hz.context_share(method)
+        else:
+            year_par, share = par, par["context_share"]
+        start = len(folds)
         if share < 1:
-            fitted = hz.fit_viirs(viirs[viirs.y != year], train_modis, par["weights"])
+            fitted = hz.fit_viirs(viirs[viirs.y != year], train_modis, year_par["weights"])
             for rows, out in ((viirs, folds), (also, extra)):
                 if rows is not None:
                     test = rows[rows.y == year]
@@ -92,6 +106,7 @@ def leave_one_year_out(
                 if rows is not None:
                     test = rows[rows.y == year]
                     out.append(test[KEYS].assign(w=hz.context_values(fitted, test) * share))
+        folds[start:] = [f.assign(method=method) for f in folds[start:]]
     return pd.concat(folds), (pd.concat(extra) if extra else None)
 
 
@@ -124,8 +139,10 @@ def sensor_jump(df: pd.DataFrame) -> dict | None:
     return out
 
 
-def validate_country(df: pd.DataFrame, par: dict) -> dict:
+def validate_country(df: pd.DataFrame, par: dict, nested: bool = False) -> dict:
+    """`nested`: choose the method again for every held-out year (needs the choice to have been automatic)."""
     s, d = df.stream, df.local_date
+    nested = nested and bool(par.get("method_held_out_month_error"))  # a method forced by flag has no choice
     # a day the sensor did not observe says nothing about the method: it is left out of fit and comparison,
     # and the same check on every day is reported next to it
     fit_all = d.between(*hz.FIT)
@@ -134,11 +151,14 @@ def validate_country(df: pd.DataFrame, par: dict) -> dict:
     viirs, modis = df[fit & (s == "viirs_snpp")], df[fit & (s == "modis")]
     viirs_all, modis_all = df[fit_all & (s == "viirs_snpp")], df[fit_all & (s == "modis")]
     context = context_all = None
-    if par["context_share"] > 0:
+    if par["context_share"] > 0 or nested:
         ctx = par["_context"]["viirs_snpp"]
         context_all = ctx[ctx.local_date.between(*hz.FIT)]
         context = context_all[~context_all.local_date.isin(snpp_gaps)]
-    held_out, held_out_all = leave_one_year_out(viirs, modis, par, context, also=viirs_all, also_context=context_all)
+    loyo_par = {**par, "method": "auto"} if nested else par
+    held_out, held_out_all = leave_one_year_out(
+        viirs, modis, loyo_par, context, also=viirs_all, also_context=context_all
+    )
     loyo, with_gaps = compare(held_out, modis), compare(held_out_all, modis_all)
     out = {
         "viirs_to_modis_leave_one_year_out": scores(loyo),
@@ -185,6 +205,8 @@ def validate_country(df: pd.DataFrame, par: dict) -> dict:
     ]  # fmt: skip
     return {
         "validation": out,
+        "method_chosen_per_held_out_year": nested,
+        "method_by_held_out_year": {int(y): m for y, m in held_out.groupby("y").method.first().items()},
         "sensor_jump": sensor_jump(df),
         "interval_by_size": interval_by_size(loyo),
         "modis_orbit_drift": drift,
@@ -251,8 +273,23 @@ def method_line(entry: dict) -> str:
         scores_text = ", ".join(f"{METHOD_NAMES[m].removeprefix('the ')} {e:.1%}" for m, e in tried.items())
         line += (
             f" Chosen on years held out three at a time, country x month error: {scores_text}. "
-            f"Anything but the table is used only when it wins by more than {hz.METHOD_MARGIN:.1%}."
+            f"Anything but the table is used only when it wins by more than {hz.METHOD_MARGIN * 100:.1f} points."
         )
+        if entry.get("method_chosen_per_held_out_year"):
+            by_method: dict[str, list[str]] = {}
+            for year, method in (entry.get("method_by_held_out_year") or {}).items():
+                by_method.setdefault(method, []).append(str(year))
+            parts = [f"{METHOD_NAMES[m]} for {', '.join(ys)}" for m, ys in by_method.items()]
+            line += (
+                " In the leave-one-year-out check above the choice is made again for every year from the other"
+                f" years alone: {'; '.join(parts)}."
+            )
+        else:
+            line += (
+                " In the leave-one-year-out check above this choice was made once, on all overlap years, so the"
+                " check has seen each held-out year in that one step; `make validate NESTED=1` makes the choice"
+                " again for every year."
+            )
     return line
 
 
@@ -321,7 +358,9 @@ def write_markdown(report: dict, out: Path) -> None:
             f"Months left out of that factor as sensor gaps: {', '.join(e['sensor_gap_months']) or 'none'}.",
             "",
             "Sensor gap days (the sensor reported under "
-            f"{hz.GAP_MAX_RATIO} fire cell-days per MODIS one while MODIS had at least {hz.GAP_MIN_MODIS}):",
+            f"{hz.GAP_MAX_RATIO} fire cell-days per MODIS one while MODIS had at least {hz.GAP_MIN_MODIS}, or under "
+            f"{hz.GAP_MAX_TWIN_RATIO} per cell-day of the other VIIRS sensor while that one had at least "
+            f"{hz.GAP_MIN_TWIN}):",
             *(f"- {stream}: {', '.join(days) or 'none'}" for stream, days in e["sensor_gap_days"].items()),
             "",
             "MODIS against the VIIRS-equivalent of the same year (1.0 = the sensors agree; Terra alone in brackets):",
@@ -337,6 +376,11 @@ def main() -> None:
     ap.add_argument("--data", type=Path, default=DEFAULT_DATA)
     ap.add_argument("--docs", type=Path, default=ROOT / "docs")
     ap.add_argument("--method", choices=["auto", *hz.METHODS], help="as in pipeline.harmonize")
+    ap.add_argument(
+        "--nested-choice",
+        action="store_true",
+        help="choose the method again for every held-out year: the figures to quote, much slower",
+    )
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -356,7 +400,7 @@ def main() -> None:
     for country, (df, par, source) in results.items():
         entry = {"calibration": source, **hz.params_to_json(par, source)}
         if source == "own":
-            entry.update(validate_country(df, par))
+            entry.update(validate_country(df, par, args.nested_choice))
             if not plotted and entry["sensor_jump"]:
                 record = hz.record_table(df, par, cfg.cell_deg)
                 plot_sensor_jump(record, country, entry, args.docs / "sensor_jump_before_after.png")
