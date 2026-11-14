@@ -49,7 +49,7 @@ def fetch(archive: str, year: int, country: str, raw: Path, force: bool) -> tupl
                 with open(tmp, "wb") as f:
                     for chunk in r.iter_content(1 << 20):
                         f.write(chunk)
-                tmp.rename(dest)
+                tmp.replace(dest)  # rename() fails on Windows when --force finds the file there
                 return name, "downloaded", dest.stat().st_size
         except requests.RequestException as e:
             error = e

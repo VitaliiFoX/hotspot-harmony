@@ -86,6 +86,14 @@ def parse_area(geometry: dict) -> BaseGeometry:
     return area
 
 
+def parse_day(text: str) -> pd.Timestamp:
+    """YYYY-MM-DD that exists on the calendar; the request pattern alone lets 2013-02-30 through."""
+    try:
+        return pd.Timestamp(text)
+    except ValueError as e:
+        raise ApiError(400, f"{text} is not a day on the calendar") from e
+
+
 class Store:
     def __init__(self, data_dir: Path, cfg: Config, csv_limit: int):
         self.cfg = cfg
@@ -261,7 +269,7 @@ class Store:
             raise ApiError(503, "no data yet: run `make data` to build data/points/")
         area = parse_area(geometry)
         self.coverage_warnings(area)
-        first, last = pd.Timestamp(start), pd.Timestamp(end) + pd.Timedelta(days=1)
+        first, last = parse_day(start), parse_day(end) + pd.Timedelta(days=1)
         if first >= last:
             raise ApiError(400, "start is after end")
         west, south, east, north = area.bounds
