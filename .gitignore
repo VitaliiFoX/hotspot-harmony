@@ -1,0 +1,13 @@
+# data is reproducible with `make data`; only the folder description is tracked
+data/*
+!data/README.md
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.env
+node_modules/
+dist/

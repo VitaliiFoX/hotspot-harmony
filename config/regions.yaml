@@ -1,0 +1,23 @@
+# Pilot regions and processing parameters.
+# Adding a country = one more entry under `regions`, then `make data`.
+
+regions:
+  # `name` is the country name as written in FIRMS archive file names (e.g. United_States).
+  # `bbox` is west, south, east, north; used for current-year requests to the FIRMS Area API.
+  - name: Argentina
+    bbox: [-73.6, -55.1, -53.6, -21.7]
+  - name: Ukraine
+    bbox: [22.0, 44.0, 40.3, 52.5]
+
+sensors:
+  # our sensor id -> folder name in the FIRMS country archive, first year with data
+  modis: {archive: modis, first_year: 2000}
+  viirs_snpp: {archive: viirs-snpp, first_year: 2012}
+  viirs_noaa20: {archive: viirs-jpss1, first_year: 2018}
+
+grid:
+  cell_deg: 0.25
+
+filters:
+  drop_confidence: [low]   # confidence classes removed before aggregation
+  keep_types: [0]          # FIRMS `type`: 0 = presumed vegetation fire
