@@ -149,11 +149,19 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, onPickReg
       maxZoom: 9,
       renderWorldCopies: false,
       attributionControl: { compact: false },
+      // The globe fills the first screen; without this the wheel zooms it and the page never scrolls.
+      cooperativeGestures: true,
+      locale: {
+        "CooperativeGesturesHandler.WindowsHelpText": "Scroll to move down the page. Ctrl + scroll zooms the globe.",
+        "CooperativeGesturesHandler.MacHelpText": "Scroll to move down the page. \u2318 + scroll zooms the globe.",
+        "CooperativeGesturesHandler.MobileHelpText": "Use two fingers to move the globe.",
+      },
     });
     map.addControl(new NavigationControl({ visualizePitch: false }), "top-left");
     map.getCanvas().setAttribute(
       "aria-label",
-      "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it, plus and minus to zoom.",
+      "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it; "
+        + "plus and minus, or Ctrl or Command with the scroll wheel, to zoom.",
     );
     map.on("load", () => setReady(true));
     map.on("click", (event) => {
