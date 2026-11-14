@@ -665,3 +665,107 @@ html {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Compact cards on desktop: the globe is the subject, the cards should not crowd it. Touch screens
+   (under 900 px) keep the larger sizes and 44 px targets. */
+@media (min-width: 900px) {
+  .stage {
+    min-height: 640px;
+  }
+  .stage-head {
+    top: 20px;
+    left: 20px;
+    gap: 2px;
+    max-width: calc(100% - 300px - 64px);
+    padding: 12px 16px 14px;
+    border-radius: 18px;
+  }
+  .stage-head h1 {
+    font-size: 21px;
+  }
+  .stage-head p {
+    font-size: 13px;
+  }
+  .stage-actions {
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .stage-next,
+  .stage-toggle {
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: 17px;
+    font-size: 13px;
+  }
+  .stage .maplibregl-ctrl-top-left {
+    top: 152px;
+    left: 10px;
+  }
+  .stage .maplibregl-ctrl-group button {
+    width: 34px;
+    height: 34px;
+  }
+  .stage-legend {
+    left: 20px;
+    bottom: 20px;
+    gap: 6px;
+    max-width: 340px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    font-size: 11px;
+  }
+  .dt-panel {
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 22px;
+  }
+  .dt-date {
+    font-size: 19px;
+  }
+  .dt-secondary {
+    font-size: 12px;
+  }
+  .dt-round {
+    width: 32px;
+    height: 32px;
+  }
+  .dt-month-name {
+    font-size: 14px;
+  }
+  .dt-month-name select,
+  .dt-month select {
+    min-height: 32px;
+  }
+  .dt-days {
+    font-size: 10px;
+  }
+  .dt-day {
+    height: 32px;
+    font-size: 12px;
+    gap: 2px;
+  }
+  .dt-time-value {
+    font-size: 16px;
+  }
+  .stage .dt-time input[type="range"] {
+    height: 28px;
+  }
+  .dt-time-ends {
+    font-size: 11px;
+  }
+  .dt-readout {
+    padding: 10px 12px;
+  }
+  .dt-big {
+    font-size: 22px;
+  }
+  .dt-status {
+    font-size: 12px;
+  }
+  .dt-sensor {
+    font-size: 11px;
+  }
+}
