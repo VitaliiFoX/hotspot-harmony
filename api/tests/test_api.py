@@ -208,6 +208,13 @@ def test_asking_for_a_missing_harmonized_series_is_an_error(client):
     assert "harmonized" in r.json()["detail"]
 
 
+def test_large_answers_are_compressed_and_small_ones_are_not(client):
+    big = client.post("/api/calendar", json={"geometry": AREA}, headers={"Accept-Encoding": "gzip"})
+    assert big.headers.get("content-encoding") == "gzip" and big.json()["cells_used"] > 0
+    small = client.get("/api/health", headers={"Accept-Encoding": "gzip"})
+    assert "content-encoding" not in small.headers
+
+
 def test_area_outside_every_region_is_rejected_with_the_list_of_regions(client):
     r = client.post("/api/calendar", json={"geometry": box(50, 50, 51, 51)})
     assert r.status_code == 422

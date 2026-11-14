@@ -62,6 +62,7 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 - Colour rules: burning is one blue ramp, light to dark (`SEQUENTIAL`); exactly zero gets its own neutral fill; on a dark surface the ramp is reversed so more is further from the surface. Add no second hue to the calendar.
 - Every chart card has a table view and reads on arrow keys. Keep both when adding a chart: they are how the page works without colour or a pointer.
 - All colours come from the custom properties at the top of `web/src/styles.css`, defined for light and dark.
+- When the page asks the API is decided in `web/src/requests.ts` (tested): answers are cached, only a box typed by hand waits 300 ms, and the record not on screen is fetched ahead so the raw / harmonized switch needs no request. Keep new filters on those rules instead of adding a delay.
 - The filters are mirrored in the address (`?region=...&box=w,s,e,n&start=...&end=...&series=...`), so a view can be shared as a link and screenshotted headless.
 - Look at the page after a visual change: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --window-size=1320,1600 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:5173/?theme=light"`. Headless Chrome will not go narrower than 500 px.
 

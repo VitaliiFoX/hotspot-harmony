@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type Bbox, type Calendar, type Meta, type SeriesName, boxPolygon, fetchCalendar, fetchHotspotsCsv, fetchMeta,
 } from "./api";
@@ -9,6 +9,7 @@ import { type FilterState, Filters } from "./components/Filters";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
+import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { type ScaleMode, lastDay, monthLabel } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
@@ -37,6 +38,8 @@ export function App() {
   const [highlightYear, setHighlightYear] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
+  const cache = useRef(new CalendarCache());
+  const lastView = useRef<FilterState | null>(null);
 
   useEffect(() => {
     fetchMeta()
@@ -78,19 +81,38 @@ export function App() {
   const area = useMemo(() => (filters ? readBox(filters.box) : null), [filters]);
   const problem = area && "problem" in area ? area.problem : null;
 
+  // Ask the API as little and as early as possible: a view seen before comes from the cache, only a box
+  // typed by hand waits for a pause, and the record not on screen is fetched ahead so the switch is instant.
   useEffect(() => {
     if (!filters || !area || "problem" in area) return;
+    const body: CalendarBody = { geometry: boxPolygon(area.bbox), start: filters.start, end: filters.end, series: filters.series };
+    const delay = delayFor(lastView.current, filters);
+    lastView.current = filters;
     const controller = new AbortController();
+    const show = (result: Calendar) => {
+      setCalendar(result);
+      setError(null);
+      setHighlightYear((year) => (year && result.yearly.some((y) => y.year === year) ? year : result.anomaly.year));
+      const other = otherSeries(filters.series, meta?.series ?? []);
+      const ahead = other && { ...body, series: other };
+      if (ahead && !cache.current.get(ahead)) {
+        fetchCalendar(ahead, controller.signal)
+          .then((result) => cache.current.set(ahead, result))
+          .catch(() => undefined); // a failed look-ahead costs nothing: the switch will ask again
+      }
+    };
+    const cached = cache.current.get(body);
+    if (cached) {
+      setLoading(false);
+      show(cached);
+      return () => controller.abort();
+    }
     const timer = window.setTimeout(() => {
       setLoading(true);
-      fetchCalendar(
-        { geometry: boxPolygon(area.bbox), start: filters.start, end: filters.end, series: filters.series },
-        controller.signal,
-      )
+      fetchCalendar(body, controller.signal)
         .then((result) => {
-          setCalendar(result);
-          setError(null);
-          setHighlightYear((year) => (year && result.yearly.some((y) => y.year === year) ? year : result.anomaly.year));
+          cache.current.set(body, result);
+          show(result);
         })
         .catch((reason: Error) => {
           if (reason.name !== "AbortError") setError(reason.message);
@@ -98,12 +120,12 @@ export function App() {
         .finally(() => {
           if (!controller.signal.aborted) setLoading(false);
         });
-    }, 300);
+    }, delay);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [filters, area]);
+  }, [filters, area, meta]);
 
   async function download() {
     if (!filters || !area || "problem" in area) return;
