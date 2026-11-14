@@ -9,10 +9,10 @@ import { ChartCard } from "./components/ChartCard";
 import { DateTimePanel } from "./components/DateTimePanel";
 import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
+import { DEFAULT_HOUR, clampDate, countHotspots, defaultDate, parseDateParam, parseHourParam } from "./globe";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
-import { DEFAULT_HOUR, clampDate, countHotspots, defaultDate, parseDateParam, parseHourParam } from "./globe";
 import { type ScaleMode, lastDay, monthLabel } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
@@ -35,12 +35,6 @@ export function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [filters, setFilters] = useState<FilterState | null>(null);
   const [calendar, setCalendar] = useState<Calendar | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [scaleMode, setScaleMode] = useState<ScaleMode>("linear");
-  const [highlightYear, setHighlightYear] = useState<number | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [exportNote, setExportNote] = useState<string | null>(null);
   const [date, setDate] = useState<string | null>(null);
   const [hour, setHour] = useState<number>(
     () => parseHourParam(new URLSearchParams(window.location.search).get("hour")) ?? DEFAULT_HOUR,
@@ -53,6 +47,13 @@ export function App() {
   // The days the globe can show; months stand in until the API reports days.
   const firstDay = meta?.first_day ?? (meta?.first_month ? `${meta.first_month}-01` : null);
   const finalDay = meta?.last_day ?? (meta?.last_month ? lastDay(meta.last_month) : null);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [scaleMode, setScaleMode] = useState<ScaleMode>("linear");
+  const [highlightYear, setHighlightYear] = useState<number | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMeta()

@@ -297,19 +297,6 @@ def test_csv_export_stops_at_the_row_limit_and_says_so(tmp_path):
     assert len(list(csv.DictReader(io.StringIO(r.text)))) == 1
 
 
-def test_api_without_data_explains_how_to_build_it(tmp_path):
-    config = tmp_path / "regions.yaml"
-    config.write_text(CONFIG)
-    client = TestClient(create_app(data_dir=tmp_path, config_path=config))
-    assert client.get("/api/health").json() == {"status": "ok", "data": False}
-    r = calendar(client)
-    assert r.status_code == 503 and "make data" in r.json()["detail"]
-    for url in ("/api/hotspots/days?month=2013-08", "/api/hotspots/day?date=2013-08-05"):
-        r = client.get(url)
-        assert r.status_code == 503 and "make data" in r.json()["detail"]
-    assert (client.get("/api/meta").json()["first_day"], client.get("/api/meta").json()["last_day"]) == (None, None)
-
-
 def test_meta_gives_the_first_and_last_day_of_the_record(client):
     meta = client.get("/api/meta").json()
     assert (meta["first_day"], meta["last_day"]) == ("2010-08-01", "2013-08-31")
@@ -381,3 +368,22 @@ def test_days_outside_the_record_are_rejected(client, url):
 @pytest.mark.parametrize("url", ["/api/hotspots/day?date=2013-8-5", "/api/hotspots/days?month=2013-13"])
 def test_malformed_dates_are_rejected(client, url):
     assert client.get(url).status_code == 422
+
+
+def test_day_endpoints_without_data_explain_how_to_build_it(tmp_path):
+    config = tmp_path / "regions.yaml"
+    config.write_text(CONFIG)
+    client = TestClient(create_app(data_dir=tmp_path, config_path=config))
+    for url in ("/api/hotspots/days?month=2013-08", "/api/hotspots/day?date=2013-08-05"):
+        r = client.get(url)
+        assert r.status_code == 503 and "make data" in r.json()["detail"]
+    assert (client.get("/api/meta").json()["first_day"], client.get("/api/meta").json()["last_day"]) == (None, None)
+
+
+def test_api_without_data_explains_how_to_build_it(tmp_path):
+    config = tmp_path / "regions.yaml"
+    config.write_text(CONFIG)
+    client = TestClient(create_app(data_dir=tmp_path, config_path=config))
+    assert client.get("/api/health").json() == {"status": "ok", "data": False}
+    r = calendar(client)
+    assert r.status_code == 503 and "make data" in r.json()["detail"]

@@ -91,10 +91,9 @@ def parse_area(geometry: dict) -> BaseGeometry:
 
 
 class Store:
-    def __init__(self, data_dir: Path, cfg: Config, csv_limit: int, day_limit: int = 50_000):
+    def __init__(self, data_dir: Path, cfg: Config, csv_limit: int):
         self.cfg = cfg
         self.csv_limit = csv_limit
-        self.day_limit = day_limit
         self.points_glob = (data_dir / "points").as_posix() + "/**/*.parquet"
         self.has_points = (data_dir / "points").is_dir()
         self.con = duckdb.connect()
@@ -338,8 +337,8 @@ class Store:
             "days": [{"day": d, "value": counts.get(d, 0)} for d in range(1, first.days_in_month + 1)],
         }
 
-    def hotspot_day(self, date: str) -> dict:
-        """Hotspots of one UTC day as [lon, lat, minute of the day, region index], earliest first."""
+    def hotspot_day(self, date: str, limit: int) -> dict:
+        """Hotspots of one UTC day as [lon, lat, minute of the day, region index], earliest first, at most `limit`."""
         try:
             first = pd.Timestamp(date)
         except ValueError as e:
@@ -354,7 +353,7 @@ class Store:
                 {source}
                 order by minute_utc, lat, lon
                 limit ?""",
-            [*params, self.day_limit],
+            [*params, limit],
         ).fetchall()
         regions = [r.name for r in self.cfg.regions]
         index = {name: i for i, name in enumerate(regions)}

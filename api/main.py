@@ -47,7 +47,7 @@ def create_app(
     day_limit: int = 50_000,
 ) -> FastAPI:
     data_dir = Path(data_dir or os.environ.get("HH_DATA_DIR") or DEFAULT_DATA)
-    store = Store(data_dir, load_config(config_path or DEFAULT_CONFIG), csv_limit, day_limit)
+    store = Store(data_dir, load_config(config_path or DEFAULT_CONFIG), csv_limit)
     app = FastAPI(title="hotspot-harmony", description=__doc__.splitlines()[0])
     origins = os.environ.get("HH_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
     app.add_middleware(
@@ -92,7 +92,7 @@ def create_app(
 
     @app.get("/api/hotspots/day")
     def hotspot_day(date: Annotated[str, Query(pattern=DAY, description="YYYY-MM-DD (UTC)")]) -> dict:
-        return store.hotspot_day(date)
+        return store.hotspot_day(date, day_limit)
 
     return app
 
