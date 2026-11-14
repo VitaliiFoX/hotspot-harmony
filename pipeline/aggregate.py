@@ -5,10 +5,14 @@ Output data/agg/cell_month.parquet:
 A row exists only where at least one hotspot passed the filters; a missing row means zero.
 Months are UTC calendar months.
 
+<<<<<<< HEAD
 Output data/agg/cell_day.parquet (input of pipeline.harmonize):
     country, stream, local_date, gx, gy, lat, lon, frp, n_det, has_day, cell_id
 
 Usage:  uv run python -m pipeline.aggregate
+=======
+Usage:  uv run python -m pipeline.aggregate [--config config/world.yaml]
+>>>>>>> e45be48 (feat(normalize): process every country found in data/raw in world mode)
 """
 
 import argparse
@@ -116,12 +120,15 @@ def main() -> None:
     out = args.data / "agg" / "cell_month.parquet"
     rows = aggregate(con, args.data / "points", out, cfg)
     print(f"aggregate: {rows:,} cell-month-sensor rows at {cfg.cell_deg} deg -> {out}")
+    # in world mode a per-country summary would be hundreds of lines
+    country = "'all countries'" if cfg.world else "country"
     summary = con.execute(f"""
-        select country, sensor, min(year) as first_year, max(year) as last_year, sum(n_hotspots) as hotspots
+        select {country} as country, sensor, min(year) as first_year, max(year) as last_year,
+               sum(n_hotspots) as hotspots
         from read_parquet('{out.as_posix()}') group by all order by all
     """).fetchall()
     for country, sensor, y0, y1, n in summary:
-        print(f"  {country:<12} {sensor:<13} {y0}-{y1}  {n:>10,} hotspots")
+        print(f"  {country:<14} {sensor:<13} {y0}-{y1}  {n:>10,} hotspots")
     cell_day = args.data / "agg" / "cell_day.parquet"
     rows = build_cell_days(con, args.data / "points", cell_day, cfg)
     print(f"aggregate: {rows:,} fire cell-days (1 km cell x local day x sensor stream) -> {cell_day}")

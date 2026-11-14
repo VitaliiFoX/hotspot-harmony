@@ -5,7 +5,7 @@ Schema (one row per hotspot detection):
     frp, daynight, type, scan_km, track_km, local_date, source (sp|nrt), country
 plus the partition columns `sensor` (modis|viirs_snpp|viirs_noaa20) and `year`.
 
-Usage:  uv run python -m pipeline.normalize [--country Ukraine]
+Usage:  uv run python -m pipeline.normalize [--country Ukraine] [--config config/world.yaml]
 """
 
 import argparse
@@ -68,6 +68,13 @@ def normalize_sensor(con: duckdb.DuckDBPyConnection, files: list[Path], sensor_i
     return con.execute(f"select count(*) from read_parquet('{glob}')").fetchall()[0][0]
 
 
+def raw_files(folder: Path, archive: str, countries: list[str] | None) -> list[Path]:
+    """CSV files of one sensor for the given countries; None means every country in the folder."""
+    if countries is None:
+        return sorted(folder.glob(f"{archive}_*.csv"))
+    return sorted(f for c in countries for f in folder.glob(f"{archive}_*_{c}.csv"))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -76,13 +83,13 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = load_config(args.config)
-    countries = cfg.region_names(args.country)
+    countries = cfg.countries(args.country)
     con = duckdb.connect()
     for sensor in cfg.sensors:
-        folder = args.data / "raw" / sensor.archive
-        files = sorted(f for c in countries for f in folder.glob(f"{sensor.archive}_*_{c}.csv"))
+        files = raw_files(args.data / "raw" / sensor.archive, sensor.archive, countries)
         if not files:
-            print(f"warning: no raw files for {sensor.id} ({', '.join(countries)}) - run pipeline.ingest first")
+            which = ", ".join(countries) if countries else "all countries"
+            print(f"warning: no raw files for {sensor.id} ({which}) - run pipeline.ingest first")
             continue
         rows = normalize_sensor(con, files, sensor.id, args.data / "points")
         print(f"normalize: {sensor.id:<13} {len(files):>3} files -> {rows:>10,} points")

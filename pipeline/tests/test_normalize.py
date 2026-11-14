@@ -1,7 +1,7 @@
 import duckdb
 import pytest
 
-from pipeline.normalize import normalize_sensor
+from pipeline.normalize import normalize_sensor, raw_files
 
 MODIS_HEADER = (
     "latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,"
@@ -93,3 +93,11 @@ def test_both_sensors_share_one_schema_and_partition_by_year(tmp_path, raw):
     # a re-run with fewer files leaves no stale partition behind
     normalize_sensor(con, [m24], "modis", points)
     assert not (points / "sensor=modis" / "year=2023").exists()
+
+
+def test_raw_files_for_listed_countries_or_all(tmp_path, raw):
+    for country in ("Ukraine", "Brazil", "United_States"):
+        raw("modis", f"modis_2024_{country}.csv", MODIS_HEADER, [])
+    folder = tmp_path / "raw" / "modis"
+    assert [f.name for f in raw_files(folder, "modis", ["Ukraine"])] == ["modis_2024_Ukraine.csv"]
+    assert len(raw_files(folder, "modis", None)) == 3
