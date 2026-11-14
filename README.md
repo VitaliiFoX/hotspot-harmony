@@ -52,6 +52,15 @@ make lint                  # ruff + English-only check
 
 To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) and run `make data`.
 
+To process the whole world, use [`config/world.yaml`](config/world.yaml):
+
+```bash
+make data CONFIG=config/world.yaml   # every country, from one FIRMS zip per sensor and year
+make api CONFIG=config/world.yaml    # serve it; the region list then holds a single "World" entry
+```
+
+This downloads about 10 GB of zips and extracts about 50 GB of CSV files into `data/raw/`.
+
 ## Layout
 
 ```
