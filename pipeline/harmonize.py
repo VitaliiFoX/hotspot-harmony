@@ -12,8 +12,8 @@ Every VIIRS fire cell-day gets a weight: the answer to "would MODIS (Terra + Aqu
     k      one scale so that totals match (MODIS also sees fires at hours when VIIRS is not overhead)
     r      what is left of the seasonal difference, following the day of the year smoothly
 
-Days when a VIIRS sensor delivered next to nothing while MODIS was busy are sensor gaps, not quiet
-days: they are left out of the fit, and in the record that day is taken from MODIS.
+Days when a VIIRS sensor delivered next to nothing while MODIS or the other VIIRS sensor was busy are
+sensor gaps, not quiet days: they are left out of the fit, and in the record that day is taken from MODIS.
 
 All three are fitted on years when both sensors flew and MODIS orbits were stable. NOAA-20 is tied to
 S-NPP with one factor (same instrument design, same orbit). The months before Aqua use Terra alone,
@@ -54,6 +54,8 @@ MIN_FIT_CELLDAYS = 5000  # below this a country borrows the pooled calibration
 SEASON_HALF_WINDOW = 15  # days: the season factor pools +-15 days around each day of the year
 GAP_MIN_MODIS = 100  # a day counts as a sensor gap when MODIS has at least this many cell-days...
 GAP_MAX_RATIO = 0.6  # ...and VIIRS has under 0.6 per MODIS cell-day (it normally has about 2)
+GAP_MIN_TWIN = 50  # ...or when the other VIIRS sensor has at least this many cell-days...
+GAP_MAX_TWIN_RATIO = 0.1  # ...and this one has under a tenth of them (same instrument, 50 minutes apart)
 WEIGHTS_MARGIN = 0.002  # the boosted model must beat the table by 0.2 points of monthly error to be used
 WEIGHT_FEATURES = ["lfrp", "lfrp_max", "has_day", "n_det", "n_day", "n_night", "n_high", "scan", "track"]
 BOOSTING = dict(
@@ -121,17 +123,23 @@ def prepare(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def gap_days(df: pd.DataFrame, stream: str) -> pd.DatetimeIndex:
-    """Days when `stream` (a VIIRS sensor) was not really observing: MODIS is busy and the sensor is nearly silent.
+    """Days when `stream` (a VIIRS sensor) was not really observing: it is nearly silent while MODIS is busy,
+    or while the other VIIRS sensor is.
 
+    The second sign catches outages on days with too little fire for the first one: the two VIIRS sensors
+    carry the same instrument 50 minutes apart, so one of them reporting nothing is not a quiet day.
     Only looked for inside the sensor's own lifetime, so the years before its launch are not gaps.
     """
     own = df[df.stream == stream]
     if own.empty:
         return pd.DatetimeIndex([])
-    modis = df[(df.stream == "modis") & df.local_date.between(own.local_date.min(), own.local_date.max())]
-    counts = [modis.groupby("local_date").size().rename("modis"), own.groupby("local_date").size().rename("own")]
-    daily = pd.concat(counts, axis=1, sort=True).fillna(0)
-    return pd.DatetimeIndex(daily.index[(daily.modis >= GAP_MIN_MODIS) & (daily.own < GAP_MAX_RATIO * daily.modis)])
+    twin = "viirs_noaa20" if stream == "viirs_snpp" else "viirs_snpp"
+    alive = df[df.local_date.between(own.local_date.min(), own.local_date.max())]
+    counts = [alive[alive.stream == s].groupby("local_date").size().rename(s) for s in ("modis", twin)]
+    daily = pd.concat([*counts, own.groupby("local_date").size().rename("own")], axis=1, sort=True).fillna(0)
+    by_modis = (daily.modis >= GAP_MIN_MODIS) & (daily.own < GAP_MAX_RATIO * daily.modis)
+    by_twin = (daily[twin] >= GAP_MIN_TWIN) & (daily.own < GAP_MAX_TWIN_RATIO * daily[twin])
+    return pd.DatetimeIndex(daily.index[by_modis | by_twin])
 
 
 def season_factor(
