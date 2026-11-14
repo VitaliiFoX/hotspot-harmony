@@ -22,20 +22,24 @@ on which satellite was flying.
 | Part | State |
 |---|---|
 | Ingest FIRMS country archives (2000-2025) | done |
-| Normalize MODIS and VIIRS to one point schema | done |
-| Aggregate to grid cell x month x sensor | done |
-| Harmonize the sensors and validate | prototype in `research/`, not in the pipeline yet |
+| Normalize MODIS and VIIRS to one point schema (Parquet) | done |
+| Fire cell-days on a 1 km grid, local solar day | done |
+| Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) |
+| API (FastAPI): calendar for any polygon, CSV export | done |
+| Web app (map, calendar, anomalies, CSV export) | in progress, see `web/` |
 | Current-year data through the FIRMS Area API | not started |
-| API (FastAPI) | not started |
-| Web app (map, calendar, anomalies, CSV export) | not started |
+| Public deployment | not started |
+
+Ukraine is processed in full. Other countries in `config/regions.yaml` need `make data` first.
 
 ## Run it
 
 Requires [uv](https://docs.astral.sh/uv/) and `make`.
 
 ```bash
-make data                  # download, normalize, aggregate every country in config/regions.yaml
-make data COUNTRY=Ukraine  # one country only
+make data COUNTRY=Ukraine  # download, normalize, aggregate, harmonize, validate (one country)
+make data                  # ...every country in config/regions.yaml
+make dev                   # API on http://localhost:8000 and web app on http://localhost:5173
 make test                  # pytest
 make lint                  # ruff
 ```
@@ -45,14 +49,50 @@ make lint                  # ruff
 
 To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) and run `make data`.
 
+## Work with the data
+
+Parquet is the one format for everything. After `make data`, every hotspot from every sensor sits in
+`data/points/` with the same columns (`lat`, `lon`, `acq_datetime_utc`, `satellite`,
+`confidence_class`, `frp`, `daynight`, `type`, `country`, plus `sensor` and `year` from the folder
+names), and the monthly grid counts are in `data/agg/cell_month.parquet`. Query them in place:
+
+```python
+import duckdb
+
+duckdb.sql("""
+    select sensor, year, count(*) as hotspots
+    from read_parquet('data/points/**/*.parquet', hive_partitioning = true)
+    where country = 'Ukraine' and confidence_class <> 'low' and type = 0
+    group by all order by all
+""").show()
+```
+
+`pandas.read_parquet("data/points")` works too. For a small slice in JSON or GeoJSON (a map layer,
+a sample to look at), use `make json COUNTRY=Ukraine YEAR=2024 FORMAT=geojson`; do not use JSON for
+the whole record, it is about 20 times larger than Parquet.
+
 ## Layout
 
 ```
 config/regions.yaml   countries, grid size, filters
-pipeline/             ingest -> normalize -> aggregate (+ tests)
-research/             experiments that are not part of the pipeline
+pipeline/             ingest -> normalize -> aggregate -> harmonize -> validate (+ tests)
+api/                  FastAPI over the Parquet files (+ tests)
+web/                  React + MapLibre + ECharts front end
+docs/                 METHOD.md, VALIDATION.md (generated), seam figure (generated)
+research/             experiments and notes that are not part of the product
 data/                 generated, git-ignored (see data/README.md)
 ```
+
+## API
+
+| Endpoint | What |
+|---|---|
+| `POST /api/calendar` | `{geometry, start?, end?}` -> monthly harmonized record, climatology, latest-month anomaly, most unusual months, yearly totals |
+| `POST /api/hotspots.csv` | `{geometry, start, end}` -> raw detections inside the area (capped at 500,000 rows, `X-Truncated` header) |
+| `GET /api/meta` | countries, record periods, grid, the validation report |
+| `GET /api/health` | liveness |
+
+Interactive docs at `http://localhost:8000/docs`.
 
 ## Data
 
