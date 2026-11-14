@@ -21,24 +21,30 @@ const calendar = {
 } as unknown as Calendar;
 
 describe("calendarCsv", () => {
-  const lines = calendarCsv(calendar, { region: "Ukraine", box: [22, 44, 40.3, 52.5] }).trimEnd().split("\n");
+  const wkt = "POLYGON ((22 44, 40.3 44, 40.3 52.5, 22 52.5, 22 44))";
+  const lines = calendarCsv(calendar, { region: "Ukraine", box: [22, 44, 40.3, 52.5], wkt }).trimEnd().split("\n");
 
   it("has one header and one row per month", () => {
     expect(lines).toHaveLength(4);
     expect(lines[0]).toBe(
-      "year,month,value,unit,record,sensor,month_median,month_p25,month_p75,ratio_to_median,region,west,south,east,north",
+      "year,month,value,unit,record,sensor,month_median,month_p25,month_p75,ratio_to_median,region,west,south,east,north,area_wkt",
     );
   });
   it("gives each month its calendar month's median and the ratio to it", () => {
-    expect(lines[1]).toBe("2024,8,64,MODIS-equivalent fire cell-days,harmonized,viirs_noaa20,31,19,46,2.06,Ukraine,22,44,40.3,52.5");
+    expect(lines[1]).toBe(`2024,8,64,MODIS-equivalent fire cell-days,harmonized,viirs_noaa20,31,19,46,2.06,Ukraine,22,44,40.3,52.5,"${wkt}"`);
   });
   it("leaves the ratio empty against a zero median, and every climatology field empty where there is none", () => {
     expect(lines[2].split(",")[9]).toBe("");
-    expect(lines[3]).toBe("2024,10,3,MODIS-equivalent fire cell-days,harmonized,,,,,,Ukraine,22,44,40.3,52.5");
+    expect(lines[3]).toBe(`2024,10,3,MODIS-equivalent fire cell-days,harmonized,,,,,,Ukraine,22,44,40.3,52.5,"${wkt}"`);
   });
   it("quotes a field that holds a comma", () => {
-    const quoted = calendarCsv(calendar, { region: "Korea, South", box: [1, 2, 3, 4] });
+    const quoted = calendarCsv(calendar, { region: "Korea, South", box: [1, 2, 3, 4], wkt });
     expect(quoted.split("\n")[1]).toContain(',"Korea, South",');
+  });
+  it("gives a drawn area as its bounds and its exact outline", () => {
+    const outline = "POLYGON ((30 50, 32 50, 31 51.5, 30 50))";
+    const drawn = calendarCsv(calendar, { region: "Ukraine", box: [30, 50, 32, 51.5], wkt: outline });
+    expect(drawn.split("\n")[1].endsWith(`,Ukraine,30,50,32,51.5,"${outline}"`)).toBe(true);
   });
 });
 

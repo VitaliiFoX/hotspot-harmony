@@ -1,11 +1,13 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../globe.css";
 import {
-  type GeoJSONSource, type LayerSpecification, type LngLatBoundsLike, type SkySpecification, type StyleSpecification, MapLibreMap, Marker, NavigationControl, setWorkerUrl,
+  type GeoJSONSource, type LayerSpecification, type LngLatBoundsLike, type MapMouseEvent, type SkySpecification, type StyleSpecification, MapLibreMap,
+  Marker, NavigationControl, setWorkerUrl,
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import type { DayHotspots, Region } from "../api";
+import type { Bbox, DayHotspots, Region } from "../api";
+import { type Corner, MAX_CORNERS, areaProblem, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import {
   type HourCounts, MERCATOR_LIMIT, boxRing, hourFilters, hourInstant, longDate, timeLabel, nightPolygon, regionAt, terminatorLine,
   regionsCenter,
@@ -23,6 +25,12 @@ type Props = {
   /** Page theme; the sky around the globe follows it. */
   dark: boolean;
   onPickRegion: (name: string) => void;
+  /** The corners of the area of interest drawn on the globe, or null when the area is a box. */
+  area: Corner[] | null;
+  /** Called with the corners of a finished drawing, or with null to remove the drawn area. */
+  onDrawArea: (corners: Corner[] | null) => void;
+  /** Why the calendar could not be computed for the drawn area, if it could not. */
+  areaError: string | null;
   /** The date and time panel, floated in the stage's top right corner. */
   panel: ReactNode;
 };
@@ -32,6 +40,9 @@ setWorkerUrl(workerUrl);
 
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 const HOTSPOT = "#ff8a3d";
+// The drawn area of interest: white on a dark casing, so it reads on the imagery and on the street map.
+const AREA_INK = "#ffffff";
+const AREA_CASING = "rgba(3, 5, 11, 0.75)";
 const EMPTY = { type: "FeatureCollection" as const, features: [] };
 
 const ATMOSPHERE: SkySpecification["atmosphere-blend"] = ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0];
@@ -81,6 +92,7 @@ const STYLE: StyleSpecification = {
     night: { type: "geojson", data: EMPTY },
     terminator: { type: "geojson", data: EMPTY },
     regions: { type: "geojson", data: EMPTY },
+    area: { type: "geojson", data: EMPTY },
     hotspots: { type: "geojson", data: EMPTY },
   },
   layers: [
@@ -163,6 +175,36 @@ const STYLE: StyleSpecification = {
       paint: { "line-color": "rgba(255,255,255,0.6)", "line-width": 1.2 },
     },
     {
+      id: "area-fill",
+      type: "fill",
+      source: "area",
+      filter: ["==", ["get", "kind"], "area"],
+      paint: { "fill-color": AREA_INK, "fill-opacity": 0.16 },
+    },
+    {
+      id: "area-casing",
+      type: "line",
+      source: "area",
+      filter: ["in", ["get", "kind"], ["literal", ["outline", "draft"]]],
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": AREA_CASING, "line-width": 5 },
+    },
+    {
+      id: "area-outline",
+      type: "line",
+      source: "area",
+      filter: ["==", ["get", "kind"], "outline"],
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": AREA_INK, "line-width": 2.2 },
+    },
+    {
+      id: "area-draft",
+      type: "line",
+      source: "area",
+      filter: ["==", ["get", "kind"], "draft"],
+      paint: { "line-color": AREA_INK, "line-width": 2.2, "line-dasharray": [2, 1.5] },
+    },
+    {
       id: "hotspot-glow",
       type: "circle",
       source: "hotspots",
@@ -197,8 +239,52 @@ const STYLE: StyleSpecification = {
         "circle-pitch-alignment": "map",
       },
     },
+    {
+      // Corners while drawing; the first is larger, because clicking it closes the outline.
+      id: "area-corner",
+      type: "circle",
+      source: "area",
+      filter: ["==", ["get", "kind"], "corner"],
+      paint: {
+        "circle-color": AREA_INK,
+        "circle-radius": ["case", ["get", "first"], 7, 4.5],
+        "circle-stroke-color": AREA_CASING,
+        "circle-stroke-width": 2,
+      },
+    },
   ],
 };
+
+type AreaFeature = {
+  type: "Feature";
+  properties: { kind: "area" | "outline" | "draft" | "corner"; first?: boolean };
+  geometry:
+    | { type: "Polygon"; coordinates: Corner[][] }
+    | { type: "LineString"; coordinates: Corner[] }
+    | { type: "Point"; coordinates: Corner };
+};
+
+/** What the map draws of the area of interest: the finished area, or the corners placed so far and the line to the pointer. */
+function areaFeatures(area: Corner[] | null, draft: Corner[] | null, cursor: Corner | null): AreaFeature[] {
+  if (draft) {
+    const path = cursor ? [...draft, cursor] : draft;
+    const features: AreaFeature[] = draft.map((corner, index) => ({
+      type: "Feature",
+      properties: { kind: "corner", first: index === 0 },
+      geometry: { type: "Point", coordinates: corner },
+    }));
+    if (path.length >= 2) {
+      features.unshift({ type: "Feature", properties: { kind: "draft" }, geometry: { type: "LineString", coordinates: densifyPath(path) } });
+    }
+    return features;
+  }
+  if (!area) return [];
+  const ring = densifyRing(area);
+  return [
+    { type: "Feature", properties: { kind: "area" }, geometry: { type: "Polygon", coordinates: [ring] } },
+    { type: "Feature", properties: { kind: "outline" }, geometry: { type: "LineString", coordinates: ring } },
+  ];
+}
 
 function reducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -211,14 +297,17 @@ function fittingZoom(element: HTMLElement): number {
 }
 
 function fitRegion(map: MapLibreMap, region: Region): void {
+  fitBox(map, region.bbox, 6);
+}
+
+function fitBox(map: MapLibreMap, [west, south, east, north]: Bbox, maxZoom: number): void {
   const wide = window.innerWidth >= 900;
-  const [west, south, east, north] = region.bbox;
   const clampedSouth = Math.max(-MERCATOR_LIMIT, south);
   const clampedNorth = Math.min(MERCATOR_LIMIT, north);
   map.fitBounds([[west, clampedSouth], [east, clampedNorth]] as LngLatBoundsLike, {
     padding: { top: 100, bottom: 100, left: wide ? 120 : 40, right: wide ? 440 : 40 },
     duration: reducedMotion() ? 0 : 1600,
-    maxZoom: 6,
+    maxZoom,
   });
 }
 
@@ -275,7 +364,7 @@ function CalendarIcon() {
  */
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
-export function Globe({ regions, date, time, day, counts, focusRegion, dark, onPickRegion, panel }: Props) {
+export function Globe({ regions, date, time, day, counts, focusRegion, dark, onPickRegion, area, onDrawArea, areaError, panel }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
@@ -295,6 +384,89 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
   const pickRef = useRef(onPickRegion);
   regionsRef.current = regions;
   pickRef.current = onPickRegion;
+
+  // Drawing an area of interest. The map's handlers are attached once, so they read the drawing through
+  // a ref; the state mirrors it for what React renders.
+  const draw = useRef<{ active: boolean; corners: Corner[]; cursor: Corner | null }>({ active: false, corners: [], cursor: null });
+  const [drawing, setDrawing] = useState(false);
+  const [draft, setDraft] = useState<Corner[]>([]);
+  const [drawNote, setDrawNote] = useState<string | null>(null);
+  const areaRef = useRef(area);
+  areaRef.current = area;
+
+  function paintArea() {
+    const source = mapRef.current?.getSource("area") as GeoJSONSource | undefined;
+    const { active, corners, cursor } = draw.current;
+    source?.setData({ type: "FeatureCollection", features: areaFeatures(areaRef.current, active ? corners : null, cursor) });
+  }
+  function setCorners(corners: Corner[]) {
+    draw.current.corners = corners;
+    setDraft(corners);
+    paintArea();
+  }
+  function startDrawing() {
+    draw.current = { active: true, corners: [], cursor: null };
+    setDrawing(true);
+    setDraft([]);
+    setDrawNote(null);
+    setShowTable(false);
+    paintArea();
+  }
+  function stopDrawing() {
+    draw.current = { active: false, corners: [], cursor: null };
+    setDrawing(false);
+    setDraft([]);
+    setDrawNote(null);
+    const map = mapRef.current;
+    if (map) map.getCanvas().style.cursor = "";
+    paintArea();
+  }
+  function undoCorner() {
+    setDrawNote(null);
+    setCorners(draw.current.corners.slice(0, -1));
+  }
+  function finishDrawing() {
+    const corners = draw.current.corners;
+    const problem = areaProblem(corners);
+    if (problem) {
+      setDrawNote(problem);
+      return;
+    }
+    areaRef.current = corners; // shown at once, before the page answers with the same corners
+    stopDrawing();
+    onDrawArea(corners);
+  }
+  function addCorner(event: MapMouseEvent) {
+    const map = mapRef.current;
+    if (!map) return;
+    const corners = draw.current.corners;
+    const near = (corner: Corner, pixels: number) => {
+      const point = map.project(corner);
+      return Math.hypot(point.x - event.point.x, point.y - event.point.y) < pixels;
+    };
+    if (corners.length >= 3 && near(corners[0], 12)) return finishDrawing();
+    // The second click of a double-click lands on the corner the first one placed.
+    if (corners.length > 0 && near(corners[corners.length - 1], 6)) return;
+    if (corners.length >= MAX_CORNERS) return setDrawNote(`An area can have at most ${MAX_CORNERS} corners.`);
+    const { lng, lat } = event.lngLat.wrap();
+    setDrawNote(null);
+    setCorners([...corners, roundCorner([lng, lat])]);
+  }
+  const drawActions = useRef({ addCorner, finishDrawing, stopDrawing, undoCorner });
+  drawActions.current = { addCorner, finishDrawing, stopDrawing, undoCorner };
+
+  // While drawing: Enter finishes, Backspace takes the last corner back, Escape gives up.
+  useEffect(() => {
+    if (!drawing) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") return drawActions.current.stopDrawing();
+      if ((event.target as HTMLElement | null)?.closest?.("input, select, textarea, button, a")) return;
+      if (event.key === "Enter") drawActions.current.finishDrawing();
+      if (event.key === "Backspace") drawActions.current.undoCorner();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawing]);
 
   useEffect(() => {
     const element = container.current;
@@ -336,7 +508,13 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
       setReady(true);
       addStreetMap(map);
     });
+    map.on("dblclick", (event) => {
+      if (!draw.current.active) return;
+      event.preventDefault(); // no zoom: a double-click closes the outline
+      drawActions.current.finishDrawing();
+    });
     map.on("click", (event) => {
+      if (draw.current.active) return drawActions.current.addCorner(event);
       const region = regionAt(regionsRef.current, event.lngLat.lng, event.lngLat.lat);
       if (region) {
         pickRef.current(region.name);
@@ -344,6 +522,13 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
       }
     });
     map.on("mousemove", (event) => {
+      if (draw.current.active) {
+        const { lng, lat } = event.lngLat.wrap();
+        draw.current.cursor = [lng, lat];
+        map.getCanvas().style.cursor = "crosshair";
+        paintArea();
+        return;
+      }
       const inside = regionAt(regionsRef.current, event.lngLat.lng, event.lngLat.lat) !== null;
       map.getCanvas().style.cursor = inside ? "pointer" : "";
     });
@@ -415,11 +600,26 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
     );
   }, [ready, date, time]);
 
+  useEffect(() => {
+    if (ready) paintArea();
+  }, [ready, area]);
+
+  // An area that arrives with the page (from a link) is flown to once; one drawn here is already in view.
+  const areaSeen = useRef(false);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || areaSeen.current || regions.length === 0) return;
+    areaSeen.current = true;
+    if (area) fitBox(map, cornersBounds(area), 8);
+  }, [ready, area, regions]);
+
   const lastFocus = useRef<string | null>(null);
   useEffect(() => {
     const map = mapRef.current;
     const previous = lastFocus.current;
     lastFocus.current = focusRegion;
+    // A drawn area keeps the view on itself, even when it moves the region filter to another country.
+    if (areaRef.current) return;
     if (!map || !focusRegion || previous === null || previous === focusRegion) return;
     const region = regions.find((r) => r.name === focusRegion);
     if (region) fitRegion(map, region);
@@ -443,6 +643,9 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
           <a className="stage-next" href="#calendar">
             Burning activity calendar, 2000 to 2025 <span aria-hidden="true">↓</span>
           </a>
+          <button type="button" className="stage-toggle" aria-pressed={drawing} onClick={drawing ? stopDrawing : startDrawing}>
+            {area && !drawing ? "Redraw the area" : "Draw an area"}
+          </button>
           <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={() => setShowTable(!showTable)}>
             {showTable ? "Show globe" : "Show table"}
           </button>
@@ -504,6 +707,49 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
           </div>
         )}
       </div>
+
+      {drawing && (
+        <div className="stage-draw">
+          <p role="status">
+            {drawNote
+              ?? (draft.length === 0
+                ? "Click the globe to place the corners of your area of interest."
+                : draft.length < 3
+                  ? `${draft.length} of at least 3 corners placed.`
+                  : `${draft.length} corners. Click the first corner, double-click or press Enter to finish.`)}
+          </p>
+          <div className="stage-draw-actions">
+            <button type="button" className="stage-toggle" disabled={draft.length === 0} onClick={undoCorner}>
+              Undo corner
+            </button>
+            <button type="button" className="stage-toggle is-strong" disabled={draft.length < 3} onClick={finishDrawing}>
+              Finish
+            </button>
+            <button type="button" className="stage-toggle" onClick={stopDrawing}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {!drawing && area && (
+        <div className="stage-draw">
+          <p role="status">
+            {areaError
+              ? `Your area, ${area.length} corners: ${areaError}`
+              : `Your area, ${area.length} corners. The calendar below now counts the burning inside it.`}
+          </p>
+          <div className="stage-draw-actions">
+            {!areaError && (
+              <a className="stage-toggle is-strong" href="#calendar">
+                See its calendar <span aria-hidden="true">↓</span>
+              </a>
+            )}
+            <button type="button" className="stage-toggle" onClick={() => onDrawArea(null)}>
+              Remove the area
+            </button>
+          </div>
+        </div>
+      )}
 
       {legendOpen ? (
         <div className="stage-legend">

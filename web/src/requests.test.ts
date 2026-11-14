@@ -27,6 +27,17 @@ describe("delayFor", () => {
     expect(delayFor(view, { ...view, series: "raw" })).toBe(0);
   });
 
+  it("does not wait for an area drawn on the globe, whose bounds replace the box", () => {
+    const drawn = { ...view, box: ["30", "50", "32", "51.5"], area: [[30, 50], [32, 50], [31, 51.5]] };
+    expect(delayFor(view, drawn)).toBe(0);
+    expect(delayFor(drawn, { ...drawn, box: ["30", "50", "33", "51.5"], area: [[30, 50], [33, 50], [31, 51.5]] })).toBe(0);
+  });
+
+  it("waits again once the drawn area is gone and the box is typed", () => {
+    const drawn = { ...view, box: ["30", "50", "32", "51.5"], area: [[30, 50], [32, 50], [31, 51.5]] };
+    expect(delayFor(drawn, { ...view, box: ["30", "50", "32", "51"], area: null })).toBe(TYPING_PAUSE_MS);
+  });
+
   it("does not wait when nothing changed", () => {
     expect(delayFor(view, { ...view })).toBe(0);
   });

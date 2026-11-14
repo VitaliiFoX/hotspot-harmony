@@ -3,17 +3,26 @@
 import type { Calendar, Polygon, SeriesName } from "./api";
 
 export type CalendarBody = { geometry: Polygon; start: string; end: string; series: SeriesName };
-export type View = { region: string; box: readonly string[]; start: string; end: string; series: SeriesName };
+export type View = {
+  region: string;
+  box: readonly string[];
+  start: string;
+  end: string;
+  series: SeriesName;
+  /** The corners of an area drawn on the globe; absent or null when the area is the box. */
+  area?: readonly (readonly number[])[] | null;
+};
 
 /** Typing coordinates sends a keystroke at a time, so those requests wait for a pause. */
 export const TYPING_PAUSE_MS = 300;
 
 /**
  * How long to wait before asking for a new view. Only a box edited by hand waits: a first load, a
- * region, a date or a switch between the raw and the harmonized record is one deliberate action.
+ * region, a date, a switch between the raw and the harmonized record or an area drawn on the globe is
+ * one deliberate action.
  */
 export function delayFor(previous: View | null, next: View): number {
-  if (!previous) return 0;
+  if (!previous || next.area) return 0;
   const boxEdited = previous.box.join(",") !== next.box.join(",");
   const restSame =
     previous.region === next.region &&

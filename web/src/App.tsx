@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  type Bbox, type Calendar, type DayHotspots, type Meta, type MonthDays, type SeriesName, boxPolygon, fetchCalendar,
+  type Bbox, type Calendar, type DayHotspots, type Meta, type MonthDays, type Polygon, type SeriesName, boxPolygon, fetchCalendar,
   fetchDayHotspots, fetchHotspotsCsv, fetchMeta, fetchMonthDays,
 } from "./api";
+import {
+  type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
+} from "./area";
 import { AnomalyTiles } from "./components/AnomalyTiles";
 import { CalendarHeatmap, CalendarTable } from "./components/CalendarHeatmap";
 import { ChartCard } from "./components/ChartCard";
@@ -28,6 +31,12 @@ function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } 
   if (south >= north) return { problem: "South must be smaller than north." };
   if (west < -180 || east > 180 || south < -90 || north > 90) return { problem: "The area is off the map." };
   return { bbox: [west, south, east, north] };
+}
+
+/** Put the view into the address, keeping the commas, colons and semicolons of its values readable. */
+function writeAddress(query: URLSearchParams) {
+  const text = query.toString().replaceAll("%2C", ",").replaceAll("%3A", ":").replaceAll("%3B", ";");
+  window.history.replaceState(null, "", `?${text}`);
 }
 
 export function App() {
@@ -75,10 +84,13 @@ export function App() {
         const query = new URLSearchParams(window.location.search);
         const linked = loaded.regions.find((r) => r.name === query.get("region")) ?? region;
         const box = query.get("box")?.split(",") ?? [];
+        // A drawn area comes as &area=lon,lat;lon,lat;... and wins over the box, which then holds its bounds.
+        const drawn = parseAreaParam(query.get("area"));
         const series = query.get("series") as SeriesName | null;
         setFilters({
           region: linked.name,
-          box: (box.length === 4 ? box : linked.bbox.map(String)) as FilterState["box"],
+          box: (drawn ? boundsText(drawn) : box.length === 4 ? box : linked.bbox.map(String)) as FilterState["box"],
+          area: drawn,
           start: query.get("start") ?? loaded.first_month,
           end: query.get("end") ?? loaded.last_month,
           series: series && loaded.series.includes(series) ? series : loaded.default_series,
@@ -100,7 +112,9 @@ export function App() {
     query.set("start", filters.start);
     query.set("end", filters.end);
     query.set("series", filters.series);
-    window.history.replaceState(null, "", `?${query.toString().replaceAll("%2C", ",")}`);
+    if (filters.area) query.set("area", formatAreaParam(filters.area));
+    else query.delete("area");
+    writeAddress(query);
   }, [filters]);
 
   useEffect(() => {
@@ -109,7 +123,7 @@ export function App() {
     query.set("date", date);
     query.delete("hour");
     query.set("time", timeLabel(time));
-    window.history.replaceState(null, "", `?${query.toString().replaceAll("%2C", ",").replaceAll("%3A", ":")}`);
+    writeAddress(query);
   }, [date, time]);
 
   const month = date?.slice(0, 7) ?? null;
@@ -149,17 +163,44 @@ export function App() {
     const region = meta?.regions.find((r) => r.name === name);
     if (!region) return;
     const box = region.bbox.map(String) as FilterState["box"];
-    setFilters((current) => (current ? { ...current, region: name, box } : current));
+    // A click on the globe inside the region already chosen must not wipe an area drawn there.
+    setFilters((current) =>
+      !current || (current.area && current.region === name) ? current : { ...current, region: name, box, area: null },
+    );
   }
 
-  const area = useMemo(() => (filters ? readBox(filters.box) : null), [filters]);
+  /** Take an area drawn on the globe as the area of interest, or go back to the region's box. */
+  function drawArea(corners: Corner[] | null) {
+    if (!meta) return;
+    setFilters((current) => {
+      if (!current) return current;
+      if (!corners) {
+        const region = meta.regions.find((r) => r.name === current.region);
+        return region ? { ...current, box: region.bbox.map(String) as FilterState["box"], area: null } : current;
+      }
+      const drawn = corners.map(roundCorner);
+      const region = regionOfArea(meta.regions, drawn)?.name ?? current.region;
+      return { ...current, region, box: boundsText(drawn) as FilterState["box"], area: drawn };
+    });
+  }
+
+  // The area of interest behind every request and export: the drawn corners, or else the typed box.
+  const area = useMemo((): { bbox: Bbox; geometry: Polygon; wkt: string } | { problem: string } | null => {
+    if (!filters) return null;
+    if (filters.area) {
+      return { bbox: cornersBounds(filters.area), geometry: cornersPolygon(filters.area), wkt: cornersWkt(filters.area) };
+    }
+    const read = readBox(filters.box);
+    if ("problem" in read) return read;
+    return { bbox: read.bbox, geometry: boxPolygon(read.bbox), wkt: cornersWkt(boxCorners(read.bbox)) };
+  }, [filters]);
   const problem = area && "problem" in area ? area.problem : null;
 
   // Ask the API as little and as early as possible: a view seen before comes from the cache, only a box
   // typed by hand waits for a pause, and the record not on screen is fetched ahead so the switch is instant.
   useEffect(() => {
     if (!filters || !area || "problem" in area) return;
-    const body: CalendarBody = { geometry: boxPolygon(area.bbox), start: filters.start, end: filters.end, series: filters.series };
+    const body: CalendarBody = { geometry: area.geometry, start: filters.start, end: filters.end, series: filters.series };
     const delay = delayFor(lastView.current, filters);
     lastView.current = filters;
     const controller = new AbortController();
@@ -208,7 +249,7 @@ export function App() {
     try {
       const start = `${filters.start}-01`;
       const end = lastDay(filters.end);
-      const { blob, truncated } = await fetchHotspotsCsv({ geometry: boxPolygon(area.bbox), start, end });
+      const { blob, truncated } = await fetchHotspotsCsv({ geometry: area.geometry, start, end });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download = `hotspots_${start}_${end}.csv`;
@@ -241,7 +282,7 @@ export function App() {
   const fileParts = filters && calendar ? [filters.region, filters.start, filters.end, calendar.series] : [];
   function saveCalendarCsv() {
     if (!calendar || !filters || !area || "problem" in area) return;
-    const csv = calendarCsv(calendar, { region: filters.region, box: area.bbox });
+    const csv = calendarCsv(calendar, { region: filters.region, box: area.bbox, wkt: area.wkt });
     downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
   }
 
@@ -257,6 +298,9 @@ export function App() {
         focusRegion={filters?.region ?? null}
         dark={dark}
         onPickRegion={pickRegion}
+        area={filters?.area ?? null}
+        onDrawArea={drawArea}
+        areaError={filters?.area ? error : null}
         panel={
           date && firstDay && finalDay ? (
             <DateTimePanel
