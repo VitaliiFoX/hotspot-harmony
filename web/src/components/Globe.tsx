@@ -7,14 +7,15 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { DayHotspots, Region } from "../api";
 import {
-  type HourCounts, MERCATOR_LIMIT, boxRing, hourFilters, hourInstant, hourLabel, longDate, nightPolygon, regionAt, terminatorLine,
+  type HourCounts, MERCATOR_LIMIT, boxRing, hourFilters, hourInstant, longDate, timeLabel, nightPolygon, regionAt, terminatorLine,
   regionsCenter,
 } from "../globe";
 
 type Props = {
   regions: Region[];
   date: string | null;
-  hour: number;
+  /** Minutes after 00:00 UTC. */
+  time: number;
   day: DayHotspots | null;
   counts: HourCounts | null;
   /** The region chosen in the filters; the globe eases to it when it changes. */
@@ -250,12 +251,12 @@ async function addStreetMap(map: MapLibreMap): Promise<void> {
 }
 
 /**
- * The top of the page: a satellite globe of the selected day's hotspots through the selected hour,
+ * The top of the page: a satellite globe of the selected day's hotspots through the selected minute,
  * with the region boxes, the night side, a legend and a table view.
  */
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
-export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onPickRegion, panel }: Props) {
+export function Globe({ regions, date, time, day, counts, focusRegion, dark, onPickRegion, panel }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
@@ -370,17 +371,17 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    const { through, inHour } = hourFilters(hour);
+    const { through, inHour } = hourFilters(time);
     map.setFilter("hotspot-glow", through);
     map.setFilter("hotspot", through);
     map.setFilter("hotspot-hour", inHour);
     (map.getSource("night") as GeoJSONSource).setData(
-      date ? { type: "Feature", properties: {}, geometry: nightPolygon(hourInstant(date, hour)) } : EMPTY,
+      date ? { type: "Feature", properties: {}, geometry: nightPolygon(hourInstant(date, time)) } : EMPTY,
     );
     (map.getSource("terminator") as GeoJSONSource).setData(
-      date ? { type: "Feature", properties: {}, geometry: terminatorLine(hourInstant(date, hour)) } : EMPTY,
+      date ? { type: "Feature", properties: {}, geometry: terminatorLine(hourInstant(date, time)) } : EMPTY,
     );
-  }, [ready, date, hour]);
+  }, [ready, date, time]);
 
   const lastFocus = useRef<string | null>(null);
   useEffect(() => {
@@ -430,8 +431,8 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
                 <thead>
                   <tr>
                     <th scope="col">Region</th>
-                    <th scope="col">{`00:00 through ${hourLabel(hour, 59)}`}</th>
-                    <th scope="col">{`${hourLabel(hour)} to ${hourLabel(hour, 59)}`}</th>
+                    <th scope="col">{`00:00 through ${timeLabel(time)}`}</th>
+                    <th scope="col">{`${timeLabel(Math.max(0, time - 59))} to ${timeLabel(time)}`}</th>
                     <th scope="col">Whole day</th>
                   </tr>
                 </thead>
@@ -463,11 +464,11 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
         <ul>
           <li>
             <i className="legend-dot" aria-hidden="true" />
-            Hotspots through the selected hour
+            Hotspots through the selected time
           </li>
           <li>
             <i className="legend-dot is-ringed" aria-hidden="true" />
-            Detected in the selected hour
+            Detected in the hour up to it
           </li>
         </ul>
         <p className="legend-hint">{`${ZOOM_KEY} + scroll zooms the globe; scroll alone moves down the page.`}</p>

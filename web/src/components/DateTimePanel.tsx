@@ -1,12 +1,13 @@
-import { type KeyboardEvent, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { DayHotspots, MonthDays } from "../api";
 import {
-  type HourCounts, dayKey, dotStyle, hourLabel, longDate, longMonth, monthGrid, moveToMonth, sensorLabel, shiftMonth,
+  type HourCounts, LAST_MINUTE, dayKey, dotStyle, longDate, longMonth, monthGrid, moveToMonth, parseTimeParam, sensorLabel, shiftMonth, timeLabel,
 } from "../globe";
 
 type Props = {
   date: string;
-  hour: number;
+  /** Minutes after 00:00 UTC. */
+  time: number;
   firstDay: string;
   lastDay: string;
   monthDays: MonthDays | null;
@@ -15,7 +16,7 @@ type Props = {
   loading: boolean;
   error: string | null;
   onDate: (date: string) => void;
-  onHour: (hour: number) => void;
+  onTime: (time: number) => void;
 };
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -35,10 +36,39 @@ function Chevron({ direction }: { direction: "left" | "right" }) {
   );
 }
 
-/** The floating glass panel that picks the UTC day and hour the globe shows, and reads out its hotspots. */
+/** Playback: the clock moves PLAY_STEP minutes every PLAY_TICK_MS, so a whole day plays in about 24 seconds. */
+const PLAY_STEP = 5;
+const PLAY_TICK_MS = 80;
+
+/** The floating glass panel that picks the UTC day and minute the globe shows, plays the day, and reads out its hotspots. */
 export function DateTimePanel({
-  date, hour, firstDay, lastDay, monthDays, day, counts, loading, error, onDate, onHour,
+  date, time, firstDay, lastDay, monthDays, day, counts, loading, error, onDate, onTime,
 }: Props) {
+  const [playing, setPlaying] = useState(false);
+  const timeRef = useRef(time);
+  timeRef.current = time;
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => {
+      const next = Math.min(LAST_MINUTE, timeRef.current + PLAY_STEP);
+      onTime(next);
+      if (next >= LAST_MINUTE) setPlaying(false);
+    }, PLAY_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [playing, onTime]);
+  // A new day stops the clock where it is.
+  useEffect(() => setPlaying(false), [date]);
+  // The typed time, while it is being edited; HH:MM in 24-hour form, whatever the browser's locale.
+  const [draft, setDraft] = useState<string | null>(null);
+  function commitDraft() {
+    const parsed = draft === null ? null : parseTimeParam(draft.trim());
+    if (parsed !== null) onTime(parsed);
+    setDraft(null);
+  }
+  function togglePlay() {
+    if (!playing && time >= LAST_MINUTE) onTime(0); // at the end of the day, play from the start
+    setPlaying(!playing);
+  }
   const month = date.slice(0, 7);
   const grid = useMemo(() => monthGrid(month), [month]);
   const values = useMemo(() => {
@@ -86,7 +116,7 @@ export function DateTimePanel({
       <div className="dt-sheen" aria-hidden="true" />
       <div className="dt-heading">
         <h2 className="dt-date">{longDate(date)}</h2>
-        <p className="dt-secondary">{`Hotspots from 00:00 through ${hourLabel(hour, 59)} UTC`}</p>
+        <p className="dt-secondary">{`Hotspots from 00:00 through ${timeLabel(time)} UTC`}</p>
       </div>
 
       <div className="dt-month">
@@ -172,26 +202,62 @@ export function DateTimePanel({
 
       <div className="dt-time">
         <div className="dt-time-row">
-          <label htmlFor="dt-hour" className="dt-secondary">
+          <label htmlFor="dt-time" className="dt-secondary">
             Time, UTC
           </label>
-          <output htmlFor="dt-hour" className="dt-time-value">
-            {hourLabel(hour)}
-          </output>
+          <div className="dt-time-controls">
+            <input
+              className="dt-time-input"
+              type="text"
+              inputMode="numeric"
+              maxLength={5}
+              pattern="[0-2]?[0-9]:[0-5][0-9]"
+              aria-label="Time, UTC, as HH:MM"
+              value={draft ?? timeLabel(time)}
+              onFocus={() => setPlaying(false)}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={commitDraft}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitDraft();
+                if (event.key === "Escape") setDraft(null);
+              }}
+            />
+            <button
+              type="button"
+              className="dt-round dt-play"
+              aria-pressed={playing}
+              aria-label={playing ? "Pause the clock" : "Play the day"}
+              title={playing ? "Pause" : "Play the day"}
+              onClick={togglePlay}
+            >
+              {playing ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M8 5.5v13l10.5-6.5z" fill="currentColor" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
         <input
-          id="dt-hour"
+          id="dt-time"
           type="range"
           min={0}
-          max={23}
+          max={LAST_MINUTE}
           step={1}
-          value={hour}
-          aria-valuetext={`${hourLabel(hour)} UTC`}
-          onChange={(event) => onHour(Number(event.target.value))}
+          value={time}
+          aria-valuetext={`${timeLabel(time)} UTC`}
+          onChange={(event) => {
+            setPlaying(false);
+            onTime(Number(event.target.value));
+          }}
         />
         <div className="dt-time-ends dt-secondary" aria-hidden="true">
           <span>00:00</span>
-          <span>23:00</span>
+          <span>23:59</span>
         </div>
       </div>
 
@@ -209,7 +275,7 @@ export function DateTimePanel({
                 </div>
               ))}
               <div>
-                <dt>This hour</dt>
+                <dt>Last hour</dt>
                 <dd>{counts.inHour.toLocaleString("en-US")}</dd>
               </div>
             </dl>

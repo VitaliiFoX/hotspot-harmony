@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
   MERCATOR_LIMIT, countHotspots, dayKey, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
-  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseHourParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
+  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
 describe("monthGrid", () => {
@@ -49,15 +49,16 @@ describe("reading the address", () => {
     expect(parseDateParam("yesterday")).toBeNull();
     expect(parseDateParam(null)).toBeNull();
   });
-  it("takes whole hours 0 to 23 only", () => {
-    expect(parseHourParam("18")).toBe(18);
-    expect(parseHourParam("0")).toBe(0);
-    expect(parseHourParam("07")).toBe(7);
-    expect(parseHourParam("24")).toBeNull();
-    expect(parseHourParam("-1")).toBeNull();
-    expect(parseHourParam("1.5")).toBeNull();
-    expect(parseHourParam("")).toBeNull();
-    expect(parseHourParam(null)).toBeNull();
+  it("reads HH:MM as minutes after midnight, and an old whole-hour link as the end of that hour", () => {
+    expect(parseTimeParam("18:42")).toBe(18 * 60 + 42);
+    expect(parseTimeParam("0:05")).toBe(5);
+    expect(parseTimeParam("23:59")).toBe(1439);
+    expect(parseTimeParam("24:00")).toBeNull();
+    expect(parseTimeParam("12:60")).toBeNull();
+    expect(parseTimeParam("1830")).toBeNull();
+    expect(parseTimeParam(null, "18")).toBe(18 * 60 + 59);
+    expect(parseTimeParam(null, "24")).toBeNull();
+    expect(parseTimeParam(null, null)).toBeNull();
   });
   it("opens on the preferred day when the record covers it, else on its last day", () => {
     expect(defaultDate("2000-11-01", "2025-12-31")).toBe("2025-08-20");
@@ -66,7 +67,7 @@ describe("reading the address", () => {
 });
 
 describe("countHotspots", () => {
-  // Selected hour 18 runs from minute 1080 to 1139.
+  // Selected time 18:59 (minute 1139): the hour up to it is minutes 1080 to 1139.
   const hotspots: DayHotspot[] = [
     [0, 0, 0, 0],
     [0, 0, 1079, 1],
@@ -75,19 +76,22 @@ describe("countHotspots", () => {
     [0, 0, 1140, 1],
     [0, 0, 1200, 5], // a region index the response does not list counts in the total only
   ];
-  it("counts through the hour, in the hour and over the day", () => {
-    const counts = countHotspots(hotspots, 18, 2);
+  it("counts through the selected minute, in the hour up to it and over the day", () => {
+    const counts = countHotspots(hotspots, 1139, 2);
     expect([counts.throughHour, counts.inHour, counts.day]).toEqual([4, 2, 6]);
   });
   it("counts each region apart", () => {
-    expect(countHotspots(hotspots, 18, 2).regions).toEqual([
+    expect(countHotspots(hotspots, 1139, 2).regions).toEqual([
       { throughHour: 3, inHour: 2, day: 3 },
       { throughHour: 1, inHour: 0, day: 2 },
     ]);
   });
-  it("sees only the first hour at hour 0 and everything at hour 23", () => {
+  it("moves minute by minute", () => {
     expect(countHotspots(hotspots, 0, 2).throughHour).toBe(1);
-    expect(countHotspots(hotspots, 23, 2).throughHour).toBe(6);
+    expect(countHotspots(hotspots, 1138, 2).throughHour).toBe(3);
+    expect(countHotspots(hotspots, 1139, 2).throughHour).toBe(4);
+    expect(countHotspots(hotspots, 1439, 2).throughHour).toBe(6);
+    expect(countHotspots(hotspots, 1140, 2).inHour).toBe(2); // 1081..1140 holds 1139 and 1140, not 1080
   });
 });
 
@@ -103,10 +107,10 @@ describe("dotStyle", () => {
 });
 
 describe("hourFilters", () => {
-  it("cuts at the end of the hour and marks the hour itself", () => {
-    expect(hourFilters(18)).toEqual({
-      through: ["<", ["get", "minute"], 1140],
-      inHour: ["all", [">=", ["get", "minute"], 1080], ["<", ["get", "minute"], 1140]],
+  it("cuts at the selected minute and marks the hour up to it", () => {
+    expect(hourFilters(1139)).toEqual({
+      through: ["<=", ["get", "minute"], 1139],
+      inHour: ["all", [">", ["get", "minute"], 1079], ["<=", ["get", "minute"], 1139]],
     });
   });
 });
@@ -144,8 +148,8 @@ describe("subsolarPoint", () => {
     expect(subsolarPoint(Date.UTC(2025, 11, 21, 6)).lon).toBe(90);
     expect(subsolarPoint(Date.UTC(2025, 11, 21, 0)).lon).toBe(180);
   });
-  it("is taken at the middle of the selected hour", () => {
-    expect(hourInstant("2025-08-20", 18)).toBe(Date.UTC(2025, 7, 20, 18, 30));
+  it("is taken at the selected minute", () => {
+    expect(hourInstant("2025-08-20", 18 * 60 + 42)).toBe(Date.UTC(2025, 7, 20, 18, 42));
   });
 });
 

@@ -769,3 +769,37 @@ html {
     font-size: 11px;
   }
 }
+
+.dt-time-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stage .dt-time-input {
+  width: 64px;
+  height: 32px;
+  padding: 0 8px;
+  text-align: center;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-button);
+  color: var(--stage-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color-scheme: inherit;
+}
+.stage .dt-play {
+  width: 32px;
+  height: 32px;
+  color: var(--stage-ink);
+}
+.stage .dt-time-input:invalid {
+  border-color: var(--hotspot);
+}
+.stage .dt-play[aria-pressed="true"] {
+  background: var(--hotspot);
+  border-color: var(--hotspot);
+  color: #0b0b0b;
+}
