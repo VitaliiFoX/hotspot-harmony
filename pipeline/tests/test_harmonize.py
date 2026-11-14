@@ -1,3 +1,4 @@
+import duckdb
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,7 +12,8 @@ def cell_days(stream, dates, frp=5.0, has_day=1, matched=0, lat=48.1, lon=30.1, 
     return pd.DataFrame({
         "country": "Testland", "stream": stream, "local_date": pd.to_datetime(dates), "gx": np.arange(n),
         "gy": 0, "lat": lat, "lon": lon, "frp": frp, "n_det": 1, "has_day": has_day, "matched": matched,
-        "cell_id": cell_id,
+        "cell_id": cell_id, "frp_max": frp, "n_day": has_day, "n_night": 1 - has_day, "n_high": 0,
+        "scan": 0.4, "track": 0.4, "share": np.asarray(matched, dtype=float) * np.ones(n),
     })  # fmt: skip
 
 
@@ -26,10 +28,12 @@ def overlap():
     return hz.prepare(pd.concat([weak, strong, modis], ignore_index=True))
 
 
-def test_weights_follow_fire_power_and_keep_the_total(overlap):
+@pytest.mark.parametrize("weights", ["bins", "boosted"])
+def test_weights_follow_fire_power_and_keep_the_total(overlap, weights):
     viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
-    par = hz.fit_viirs(viirs, modis)
-    w = hz.viirs_weights(par, viirs.b, viirs.doy)
+    par = hz.fit_viirs(viirs, modis, weights)
+    w = hz.viirs_weights(par, viirs)
+    assert (par["model"] is not None) == (weights == "boosted")
 
     p = par["p"]
     assert p[viirs[viirs.frp < 1].b.iloc[0]] == pytest.approx(0.1, abs=0.02)
@@ -57,6 +61,56 @@ def test_record_takes_each_period_from_one_sensor():
     assert list(cells.n_raw) == [1, 1, 1, 1] and cells.n_harmonized.sum() == pytest.approx(5.4)
 
 
+def test_each_modis_cell_day_is_shared_among_the_viirs_cell_days_that_explain_it(tmp_path):
+    day = "date '2015-08-01'"
+    rows = [  # stream, gx, gy
+        ("modis", 0, 0),          # one MODIS cell-day...
+        ("viirs_snpp", 0, 0),     # ...explained by two S-NPP cell-days next to it: half each
+        ("viirs_snpp", 1, 0),
+        ("viirs_snpp", 10, 10),   # too far away: explains nothing
+        ("viirs_noaa20", 0, 1),   # the only NOAA-20 cell-day near it: the whole unit
+    ]  # fmt: skip
+    rest = "48.1, 30.1, 5.0, 1, 1, 5.0, 1, 0, 0, 0.4, 0.4, 1"
+    values = ", ".join(f"('Testland', '{s}', {day}, {gx}, {gy}, {rest})" for s, gx, gy in rows)
+    path = tmp_path / "cell_day.parquet"
+    duckdb.sql(f"""
+        copy (select * from (values {values}) t(country, stream, local_date, gx, gy, lat, lon, frp, n_det, has_day,
+                                                 frp_max, n_day, n_night, n_high, scan, track, cell_id))
+        to '{path}' (format parquet)
+    """)
+    df = hz.load_cell_days(duckdb.connect(), path, "Testland").set_index(["stream", "gx", "gy"])
+    assert df.share.to_dict() == {
+        ("modis", 0, 0): 0.0, ("viirs_snpp", 0, 0): 0.5, ("viirs_snpp", 1, 0): 0.5,
+        ("viirs_snpp", 10, 10): 0.0, ("viirs_noaa20", 0, 1): 1.0,
+    }  # fmt: skip
+    assert df.matched.to_dict() == {
+        ("modis", 0, 0): 0, ("viirs_snpp", 0, 0): 1, ("viirs_snpp", 1, 0): 1,
+        ("viirs_snpp", 10, 10): 0, ("viirs_noaa20", 0, 1): 1,
+    }  # fmt: skip
+
+
+def test_the_boosted_model_is_used_only_when_it_clearly_wins(overlap, monkeypatch):
+    viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
+    for errors, expected in (
+        ({"bins": 0.070, "boosted": 0.060}, "boosted"),  # a full point better: use the model
+        ({"bins": 0.070, "boosted": 0.069}, "bins"),     # within the margin: the simpler table wins
+        ({"bins": 0.070, "boosted": 0.080}, "bins"),     # worse on held-out years: never
+    ):  # fmt: skip
+        monkeypatch.setattr(hz, "held_out_month_error", lambda v, m, weights, e=errors: e[weights])
+        assert hz.choose_weights(viirs, modis) == (expected, errors)
+
+
+def test_held_out_month_error_is_an_error_on_years_the_fit_did_not_see(overlap):
+    viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
+    error = hz.held_out_month_error(viirs, modis, "bins")
+    assert 0 < error < 0.5  # random synthetic months: far from perfect, far from useless
+    # a fit that sees the test years (all of them, no hold-out) cannot be scored this way by accident
+    par = hz.fit_viirs(viirs, modis, "bins")
+    in_sample = hz.viirs_weights(par, viirs).groupby([viirs.y, viirs.m]).sum()
+    truth = modis.groupby(["y", "m"]).size()
+    assert float((in_sample - truth).abs().sum() / truth.sum()) <= error + 0.02
+
+
 def test_season_factor_pools_neighbouring_days_and_wraps_at_new_year():
     # truth: 4 cell-days on day 10, 2 on day 366; prediction: weight 1 on day 10, 1 on day 1
     r = hz.season_factor(np.array([10, 10, 10, 10, 366, 366]), np.array([10, 1]), np.array([1.0, 1.0]), half=1)
@@ -71,7 +125,7 @@ def test_season_factor_keeps_the_total(overlap):
     viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
     par = hz.fit_viirs(viirs, modis)
     assert len(par["r"]) == 367 and par["r"].min() > 0
-    assert hz.viirs_weights(par, viirs.b, viirs.doy).sum() == pytest.approx(len(modis), rel=1e-9)
+    assert hz.viirs_weights(par, viirs).sum() == pytest.approx(len(modis), rel=1e-9)
 
 
 def test_a_day_the_sensor_did_not_observe_is_a_gap_not_a_quiet_day():

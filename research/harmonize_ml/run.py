@@ -19,6 +19,7 @@ Run:  uv run --with lightgbm --with catboost --with xgboost python research/harm
 Needs: uv run python research/harmonize_ml/features.py
 """
 
+import os
 import sys
 import time
 import warnings
@@ -29,7 +30,7 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "data" / "research" / "harmonize_ml"
+OUT = ROOT / "data" / "research" / "harmonize_ml" / os.environ.get("HH_COUNTRY", "Ukraine")
 KEYS = ["y", "m", "tx", "ty"]
 FRP_EDGES = [0, 1, 2, 4, 8, 16, 32, 64]
 RNG = np.random.default_rng(0)
@@ -133,6 +134,11 @@ def fit_predict(lib: str, objective: str, xtr, ytr, xte, seed: int = 0):
         else:
             mdl = xgb.XGBRegressor(objective="count:poisson", n_estimators=400, learning_rate=0.05, max_depth=7, subsample=0.8,
                                    colsample_bytree=0.8, tree_method="hist", n_jobs=12, random_state=seed)  # fmt: skip
+    elif lib == "hgb":  # scikit-learn's histogram boosting: no extra system library, same family of model
+        from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+
+        kw = dict(max_iter=400, learning_rate=0.05, max_leaf_nodes=63, min_samples_leaf=100, random_state=seed)
+        mdl = HistGradientBoostingClassifier(**kw) if objective == "binary" else HistGradientBoostingRegressor(loss="poisson", **kw)
     mdl.fit(xtr, ytr)
     out = (lambda x: mdl.predict_proba(x)[:, 1]) if objective == "binary" else mdl.predict
     return np.clip(out(xtr), 0, None), np.clip(out(xte), 0, None)

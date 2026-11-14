@@ -6,7 +6,8 @@ A row exists only where at least one hotspot passed the filters; a missing row m
 Months are UTC calendar months.
 
 Output data/agg/cell_day.parquet (input of pipeline.harmonize):
-    country, stream, local_date, gx, gy, lat, lon, frp, n_det, has_day, cell_id
+    country, stream, local_date, gx, gy, lat, lon, frp, n_det, has_day,
+    frp_max, n_day, n_night, n_high, scan, track, cell_id
 
 Usage:  uv run python -m pipeline.aggregate
 """
@@ -80,6 +81,7 @@ def build_cell_days(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg
         copy (
             with p as (
                 select country, sensor, satellite, local_date, lat, lon, frp, daynight,
+                       confidence_class, scan_km, track_km,
                        cast(floor(lat / {d}) as integer) as gy,
                        cast(floor(lon * cos(radians((floor(lat / {d}) + 0.5) * {d})) / {d}) as integer) as gx
                 from read_parquet('{points.as_posix()}/**/*.parquet', hive_partitioning = true)
@@ -92,7 +94,12 @@ def build_cell_days(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg
             ),
             c as (
                 select country, stream, local_date, gx, gy, avg(lat) as lat, avg(lon) as lon,
-                       round(sum(frp), 1) as frp, count(*) as n_det, max((daynight = 'D')::integer) as has_day
+                       round(sum(frp), 1) as frp, count(*) as n_det, max((daynight = 'D')::integer) as has_day,
+                       -- what the detections of the cell-day looked like: inputs of the detection weight
+                       round(max(frp), 1) as frp_max,
+                       sum((daynight = 'D')::integer) as n_day, sum((daynight = 'N')::integer) as n_night,
+                       sum((confidence_class = 'high')::integer) as n_high,
+                       round(avg(scan_km), 3) as scan, round(avg(track_km), 3) as track
                 from s group by country, stream, local_date, gx, gy
             )
             select *,

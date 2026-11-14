@@ -94,6 +94,9 @@ def main() -> None:
             "M4 lgbm share r=3, + place and season, +-15 d": dict(weight="lgbm", target="share3", feats=R.POINT_GEO, season=15),
             "M5 lgbm share r=1, cell features, +-15 d": dict(weight="lgbm", target="share1", feats=R.POINT_PLUS, season=15),
         })  # fmt: skip
+    if "--check" in sys.argv:
+        check(vg, mg, truth, years, gaps)
+        return
     if "--final" in sys.argv:
         final(v, m, vg, mg, truth, years, gaps)
         return
@@ -114,6 +117,45 @@ def main() -> None:
             for n, d in tabs.items()]  # fmt: skip
     df = pd.DataFrame(rows)
     df.to_csv(R.OUT / "results_improve.csv", index=False)
+    for col in ("bias", "country_year", "country_month", "tile_year", "tile_month", "d_country_month", "d_tile_month"):
+        df[col] = (df[col] * 100).round(2)
+    pd.set_option("display.width", 260, "display.max_colwidth", 50)
+    print(df.drop(columns=["d_tile_month_90"]).to_string(index=False))
+
+
+def check(vg, mg, truth, years, gaps) -> None:
+    """Does the gain hold in this country, and does scikit-learn's boosting match LightGBM?"""
+    cache = R.OUT / "oof"
+    cache.mkdir(exist_ok=True)
+
+    def cached(tag: str, make):
+        path = cache / f"check_{tag}.parquet"
+        if not path.exists():
+            make().groupby(KEYS).w.sum().reset_index().to_parquet(path)
+            R.log(f"done: {tag}")
+        return pd.read_parquet(path)
+
+    _, c, _, _ = R.load()
+    c["local_date"] = pd.to_datetime(c.local_date)
+    cg = c[~c.local_date.isin(gaps)]
+    folds = [([y for y in years if y != t], [t]) for t in years]
+    point = lambda lib: dict(weight=lib, target="share1", feats=R.POINT_PLUS, season=15)  # noqa: E731
+    cell = lambda lib: pd.concat([R.cell_model(dict(lib=lib, feats=R.CELL_GEO), cg, truth, tr, te) for tr, te in folds])  # noqa: E731
+    preds = {
+        "A1 bins x month, gap days left out": cached("A1", lambda: loyo(dict(weight="bins", season="month"), vg, mg)),
+        "A3 pipeline now: bins x season by day of year": cached("A3", lambda: loyo(dict(weight="bins", season=15), vg, mg)),
+        "M5 boosted weight, LightGBM": cached("M5_lgbm", lambda: loyo(point("lgbm"), vg, mg)),
+        "M5 boosted weight, scikit-learn": cached("M5_hgb", lambda: loyo(point("hgb"), vg, mg)),
+        "C4 cell-day model, LightGBM": cached("C4_lgbm", lambda: cell("lgbm")),
+        "C4 cell-day model, scikit-learn": cached("C4_hgb", lambda: cell("hgb")),
+    }
+    preds["F mean of M5 and C4, scikit-learn"] = R.blend(preds["M5 boosted weight, scikit-learn"], preds["C4 cell-day model, scikit-learn"])
+    preds["F mean of A3, M5 and C4, scikit-learn"] = pd.concat([preds[n].assign(w=preds[n].w / 3) for n in (
+        "A3 pipeline now: bins x season by day of year", "M5 boosted weight, scikit-learn", "C4 cell-day model, scikit-learn")])
+    ref = "A3 pipeline now: bins x season by day of year"
+    tabs = {n: R.table(p, truth, years) for n, p in preds.items()}
+    df = pd.DataFrame([{"model": n, **R.scores(d), **(R.versus(d, tabs[ref]) if n != ref else {})} for n, d in tabs.items()])
+    df.to_csv(R.OUT / "results_check.csv", index=False)
     for col in ("bias", "country_year", "country_month", "tile_year", "tile_month", "d_country_month", "d_tile_month"):
         df[col] = (df[col] * 100).round(2)
     pd.set_option("display.width", 260, "display.max_colwidth", 50)

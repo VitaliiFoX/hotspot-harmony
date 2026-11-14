@@ -33,6 +33,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--country", default="Ukraine")
     args = ap.parse_args()
+    global OUT
+    OUT = OUT / args.country
     OUT.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     con.execute("set threads = 12")

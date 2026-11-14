@@ -117,8 +117,10 @@ low-confidence detections. Both filters are set in `config/regions.yaml`.
 ## Use of AI tools
 
 An AI coding assistant (Claude Code by Anthropic) is used to write the code, tests and
-documentation in this repository: the data pipeline, the API and the web app. No AI model runs
-inside the product; harmonization and anomalies are plain statistics.
+documentation in this repository: the data pipeline, the API and the web app. No language
+model and no pretrained model runs inside the product. The harmonization fits its own small
+regression model (gradient boosting, scikit-learn) to the FIRMS data where that beats a plain table
+on held-out years; anomalies are plain statistics.
 
 ## License
 
