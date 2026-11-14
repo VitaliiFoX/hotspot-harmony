@@ -9,6 +9,7 @@ import { ChartCard } from "./components/ChartCard";
 import { DateTimePanel } from "./components/DateTimePanel";
 import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
+import { GlobeBoundary } from "./components/GlobeBoundary";
 import { DEFAULT_HOUR, clampDate, countHotspots, defaultDate, parseDateParam, parseHourParam } from "./globe";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
@@ -212,6 +213,7 @@ export function App() {
 
   return (
     <>
+      <GlobeBoundary>
       <Globe
         regions={meta?.regions ?? []}
         date={date}
@@ -239,6 +241,7 @@ export function App() {
           ) : null
         }
       />
+      </GlobeBoundary>
       <div className="page">
         <header className="top">
           <div>
