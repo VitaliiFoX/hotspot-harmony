@@ -6,6 +6,7 @@
   --surface-raised: #ffffff;
   --ink: #0b0b0b;
   --ink-2: #52514e;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1.5 1.5l4.5 4.5 4.5-4.5' fill='none' stroke='%2352514e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --muted: #6f6d68;
   --grid: #e1e0d9;
   --axis: #c3c2b7;
@@ -30,6 +31,7 @@
     --surface-raised: #1b202b;
     --ink: #f0efec;
     --ink-2: #c3c2b7;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1.5 1.5l4.5 4.5 4.5-4.5' fill='none' stroke='%23c3c2b7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     --muted: #898781;
     --grid: #232833;
     --axis: #353b49;
@@ -51,6 +53,7 @@
   --surface-raised: #1b202b;
   --ink: #f0efec;
   --ink-2: #c3c2b7;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1.5 1.5l4.5 4.5 4.5-4.5' fill='none' stroke='%23c3c2b7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --muted: #898781;
   --grid: #232833;
   --axis: #353b49;
@@ -125,13 +128,32 @@ input,
 select {
   height: 36px;
   padding: 0 12px;
-  background: var(--surface);
+  background-color: var(--surface);
   border: 1px solid var(--axis);
   border-radius: var(--radius-control);
 }
 input:hover,
 select:hover {
-  background: var(--wash);
+  background-color: var(--wash);
+}
+/* Our own chevron instead of the browser's: same weight and colour as the rest of the controls. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 36px;
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+  background-size: 12px 8px;
+  font-weight: 500;
+  cursor: pointer;
+}
+select:hover {
+  border-color: var(--ink-2);
+}
+select option {
+  background-color: var(--surface);
+  color: var(--ink);
 }
 input[aria-invalid="true"] {
   border-color: var(--danger);
