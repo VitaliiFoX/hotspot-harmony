@@ -173,7 +173,49 @@
   justify-items: start;
   gap: 4px;
   max-width: calc(100% - 372px - 72px);
-  text-shadow: var(--head-shadow);
+  padding: 16px 20px 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  background: var(--glass-solid); /* solid on purpose: the title must read over any imagery */
+  box-shadow: var(--glass-shadow);
+}
+/* The globe stops short of the full screen and points to the calendar, so the page reads as one page. */
+.stage {
+  min-height: 560px;
+  height: calc(100vh - 72px);
+}
+.stage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.stage-actions .stage-toggle {
+  margin-top: 0;
+}
+.stage-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 22px;
+  background: var(--stage-ink);
+  color: var(--space);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.stage .stage-next:hover {
+  opacity: 0.88;
+}
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 .stage-head h1 {
   font-size: 28px;
@@ -317,6 +359,7 @@
 }
 @media (prefers-reduced-transparency: reduce) {
   .dt-panel,
+  .stage-head,
   .stage-legend,
   .stage-toggle,
   .stage .dt-round {
@@ -569,18 +612,22 @@
     width: auto;
     max-width: none;
   }
+  .stage {
+    height: auto;
+  }
   .stage-map {
     position: relative;
     height: 70vh;
     margin: 0 -16px;
   }
+
   .stage-table {
     inset: 16px;
     max-height: none;
   }
 }
 .stage .maplibregl-ctrl-top-left {
-  top: 172px;
+  top: 214px;
   left: 14px;
 }
 @media (max-width: 899px) {
@@ -588,4 +635,16 @@
     top: 0;
     left: 6px;
   }
+}
+
+/* With a mouse or trackpad the plain-wheel overlay is hidden: the page simply scrolls, and the zoom
+   shortcut is in the legend. Touch screens keep MapLibre's "use two fingers" message. */
+@media (hover: hover) and (pointer: fine) {
+  .stage .maplibregl-cooperative-gesture-screen {
+    display: none;
+  }
+}
+.legend-hint {
+  color: var(--stage-ink);
+  font-weight: 600;
 }
