@@ -30,11 +30,20 @@ coarser one, but a coarse sensor cannot recover fires it never saw.
 4. **A weight for every VIIRS cell-day.** What is left after gridding is sensitivity: MODIS misses
    weak fires. So each VIIRS cell-day gets
 
-       weight = k x p(fire power, day or night) x r(day of year)
+       weight = k x share(what the cell-day looked like) x r(day of year)
 
-   - `p` is measured, not assumed: among VIIRS cell-days of that fire power, the share where MODIS
-     also reported fire within one cell the same day. It rises steadily with fire power
-     (table in VALIDATION.md).
+   - `share` is how much of a MODIS fire cell-day this VIIRS cell-day stands for. It is measured,
+     not assumed: every MODIS cell-day is one unit, split equally among the VIIRS cell-days within
+     one cell the same day. Two ways to turn that into a rule are fitted, and each country gets
+     the one that predicts held-out years better:
+     - a **table** by fire power and day or night (the detection curve in VALIDATION.md: the
+       stronger the fire, the more likely MODIS also saw it);
+     - a **boosted regression model** (scikit-learn, Poisson loss) that also looks at the number
+       and confidence of the detections and the pixel size.
+
+     The model has to earn its place: it is used only where it beats the table by a clear margin
+     on years held out three at a time. It wins in Ukraine and loses in Argentina, so Ukraine gets
+     the model and Argentina the table. VALIDATION.md states which one each country got and why.
    - `k` is one scale that makes totals match. MODIS also sees fires at hours when VIIRS is not
      overhead (Terra passes in the morning), which no VIIRS detection can stand in for.
    - `r` is the seasonal difference that remains. It follows the day of the year smoothly (each day
@@ -94,20 +103,25 @@ All figures are country x month error on Ukraine from leave-one-year-out, measur
 | + sensor gap days left out | 7.0% |
 | + season factor by day of year, +-15 days | 6.5% |
 
+| + boosted model for the weight, where it wins on held-out years | 6.1% |
+
+The boosted model was measured with LightGBM, XGBoost, CatBoost and scikit-learn: the four agree to
+0.02 points, so the pipeline uses scikit-learn, which needs no extra system library. On Argentina the
+same model is worse than the table (8.0% against 7.4% per month), which is why it is chosen per
+country and not switched on everywhere.
+
 **Measured, not adopted** (`research/harmonize_ml/`, run with `research/harmonize_ml/run.sh`; same
-data with gap days left out, so compare with 6.5%):
+data with gap days left out, so compare with 6.5% for the table and 6.1% for the model):
 
 | Idea | Error | Note |
 |---|---|---|
-| Boosted model for the weight: LightGBM, XGBoost or CatBoost | 6.1% | the three libraries agree to 0.02 points |
 | Boosted Poisson model on 0.25 degree cell x day, seeing the days and cells around | 6.1-6.2% | best on small areas: 18.8% against 19.6% per 1-degree tile and month |
 | Mean of the weight models and the cell-day models | 5.9% | best found |
 | Cell-day model with each cell's own history as a feature | worse | 4% low on unseen years: it memorises where the training years burned |
 | Averaging S-NPP and NOAA-20 instead of using one (2018-04 to 2021-12, first version of the weights) | 6.2% against 6.7% | 20.3% against 21.6% per tile and month |
 
-The boosted models buy about half a point per month for three more libraries and a trained model
-that cannot be explained in one chart, so they stay in `research/` for now. Averaging the two VIIRS
-sensors is the next candidate for the pipeline.
+The cell-day model and the blends were measured on Ukraine only; they are not in the pipeline until
+they are checked on a second country. Averaging the two VIIRS sensors is the next candidate.
 
 **Rejected earlier** (`research/experiments/`, measured against the 8.0% version): neighbouring cells
 as features for the weight (8.7%, clusters get over-counted), a model on area totals (9.0%), a

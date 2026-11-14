@@ -24,6 +24,10 @@ Decided by the team on 2026-11-14.
 
 ## Consequences
 
+- The weight comes from a table by fire power or from a boosted regression model, whichever predicts
+  held-out years better in that country. So two countries can use different rules, and
+  `docs/VALIDATION.md` says which. This keeps the model from being used where it hurts (Argentina).
+
 - The raw record served by the API is counted in fire cell-days too (`n_raw`), so the two series differ only in the correction, not in unit. Settled on 2026-11-14 after this ADR was written.
 - The month of a harmonized value is the month of the local solar day, not the UTC month.
 - MODIS is the reference until 2021-12 and VIIRS NOAA-20 carries the record from 2022-01, because

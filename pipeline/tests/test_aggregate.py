@@ -1,7 +1,7 @@
 import duckdb
 import pytest
 
-from pipeline.aggregate import aggregate, cell_of
+from pipeline.aggregate import aggregate, build_cell_days, cell_of
 from pipeline.config import Config
 
 CFG = Config(regions=(), sensors=(), cell_deg=0.25, drop_confidence=("low",), keep_types=(0,))
@@ -60,3 +60,26 @@ def test_aggregate_counts_filters_and_months(tmp_path, points):
     viirs = df[df.sensor == "viirs_snpp"].iloc[0]
     assert (viirs.n_hotspots, viirs.cell_lat, viirs.cell_lon) == (1, 48.375, 38.875)
     assert int(df.n_hotspots.sum()) == 5
+
+
+def test_cell_days_describe_the_detections_they_are_made_of(tmp_path):
+    folder = tmp_path / "points" / "sensor=viirs_snpp" / "year=2024"
+    folder.mkdir(parents=True)
+    # three detections of one sensor in the same ~1 km cell on the same local day, and a low-confidence one
+    duckdb.sql(f"""
+        copy (select * from (values
+            (48.4001, 30.0001, 'N', 12.0, 'D', 'nominal', 0, 0.40, 0.38, date '2024-08-10', 'Testland'),
+            (48.4002, 30.0002, 'N',  4.0, 'D', 'high',    0, 0.44, 0.40, date '2024-08-10', 'Testland'),
+            (48.4003, 30.0003, 'N',  2.0, 'N', 'nominal', 0, 0.48, 0.42, date '2024-08-10', 'Testland'),
+            (48.4003, 30.0003, 'N', 50.0, 'D', 'low',     0, 0.40, 0.40, date '2024-08-10', 'Testland')
+        ) t(lat, lon, satellite, frp, daynight, confidence_class, type, scan_km, track_km, local_date, country))
+        to '{folder}/p.parquet' (format parquet)
+    """)
+    out = tmp_path / "agg" / "cell_day.parquet"
+    con = duckdb.connect()
+    assert build_cell_days(con, tmp_path / "points", out, CFG) == 1
+    row = con.execute(f"select * from read_parquet('{out}')").df().iloc[0]
+    assert (row.stream, row.n_det, row.frp, row.frp_max) == ("viirs_snpp", 3, 18.0, 12.0)  # the low one is dropped
+    assert (row.has_day, row.n_day, row.n_night, row.n_high) == (1, 2, 1, 1)
+    assert (row.scan, row.track) == (0.44, 0.4)
+    assert row.cell_id == cell_of(48.4002, 30.0002, 0.25)[0]
