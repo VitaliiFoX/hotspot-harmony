@@ -112,6 +112,7 @@ low-confidence detections. Both filters are set in `config/regions.yaml`.
   CI fails when Cyrillic text shows up in a tracked file, a commit message, or a PR title or body.
 - Work on a branch and open a pull request against `main`.
 - Run `make test` and `make lint` before you push.
+- **No commits after Sunday 2026-11-15 23:59 Kyiv time (21:59 UTC).** The hackathon submission is frozen then.
 
 ## Use of AI tools
 
