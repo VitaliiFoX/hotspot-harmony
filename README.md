@@ -8,6 +8,10 @@ Built during the 2026 NASA Space Apps Challenge for the challenge
 
 **Demo:** not deployed yet.
 
+![The dashboard on the raw record for Argentina](docs/screenshots/dashboard-raw-argentina.png)
+
+*The raw record for Argentina. The step in 2012 is the sensor jump this project removes.*
+
 ## Why
 
 Satellites have recorded active fires since 2000, but the record is split between sensors that
@@ -26,7 +30,8 @@ on which satellite was flying.
 | Aggregate to grid cell x month x sensor | done |
 | Harmonize the sensors and validate | prototype in `research/`, not in the pipeline yet |
 | API (FastAPI): calendar, anomaly, CSV export | done on the raw series; serves the harmonized series once `data/agg/harmonized.parquet` exists |
-| Web app (map, calendar, anomalies, CSV export) | not started |
+| Web app: filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done without a map: the area is a region or a box typed in degrees |
+| Map with a drawn area of interest | not started |
 
 ## Run it
 
@@ -36,6 +41,7 @@ Requires [uv](https://docs.astral.sh/uv/) and `make`.
 make data                  # download, normalize, aggregate every country in config/regions.yaml
 make data COUNTRY=Ukraine  # one country only
 make api                   # serve the API on http://localhost:8000 (endpoints listed at /docs)
+make web                   # serve the web app on http://localhost:5173 (needs `make api` running, and Node 24)
 make test                  # pytest
 make lint                  # ruff + English-only check
 ```
@@ -51,6 +57,7 @@ To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) 
 config/regions.yaml   countries, grid size, filters
 pipeline/             ingest -> normalize -> aggregate (+ tests)
 api/                  FastAPI service over the pipeline's output (+ tests)
+web/                  React + TypeScript dashboard (Vite); charts are hand-written SVG, no chart library
 research/             experiments that are not part of the pipeline
 data/                 generated, git-ignored (see data/README.md)
 CLAUDE.md             instructions for AI coding agents
@@ -106,8 +113,9 @@ low-confidence detections. Both filters are set in `config/regions.yaml`.
 
 ## Use of AI tools
 
-An AI coding assistant (Claude Code by Anthropic) is used to write pipeline code, tests and
-documentation in this repository.
+An AI coding assistant (Claude Code by Anthropic) is used to write the code, tests and
+documentation in this repository: the data pipeline, the API and the web app. No AI model runs
+inside the product; harmonization and anomalies are plain statistics.
 
 ## License
 

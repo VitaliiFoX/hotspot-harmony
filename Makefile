@@ -1,4 +1,4 @@
-.PHONY: data ingest normalize aggregate api test lint
+.PHONY: data ingest normalize aggregate api web test lint
 
 # Limit to one country with: make data COUNTRY=Ukraine
 COUNTRY_ARG := $(if $(COUNTRY),--country $(COUNTRY))
@@ -18,8 +18,13 @@ aggregate:
 api:
 	uv run uvicorn --factory api.main:app --reload --reload-dir api
 
+# http://localhost:5173, talks to `make api` through a dev proxy
+web:
+	cd web && npm install && npm run dev
+
 test:
 	uv run pytest -q
+	cd web && npm test
 
 lint:
 	uv run ruff check .

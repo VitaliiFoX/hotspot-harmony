@@ -10,7 +10,7 @@ reproducible from this repo.
 
 ## Working here
 
-- Run `make test` and `make lint` before every commit. Tests build their own fixtures in `tmp_path` and never read `data/`.
+- Run `make test` and `make lint` before every commit. Tests build their own fixtures in `tmp_path` and never read `data/`. `make test` also runs the web tests and needs `npm install` in `web/` once.
 - `data/` is git-ignored. `make data` rebuilds it: about 700 MB of CSV for two countries, 2-3 minutes, no key needed.
 - Run the pipeline for all configured countries at once. `COUNTRY=` / `--country` rewrites `data/points/` with that country alone, so the other countries vanish until the next full run.
 - Two people and their agents work here in parallel. Fetch and rebase before starting, work on a branch, open a small PR against `main`.
@@ -53,6 +53,16 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 - A cell belongs to an area of interest when its centre is inside it.
 - Regions are known by bounding box only. An area in a neighbouring country that falls inside a region's box gets zeros and a warning, not an error. Real borders are not in the repo yet.
 - API tests go through HTTP on a record small enough to work out on paper (`api/tests/test_api.py`). Extend that record when adding behaviour.
+
+## Web app
+
+- `web/` is React + TypeScript on Vite. `make web` runs it against `make api` through the dev proxy; production reads `VITE_API_URL`.
+- Charts are hand-written SVG and CSS grid, with no chart library. Shared number, tick and colour logic lives in `web/src/scale.ts` and is the part under test (`npm test`).
+- Colour rules: burning is one blue ramp, light to dark (`SEQUENTIAL`); exactly zero gets its own neutral fill; on a dark surface the ramp is reversed so more is further from the surface. Add no second hue to the calendar.
+- Every chart card has a table view and reads on arrow keys. Keep both when adding a chart: they are how the page works without colour or a pointer.
+- All colours come from the custom properties at the top of `web/src/styles.css`, defined for light and dark.
+- The filters are mirrored in the address (`?region=...&box=w,s,e,n&start=...&end=...&series=...`), so a view can be shared as a link and screenshotted headless.
+- Look at the page after a visual change: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --window-size=1320,1600 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:5173/?theme=light"`. Headless Chrome will not go narrower than 500 px.
 
 ## Open decision: how to harmonize
 
