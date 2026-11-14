@@ -10,7 +10,9 @@ const MONTH_NAMES = [
 
 /** The date the globe opens on when the record covers it: a busy day in the southern burning season. */
 export const PREFERRED_DATE = "2025-08-20";
-export const DEFAULT_HOUR = 18;
+/** Time of day the globe opens on, in minutes after 00:00 UTC (18:59). */
+export const DEFAULT_TIME = 18 * 60 + 59;
+export const LAST_MINUTE = 24 * 60 - 1;
 
 /** "YYYY-MM-DD" if the text is a real calendar date written that way, otherwise null. */
 export function parseDateParam(text: string | null): string | null {
@@ -21,10 +23,18 @@ export function parseDateParam(text: string | null): string | null {
 }
 
 /** A whole hour 0..23, or null for anything else. */
-export function parseHourParam(text: string | null): number | null {
-  if (!text || !/^\d{1,2}$/.test(text)) return null;
-  const hour = Number(text);
-  return hour <= 23 ? hour : null;
+/**
+ * The time of day from the address, in minutes after 00:00 UTC: "HH:MM", or an older link's whole hour
+ * "HH", read as the end of that hour. Null when it is not a time of day.
+ */
+export function parseTimeParam(time: string | null, hour: string | null = null): number | null {
+  const hm = time?.match(/^(\d{1,2}):(\d{2})$/);
+  if (hm) {
+    const [h, m] = [Number(hm[1]), Number(hm[2])];
+    return h <= 23 && m <= 59 ? h * 60 + m : null;
+  }
+  if (hour && /^\d{1,2}$/.test(hour) && Number(hour) <= 23) return Number(hour) * 60 + 59;
+  return null;
 }
 
 export function daysInMonth(year: number, month: number): number {
@@ -91,6 +101,11 @@ export function hourLabel(hour: number, minute = 0): string {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+/** Minutes after 00:00 as "HH:MM". */
+export function timeLabel(time: number): string {
+  return hourLabel(Math.floor(time / 60), time % 60);
+}
+
 /** A sensor id as people read it: "viirs_snpp" is "VIIRS S-NPP". */
 export function sensorLabel(sensor: string): string {
   const known: Record<string, string> = {
@@ -105,10 +120,13 @@ export function sensorLabel(sensor: string): string {
 export type RegionCounts = { throughHour: number; inHour: number; day: number };
 export type HourCounts = RegionCounts & { regions: RegionCounts[] };
 
-/** Hotspots from 00:00 through the end of an hour, in that hour and in the whole day, overall and per region. */
-export function countHotspots(hotspots: DayHotspot[], hour: number, regionCount: number): HourCounts {
-  const start = hour * 60;
-  const end = start + 60;
+/**
+ * Hotspots from 00:00 through `time` (minutes after 00:00 UTC, inclusive), in the hour up to it, and in the
+ * whole day, overall and per region.
+ */
+export function countHotspots(hotspots: DayHotspot[], time: number, regionCount: number): HourCounts {
+  const start = time - 59;
+  const end = time + 1;
   const regions: RegionCounts[] = Array.from({ length: regionCount }, () => ({ throughHour: 0, inHour: 0, day: 0 }));
   const total: RegionCounts = { throughHour: 0, inHour: 0, day: 0 };
   for (const [, , minute, regionIndex] of hotspots) {
@@ -130,12 +148,10 @@ export function dotStyle(value: number, monthMax: number): { size: number; opaci
 }
 
 /** Map filters: every hotspot up to the end of the hour, and those detected within the hour. */
-export function hourFilters(hour: number): { through: FilterSpecification; inHour: FilterSpecification } {
-  const start = hour * 60;
-  const end = start + 60;
+export function hourFilters(time: number): { through: FilterSpecification; inHour: FilterSpecification } {
   return {
-    through: ["<", ["get", "minute"], end],
-    inHour: ["all", [">=", ["get", "minute"], start], ["<", ["get", "minute"], end]],
+    through: ["<=", ["get", "minute"], time],
+    inHour: ["all", [">", ["get", "minute"], time - 60], ["<=", ["get", "minute"], time]],
   };
 }
 
@@ -166,9 +182,10 @@ export function boxRing([west, south, east, north]: Bbox): [number, number][] {
 }
 
 /** Milliseconds of the middle of an hour of a UTC day, the instant the night side is drawn for. */
-export function hourInstant(date: string, hour: number): number {
+/** The instant shown: the selected day at the selected minute, UTC. */
+export function hourInstant(date: string, time: number): number {
   const [year, month, day] = date.split("-").map(Number);
-  return Date.UTC(year, month - 1, day, hour, 30);
+  return Date.UTC(year, month - 1, day, 0, time);
 }
 
 /**

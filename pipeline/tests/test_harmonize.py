@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from pipeline import harmonize as hz
-from pipeline.validate import compare, interval_by_size, leave_one_year_out, scores, sensor_jump
+from pipeline.validate import TABLE_ONLY, compare, interval_by_size, leave_one_year_out, scores, sensor_jump
 
 
 def cell_days(stream, dates, frp=5.0, has_day=1, matched=0, lat=48.1, lon=30.1, cell_id=1):
@@ -89,51 +89,102 @@ def test_each_modis_cell_day_is_shared_among_the_viirs_cell_days_that_explain_it
     }  # fmt: skip
 
 
-def test_the_boosted_model_is_used_only_when_it_clearly_wins(overlap, monkeypatch):
+def test_anything_but_the_table_is_used_only_when_it_clearly_wins():
+    errors = {"bins": 0.070, "boosted": 0.072, "context": 0.064, "bins+context": 0.060, "boosted+context": 0.066}
+    assert hz.choose_method(errors) == "bins+context"  # the lowest error, a full point under the table
+    near_tie = {"bins": 0.070, "boosted": 0.072, "context": 0.0685, "bins+context": 0.069}
+    assert hz.choose_method(near_tie) == "bins"  # better, but within the margin: the table stays
+    assert hz.choose_method({"bins": 0.070, "boosted": 0.080}) == "bins"  # worse on held-out years: never
+    assert hz.choose_method({"bins": 0.070, "boosted": 0.060}) == "boosted"
+
+    assert [hz.context_share(m) for m in hz.METHODS] == [0.0, 0.0, 1.0, 0.5, 0.5]
+
+
+def test_held_out_errors_score_every_method_on_years_the_fit_did_not_see(overlap):
     viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
-    for errors, expected in (
-        ({"bins": 0.070, "boosted": 0.060}, "boosted"),  # a full point better: use the model
-        ({"bins": 0.070, "boosted": 0.069}, "bins"),     # within the margin: the simpler table wins
-        ({"bins": 0.070, "boosted": 0.080}, "bins"),     # worse on held-out years: never
-    ):  # fmt: skip
-        monkeypatch.setattr(hz, "held_out_month_error", lambda v, m, weights, e=errors: e[weights])
-        assert hz.choose_weights(viirs, modis) == (expected, errors)
+    errors = hz.held_out_month_errors(viirs, modis)
+    assert set(errors) == {"bins", "boosted"}  # no context table given: only the weights are scored
+    assert 0 < errors["bins"] < 0.5  # random synthetic months: far from perfect, far from useless
+    # a fit that sees the test years cannot be scored this way by accident: in-sample it does no worse
+    par = hz.fit_viirs(viirs, modis, "bins")
+    in_sample = hz.viirs_weights(par, viirs).groupby([viirs.y, viirs.m]).sum()
+    truth = modis.groupby(["y", "m"]).size()
+    assert float((in_sample - truth).abs().sum() / truth.sum()) <= errors["bins"] + 0.02
+
+    context = context_rows(viirs, modis)
+    assert set(hz.held_out_month_errors(viirs, modis, context)) == set(hz.METHODS)
 
 
-@pytest.fixture
-def three_years():
-    """One day of fire a year. VIIRS reports 200, 200 and 400 cell-days; MODIS reports 100 every year."""
-    july = {2013: 200, 2014: 200, 2015: 400}
-    viirs = pd.concat([cell_days("viirs_snpp", [f"{y}-07-01"] * n, matched=1) for y, n in july.items()])
-    modis = pd.concat([cell_days("modis", [f"{y}-07-01"] * 100) for y in july])
-    df = hz.prepare(pd.concat([viirs, modis], ignore_index=True))
-    return df[df.stream == "viirs_snpp"], df[df.stream == "modis"]
+def context_rows(viirs, modis):
+    """A context table for the synthetic overlap: one cell, one row per day with VIIRS activity."""
+    cd = viirs.groupby("local_date").size().rename("cd")
+    seen = modis.groupby("local_date").size().rename("modis")
+    rows = pd.concat([cd, seen], axis=1, sort=True).dropna(subset=["cd"]).fillna(0)
+    rows = rows.reset_index().assign(cell_id=797195)
+    other = [c for c in ("cd_day", "cd_night", "frp", "frp_max", "det", "high", "cd_weak", "cd_strong", "nb_cd",
+                         "nb_frp", "cd_p1", "frp_p1", "cd_p2", "cd_n1", "frp_n1", "cd_n2")]  # fmt: skip
+    return hz.prepare_context(rows.assign(**{c: 0.0 for c in other}))
 
 
-def test_a_held_out_year_is_predicted_from_the_other_years_only(three_years):
-    viirs, modis = three_years
-    # 2015 from 2013-2014: 200 MODIS / 400 VIIRS = 0.5 per cell-day, times its 400 cell-days = 200
-    # 2013 from 2014-2015: 200 / 600 = 1/3, times 200 = 66.67; 2014 the same
-    held_out = leave_one_year_out(viirs, modis, "bins")
-    assert held_out.groupby("y").w.sum().to_dict() == pytest.approx({2013: 200 / 3, 2014: 200 / 3, 2015: 200.0})
-    assert set(held_out.weights) == {"bins"}
-    # misses of 33.33, 33.33 and 100 on a truth of 300. A fit on all three years would weigh a cell-day
-    # 300 / 800 and miss by 25, 25 and 50: 1/3
-    assert hz.held_out_month_error(viirs, modis, "bins") == pytest.approx(5 / 9)
+def test_context_model_keeps_the_total_and_never_goes_negative(overlap):
+    viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
+    rows = context_rows(viirs, modis)
+    par = hz.fit_context(rows, len(modis))
+    values = hz.context_values(par, rows)
+    assert values.sum() == pytest.approx(len(modis), rel=1e-9)
+    assert values.min() >= 0
+    # the settings that were unstable must not come back: Poisson loss ran away, early stopping quit after 10 rounds
+    assert hz.BOOSTING["loss"] == "squared_error" and hz.BOOSTING["early_stopping"] is False
 
 
-def test_the_choice_of_weight_never_sees_the_held_out_year(three_years, monkeypatch):
-    viirs, modis = three_years
-    seen = []
+def test_context_table_describes_the_cell_its_neighbours_and_the_days_around(tmp_path):
+    ncols = 1440
+    home = 553 * ncols + 875
+    rest = "48.1, 30.1, 1, 1, 1, 0, 0, 0.4, 0.4"
+    rows = [  # stream, local date, gx, frp, cell_id
+        ("viirs_snpp", "2015-08-02", 0, 5.0, home),        # the cell today: two cell-days, one weak, one strong
+        ("viirs_snpp", "2015-08-02", 1, 20.0, home),
+        ("viirs_snpp", "2015-08-01", 0, 3.0, home),        # the cell the day before
+        ("viirs_snpp", "2015-08-02", 2, 7.0, home + 1),    # the cell to the east today
+        ("modis", "2015-08-02", 0, 9.0, home),             # what MODIS saw in the cell today
+        ("modis", "2015-08-02", 5, 9.0, home),
+        ("modis", "2015-08-04", 0, 9.0, home),             # no VIIRS in or around the cell within a day: no row
+    ]  # fmt: skip
+    values = ", ".join(
+        f"('Testland', '{s}', date '{d}', {gx}, 0, {frp}, {frp}, {cid}, {rest})" for s, d, gx, frp, cid in rows
+    )
+    path = tmp_path / "cell_day.parquet"
+    duckdb.sql(f"""
+        copy (select * from (values {values}) t(country, stream, local_date, gx, gy, frp, frp_max, cell_id,
+                                                 lat, lon, n_det, has_day, n_day, n_night, n_high, scan, track))
+        to '{path}' (format parquet)
+    """)
+    con = duckdb.connect()
+    hz.load_cell_days(con, path, "Testland")
+    ctx = hz.load_context(con, "viirs_snpp").set_index(["cell_id", "local_date"])
 
-    def choose(train_viirs, train_modis):
-        seen.append((sorted(train_viirs.y.unique()), sorted(train_modis.y.unique())))
-        return "bins", {}
+    today = ctx.loc[(home, "2015-08-02")]
+    assert (today.modis, today.cd, today.cd_day, today.frp, today.frp_max) == (2, 2, 2, 25.0, 20.0)
+    assert (today.cd_weak, today.cd_strong) == (0, 1)  # under 2 MW is weak, 16 MW and more is strong
+    assert (today.nb_cd, today.nb_frp, today.cd_p1, today.frp_p1, today.cd_n1) == (1, 7.0, 1, 3.0, 0)
+    assert (today.lat, today.lon) == (48.375, 38.875)
+    assert (home, pd.Timestamp("2015-08-03")) not in ctx.index  # after the sensor's last day: no row, no new month
+    assert ctx.loc[(home + 1, "2015-08-01")].nb_cd == 1  # a neighbour of yesterday's fire, inside the sensor's days
+    assert (home, pd.Timestamp("2015-08-04")) not in ctx.index  # rows are chosen from VIIRS alone
+    assert ctx.loc[(home - 1, "2015-08-02")].nb_cd == 2  # the cell to the west sees its eastern neighbour burn
+    assert ctx.modis.sum() == 2
 
-    monkeypatch.setattr(hz, "choose_weights", choose)
-    held_out = leave_one_year_out(viirs, modis, "auto")
-    assert seen == [([2014, 2015], [2014, 2015]), ([2013, 2015], [2013, 2015]), ([2013, 2014], [2013, 2014])]
-    assert held_out.groupby("y").w.sum().to_dict() == pytest.approx({2013: 200 / 3, 2014: 200 / 3, 2015: 200.0})
+
+def test_the_viirs_era_can_be_shared_with_the_context_model():
+    df = hz.prepare(pd.concat([cell_days("viirs_noaa20", ["2023-06-01"] * 4), cell_days("modis", ["2015-06-01"])],
+                              ignore_index=True))  # fmt: skip
+    par = {"p": pd.Series({df.b.iloc[0]: 0.5}), "k": 1.0, "r": np.ones(367), "n20_to_snpp": 1.0,
+           "terra": pd.Series({6: 2.0}), "context_share": 0.5}  # fmt: skip
+    record = hz.apply(df, par)
+    assert record[record.stream == "viirs_noaa20"].record_weight.sum() == pytest.approx(1.0)  # 4 x 0.5, then halved
+    extra = pd.DataFrame({"cell_id": [1, 2], "y": [2023, 2023], "m": [6, 6], "value": [1.5, 0.25]})
+    cells = hz.monthly_cells(record, 0.25, extra).set_index(["cell_id", "year", "month"]).n_harmonized
+    assert cells.to_dict() == {(1, 2015, 6): 1.0, (1, 2023, 6): 2.5, (2, 2023, 6): 0.25}  # a cell only the model fills
 
 
 def test_season_factor_pools_neighbouring_days_and_wraps_at_new_year():
@@ -207,7 +258,7 @@ def test_sensor_gap_months_are_left_out_of_the_noaa20_factor():
 
 def test_validation_scores_and_sensor_jump(overlap):
     viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
-    loyo = compare(leave_one_year_out(viirs, modis), modis)
+    loyo = compare(leave_one_year_out(viirs, modis, TABLE_ONLY)[0], modis)
     s = scores(loyo)
     raw = scores(compare(viirs.assign(w=1.0), modis))
     assert abs(s["bias"]) < 0.05 < raw["bias"]  # raw VIIRS overshoots, harmonized does not
@@ -231,3 +282,38 @@ def test_harmonize_all_discovers_countries_when_none_given(tmp_path, overlap):
     results = hz.harmonize_all(con, path, None)
     assert list(results) == ["Testland"]
 
+
+@pytest.fixture
+def three_years():
+    """One day of fire a year. VIIRS reports 200, 200 and 400 cell-days; MODIS reports 100 every year."""
+    july = {2013: 200, 2014: 200, 2015: 400}
+    viirs = pd.concat([cell_days("viirs_snpp", [f"{y}-07-01"] * n, matched=1) for y, n in july.items()])
+    modis = pd.concat([cell_days("modis", [f"{y}-07-01"] * 100) for y in july])
+    df = hz.prepare(pd.concat([viirs, modis], ignore_index=True))
+    return df[df.stream == "viirs_snpp"], df[df.stream == "modis"]
+
+
+def test_a_held_out_year_is_predicted_from_the_other_years_only(three_years):
+    viirs, modis = three_years
+    # 2015 from 2013-2014: 200 MODIS / 400 VIIRS = 0.5 per cell-day, times its 400 cell-days = 200
+    # 2013 from 2014-2015: 200 / 600 = 1/3, times 200 = 66.67; 2014 the same
+    held_out = leave_one_year_out(viirs, modis, TABLE_ONLY)[0]
+    assert held_out.groupby("y").w.sum().to_dict() == pytest.approx({2013: 200 / 3, 2014: 200 / 3, 2015: 200.0})
+    # misses of 33.33, 33.33 and 100 on a truth of 300. A fit on all three years would weigh a cell-day
+    # 300 / 800 and miss by 25, 25 and 50: 1/3
+    assert hz.held_out_month_errors(viirs, modis)["bins"] == pytest.approx(5 / 9, abs=1e-4)
+
+
+def test_the_choice_of_method_never_sees_the_held_out_year(three_years, monkeypatch):
+    viirs, modis = three_years
+    seen = []
+
+    def errors(train_viirs, train_modis, context=None, groups=3):
+        seen.append((sorted(train_viirs.y.unique()), sorted(train_modis.y.unique())))
+        return {"bins": 0.1}
+
+    monkeypatch.setattr(hz, "held_out_month_errors", errors)
+    held_out = leave_one_year_out(viirs, modis, {"method": "auto"})[0]
+    assert seen == [([2014, 2015], [2014, 2015]), ([2013, 2015], [2013, 2015]), ([2013, 2014], [2013, 2014])]
+    assert held_out.groupby("y").method.first().to_dict() == {2013: "bins", 2014: "bins", 2015: "bins"}
+    assert held_out.groupby("y").w.sum().to_dict() == pytest.approx({2013: 200 / 3, 2014: 200 / 3, 2015: 200.0})

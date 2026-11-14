@@ -7,14 +7,15 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { DayHotspots, Region } from "../api";
 import {
-  type HourCounts, MERCATOR_LIMIT, boxRing, hourFilters, hourInstant, hourLabel, longDate, nightPolygon, regionAt, terminatorLine,
+  type HourCounts, MERCATOR_LIMIT, boxRing, hourFilters, hourInstant, longDate, timeLabel, nightPolygon, regionAt, terminatorLine,
   regionsCenter,
 } from "../globe";
 
 type Props = {
   regions: Region[];
   date: string | null;
-  hour: number;
+  /** Minutes after 00:00 UTC. */
+  time: number;
   day: DayHotspots | null;
   counts: HourCounts | null;
   /** The region chosen in the filters; the globe eases to it when it changes. */
@@ -55,6 +56,8 @@ const OSM_ATTRIBUTION =
   '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
 /** From this zoom the satellite imagery (about 500 m a pixel) gives way to the OpenStreetMap street map. */
 const STREET_ZOOM = 8;
+/** Zoomed in past this, the date panel and the legend fold into small buttons to leave the map clear. */
+const CARD_ZOOM = 4;
 const LABEL_FONT = ["Noto Sans Regular"];
 const NAME = ["coalesce", ["get", "name:en"], ["get", "name"]] as unknown as string;
 
@@ -249,17 +252,44 @@ async function addStreetMap(map: MapLibreMap): Promise<void> {
   }
 }
 
+function FoldIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /**
- * The top of the page: a satellite globe of the selected day's hotspots through the selected hour,
+ * The top of the page: a satellite globe of the selected day's hotspots through the selected minute,
  * with the region boxes, the night side, a legend and a table view.
  */
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
-export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onPickRegion, panel }: Props) {
+export function Globe({ regions, date, time, day, counts, focusRegion, dark, onPickRegion, panel }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
   const [street, setStreet] = useState(false);
+  const [zoomedIn, setZoomedIn] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(true);
+  // Crossing CARD_ZOOM folds the cards away (zooming in) or brings them back (zooming out); the buttons
+  // open and close them by hand in between. Narrow screens stack the cards under the map, so they stay.
+  useEffect(() => {
+    const fold = zoomedIn && window.innerWidth >= 900;
+    setPanelOpen(!fold);
+    setLegendOpen(!fold);
+  }, [zoomedIn]);
   const [showTable, setShowTable] = useState(false);
   const regionsRef = useRef(regions);
   const pickRef = useRef(onPickRegion);
@@ -298,7 +328,10 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
     // Development only: lets a headless browser drive the map (see "Look at the globe" in CLAUDE.md).
     if (import.meta.env.DEV) (window as unknown as { __hhMap?: MapLibreMap }).__hhMap = map;
     // The glass cards are see-through: over the light street map they need a solid face to stay readable.
-    map.on("zoom", () => setStreet(map.getZoom() >= STREET_ZOOM));
+    map.on("zoom", () => {
+      setStreet(map.getZoom() >= STREET_ZOOM);
+      setZoomedIn(map.getZoom() >= CARD_ZOOM);
+    });
     map.on("load", () => {
       setReady(true);
       addStreetMap(map);
@@ -370,17 +403,17 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    const { through, inHour } = hourFilters(hour);
+    const { through, inHour } = hourFilters(time);
     map.setFilter("hotspot-glow", through);
     map.setFilter("hotspot", through);
     map.setFilter("hotspot-hour", inHour);
     (map.getSource("night") as GeoJSONSource).setData(
-      date ? { type: "Feature", properties: {}, geometry: nightPolygon(hourInstant(date, hour)) } : EMPTY,
+      date ? { type: "Feature", properties: {}, geometry: nightPolygon(hourInstant(date, time)) } : EMPTY,
     );
     (map.getSource("terminator") as GeoJSONSource).setData(
-      date ? { type: "Feature", properties: {}, geometry: terminatorLine(hourInstant(date, hour)) } : EMPTY,
+      date ? { type: "Feature", properties: {}, geometry: terminatorLine(hourInstant(date, time)) } : EMPTY,
     );
-  }, [ready, date, hour]);
+  }, [ready, date, time]);
 
   const lastFocus = useRef<string | null>(null);
   useEffect(() => {
@@ -416,7 +449,20 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
         </div>
       </div>
 
-      {panel}
+      {panelOpen ? (
+        <>
+          {panel}
+          <button type="button" className="stage-fold stage-fold-panel" aria-label="Hide the date panel" title="Hide" onClick={() => setPanelOpen(false)}>
+            <FoldIcon />
+          </button>
+        </>
+      ) : (
+        <button type="button" className="stage-pill stage-pill-panel" aria-label="Show the date panel" onClick={() => setPanelOpen(true)}>
+          <CalendarIcon />
+          {date ? `${longDate(date)}, ${timeLabel(time)} UTC` : "Date and time"}
+          {counts && <strong>{counts.throughHour.toLocaleString("en-US")}</strong>}
+        </button>
+      )}
 
       <div className="stage-map">
         <div ref={container} className={showTable ? "stage-canvas is-hidden" : "stage-canvas"} />
@@ -430,8 +476,8 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
                 <thead>
                   <tr>
                     <th scope="col">Region</th>
-                    <th scope="col">{`00:00 through ${hourLabel(hour, 59)}`}</th>
-                    <th scope="col">{`${hourLabel(hour)} to ${hourLabel(hour, 59)}`}</th>
+                    <th scope="col">{`00:00 through ${timeLabel(time)}`}</th>
+                    <th scope="col">{`${timeLabel(Math.max(0, time - 59))} to ${timeLabel(time)}`}</th>
                     <th scope="col">Whole day</th>
                   </tr>
                 </thead>
@@ -459,15 +505,19 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
         )}
       </div>
 
-      <div className="stage-legend">
+      {legendOpen ? (
+        <div className="stage-legend">
+          <button type="button" className="stage-fold stage-fold-legend" aria-label="Hide the legend" title="Hide" onClick={() => setLegendOpen(false)}>
+            <FoldIcon />
+          </button>
         <ul>
           <li>
             <i className="legend-dot" aria-hidden="true" />
-            Hotspots through the selected hour
+            Hotspots through the selected time
           </li>
           <li>
             <i className="legend-dot is-ringed" aria-hidden="true" />
-            Detected in the selected hour
+            Detected in the hour up to it
           </li>
         </ul>
         <p className="legend-hint">{`${ZOOM_KEY} + scroll zooms the globe; scroll alone moves down the page.`}</p>
@@ -477,7 +527,13 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
           <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">© OpenMapTiles</a>, data{" "}
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>.
         </p>
-      </div>
+        </div>
+      ) : (
+        <button type="button" className="stage-pill stage-pill-legend" aria-label="Show the legend and data credits" onClick={() => setLegendOpen(true)}>
+          <i className="legend-dot" aria-hidden="true" />
+          Legend and credits
+        </button>
+      )}
     </section>
   );
 }
