@@ -16,10 +16,14 @@ Contract for data/agg/harmonized.parquet (one row per cell and month that has bu
     n_raw                fire cell-days of the raw record
     sensor_used          sensor behind the harmonized value in that month
 A cell belongs to an area when its centre is inside it, so any grid size works.
+
+The hotspots of one UTC day, and the hotspot count of each day of a month, are read from data/points with
+the default filters of the config and one sensor per date, by the rule of the raw series.
 Months before RECORD_FIRST are dropped: the archive starts on 2000-11-01 UTC, and a local solar day can
 still fall on 31 October in the western hemisphere.
 """
 
+import calendar as months_calendar
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -87,9 +91,10 @@ def parse_area(geometry: dict) -> BaseGeometry:
 
 
 class Store:
-    def __init__(self, data_dir: Path, cfg: Config, csv_limit: int):
+    def __init__(self, data_dir: Path, cfg: Config, csv_limit: int, day_limit: int = 50_000):
         self.cfg = cfg
         self.csv_limit = csv_limit
+        self.day_limit = day_limit
         self.points_glob = (data_dir / "points").as_posix() + "/**/*.parquet"
         self.has_points = (data_dir / "points").is_dir()
         self.con = duckdb.connect()
@@ -289,8 +294,86 @@ class Store:
         text = table.head(self.csv_limit).to_csv(index=False, date_format="%Y-%m-%dT%H:%M:%SZ")
         return text, truncated
 
+    def _day_source(self, first: pd.Timestamp, last: pd.Timestamp) -> tuple[str, str, list]:
+        """Sensor, SQL source and parameters of the filtered hotspots from `first` up to, not including, `last`.
+
+        Both ends must fall in one calendar month, so one sensor and one year partition cover them.
+        """
+        if not self.has_points:
+            raise ApiError(503, "no data yet: run `make data` to build data/points/")
+        month = Span.index(first.year, first.month)
+        record_first, record_last = Span.index(*RECORD_FIRST), self._record_last()
+        if month < record_first or (record_last is not None and month > record_last):
+            end = Span.label(record_last) if record_last is not None else "today"
+            raise ApiError(400, f"the record covers {Span.label(record_first)} to {end}; nothing to show")
+        sensor = "modis" if month < Span.index(*RAW_SWITCH) else "viirs_snpp"
+        drop = ", ".join(f"'{c}'" for c in self.cfg.drop_confidence) or "''"
+        keep = ", ".join(str(t) for t in self.cfg.keep_types)
+        regions = ", ".join("'" + r.name.replace("'", "''") + "'" for r in self.cfg.regions)
+        country_clause = "" if getattr(self.cfg, "world", False) else f" and country in ({regions})"
+        source = f"""from read_parquet(?, hive_partitioning = true)
+                     where sensor = ? and year = ? and acq_datetime_utc >= ? and acq_datetime_utc < ?
+                       and confidence_class not in ({drop}) and type in ({keep}){country_clause}"""
+        return sensor, source, [self.points_glob, sensor, first.year, first, last]
+
+    def _record_last(self) -> int | None:
+        span = self.spans.get(self.default_series) if self.default_series else None
+        return span.last if span else None
+
+    def hotspot_days(self, month: str) -> dict:
+        """Number of hotspots on each UTC day of one month, zeros included."""
+        try:
+            first = pd.Timestamp(f"{month}-01")
+        except ValueError as e:
+            raise ApiError(400, f"{month} is not a calendar month") from e
+        last = first + pd.offsets.MonthBegin(1)
+        sensor, source, params = self._day_source(first, last)
+        query = f"select extract(day from acq_datetime_utc) as day, count(*) {source} group by day"
+        rows = self.con.cursor().execute(query, params).fetchall()
+        counts = {int(day): int(n) for day, n in rows}
+        return {
+            "month": month,
+            "sensor": sensor,
+            "unit": UNITS["raw_hotspots"],
+            "days": [{"day": d, "value": counts.get(d, 0)} for d in range(1, first.days_in_month + 1)],
+        }
+
+    def hotspot_day(self, date: str) -> dict:
+        """Hotspots of one UTC day as [lon, lat, minute of the day, region index], earliest first."""
+        try:
+            first = pd.Timestamp(date)
+        except ValueError as e:
+            raise ApiError(400, f"{date} is not a calendar day") from e
+        sensor, source, params = self._day_source(first, first + pd.Timedelta(days=1))
+        cur = self.con.cursor()
+        (count,) = cur.execute(f"select count(*) {source}", params).fetchone()
+        rows = cur.execute(
+            f"""select round(lon, 4), round(lat, 4),
+                       cast(hour(acq_datetime_utc) * 60 + minute(acq_datetime_utc) as integer) as minute_utc,
+                       country
+                {source}
+                order by minute_utc, lat, lon
+                limit ?""",
+            [*params, self.day_limit],
+        ).fetchall()
+        regions = [r.name for r in self.cfg.regions]
+        index = {name: i for i, name in enumerate(regions)}
+        return {
+            "date": date,
+            "sensor": sensor,
+            "unit": UNITS["raw_hotspots"],
+            "count": int(count),
+            "truncated": count > len(rows),
+            "regions": regions,
+            "hotspots": [[lon, lat, minute, index.get(country, 0)] for lon, lat, minute, country in rows],
+        }
+
     def meta(self) -> dict:
         span = self.spans.get(self.default_series) if self.default_series else None
+        last_day = None
+        if span:
+            year, month = span.last // 12, span.last % 12 + 1
+            last_day = f"{Span.label(span.last)}-{months_calendar.monthrange(year, month)[1]:02d}"
         return {
             "regions": [{"name": r.name, "bbox": list(r.bbox)} for r in self.cfg.regions],
             "series": self.series,
@@ -299,6 +382,8 @@ class Store:
             "harmonized_record": RECORD if "harmonized" in self.spans else None,
             "first_month": Span.label(span.first) if span else None,
             "last_month": Span.label(span.last) if span else None,
+            "first_day": f"{Span.label(span.first)}-01" if span else None,
+            "last_day": last_day,
             "cell_deg": self.cfg.cell_deg,
             "raw_sensor_switch": Span.label(Span.index(*RAW_SWITCH)),
             "csv_row_limit": self.csv_limit,
