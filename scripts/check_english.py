@@ -37,8 +37,11 @@ def main() -> int:
     for path in git("ls-files", "-z").split("\0"):
         if not path or not os.path.isfile(path):
             continue
-        with open(path, encoding="utf-8", errors="ignore") as f:
-            found += cyrillic_lines(path, f.read())
+        with open(path, "rb") as f:
+            data = f.read()
+        if b"\0" in data[:8000]:  # binary (an image, a parquet file): random bytes are not text
+            continue
+        found += cyrillic_lines(path, data.decode("utf-8", errors="ignore"))
     found += cyrillic_lines(f"commit message ({commit_range})", commit_messages(commit_range))
     found += cyrillic_lines("PR title", os.environ.get("PR_TITLE", ""))
     found += cyrillic_lines("PR body", os.environ.get("PR_BODY", ""))
