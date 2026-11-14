@@ -181,7 +181,7 @@
 }
 /* The globe stops short of the full screen and points to the calendar, so the page reads as one page. */
 .stage {
-  min-height: 560px;
+  min-height: 800px; /* the date panel and the imagery credit must both fit */
   height: calc(100vh - 72px);
 }
 .stage-actions {
@@ -647,4 +647,21 @@ html {
 .legend-hint {
   color: var(--stage-ink);
   font-weight: 600;
+}
+
+/* Zoomed in to the street map (light, busy): the glass cards turn solid and the region tags step aside. */
+.stage.is-street .dt-panel,
+.stage.is-street .stage-legend {
+  background: var(--glass-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.stage.is-street .globe-region-label {
+  display: none;
+}
+
+.stage-legend a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
