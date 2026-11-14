@@ -14,7 +14,7 @@ reproducible from this repo.
 - `data/` is git-ignored. `make data` rebuilds it: about 700 MB of CSV for two countries, 2-3 minutes, no key needed.
 - Run the pipeline for all configured countries at once. `COUNTRY=` / `--country` rewrites `data/points/` with that country alone, so the other countries vanish until the next full run.
 - Two people and their agents work here in parallel. Fetch and rebase before starting, work on a branch, open a small PR against `main`.
-- Code, docs, commit messages and UI text are in English.
+- Everything that lands in the repo or on GitHub is in English: code, comments, docs, UI text, commit messages, branch names, PR titles and bodies, issues and review comments. Talk to the user in the language they write in; translate before it goes into a file, a commit or a PR. `make lint` and CI fail on Cyrillic text.
 - `research/` holds experiments: excluded from lint, untested, never imported by `pipeline/`. Code that is adopted moves into `pipeline/` together with tests.
 - `FIRMS_MAP_KEY` is read from the environment or `.env` only.
 - Credit the data as "NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m)". Keep the names and logos of NASA and Space Apps out of the product name and branding.

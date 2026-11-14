@@ -37,7 +37,7 @@ Requires [uv](https://docs.astral.sh/uv/) and `make`.
 make data                  # download, normalize, aggregate every country in config/regions.yaml
 make data COUNTRY=Ukraine  # one country only
 make test                  # pytest
-make lint                  # ruff
+make lint                  # ruff + English-only check
 ```
 
 `make data` needs no account or key. It downloads public yearly CSV files from FIRMS
@@ -92,6 +92,14 @@ All data come from NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m):
 
 By default the pipeline keeps presumed vegetation fires (FIRMS `type = 0`) and drops
 low-confidence detections. Both filters are set in `config/regions.yaml`.
+
+## Contributing
+
+- **English only.** Code, comments, docs, UI text, commit messages, branch names, PR titles and
+  bodies, issues and review comments are written in English, whoever or whatever writes them.
+  CI fails when Cyrillic text shows up in a tracked file, a commit message, or a PR title or body.
+- Work on a branch and open a pull request against `main`.
+- Run `make test` and `make lint` before you push.
 
 ## Use of AI tools
 
