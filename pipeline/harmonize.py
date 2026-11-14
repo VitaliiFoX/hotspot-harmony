@@ -2,11 +2,14 @@
 
 Every VIIRS fire cell-day gets a weight: the answer to "would MODIS (Terra + Aqua) have reported this?"
 
-    weight = k * p(FRP bin, day/night) * r(calendar month)
+    weight = k * p(FRP bin, day/night) * r(day of year)
 
     p   share of VIIRS cell-days of that fire power that MODIS also saw within +-1 cell the same local day
     k   one scale so that totals match (MODIS also sees fires at hours when VIIRS is not overhead)
-    r   what is left of the seasonal difference after p
+    r   what is left of the seasonal difference after p, following the day of the year smoothly
+
+Days when a VIIRS sensor delivered next to nothing while MODIS was busy are sensor gaps, not quiet
+days: they are left out of the fit, and in the record that day is taken from MODIS.
 
 All three are fitted on years when both sensors flew and MODIS orbits were stable. NOAA-20 is tied to
 S-NPP with one factor (same instrument design, same orbit). The months before Aqua use Terra alone,
@@ -44,6 +47,9 @@ RAW_SWITCH = "2012-02-01"  # the raw record: MODIS before this date, VIIRS S-NPP
 N20_START = "2018-04-01"
 FRP_EDGES = [0, 1, 2, 4, 8, 16, 32, 64]  # MW, summed over a VIIRS cell-day
 MIN_FIT_CELLDAYS = 5000  # below this a country borrows the pooled calibration
+SEASON_HALF_WINDOW = 15  # days: the season factor pools +-15 days around each day of the year
+GAP_MIN_MODIS = 100  # a day counts as a sensor gap when MODIS has at least this many cell-days...
+GAP_MAX_RATIO = 0.6  # ...and VIIRS has under 0.6 per MODIS cell-day (it normally has about 2)
 
 RECORD = [
     {"sensor": "modis_terra", "label": "MODIS Terra only, scaled", "from": "2000-11", "to": "2002-06"},
@@ -79,23 +85,55 @@ def prepare(df: pd.DataFrame) -> pd.DataFrame:
     df["local_date"] = pd.to_datetime(df.local_date)
     df["y"] = df.local_date.dt.year
     df["m"] = df.local_date.dt.month
+    df["doy"] = df.local_date.dt.day_of_year
     df["b"] = np.digitize(df.frp, FRP_EDGES) + 10 * df.has_day  # FRP bin, day and night kept apart
     df["tx"] = np.floor(df.lon).astype(int)
     df["ty"] = np.floor(df.lat).astype(int)
     return df
 
 
+def gap_days(df: pd.DataFrame, stream: str) -> pd.DatetimeIndex:
+    """Days when `stream` (a VIIRS sensor) was not really observing: MODIS is busy and the sensor is nearly silent.
+
+    Only looked for inside the sensor's own lifetime, so the years before its launch are not gaps.
+    """
+    own = df[df.stream == stream]
+    if own.empty:
+        return pd.DatetimeIndex([])
+    modis = df[(df.stream == "modis") & df.local_date.between(own.local_date.min(), own.local_date.max())]
+    counts = [modis.groupby("local_date").size().rename("modis"), own.groupby("local_date").size().rename("own")]
+    daily = pd.concat(counts, axis=1).fillna(0)
+    return pd.DatetimeIndex(daily.index[(daily.modis >= GAP_MIN_MODIS) & (daily.own < GAP_MAX_RATIO * daily.modis)])
+
+
+def season_factor(
+    doy_truth: np.ndarray, doy_pred: np.ndarray, w_pred: np.ndarray, half: int = SEASON_HALF_WINDOW
+) -> np.ndarray:
+    """truth / prediction by day of year, pooled over +-`half` days with a triangular window that wraps at New Year.
+
+    Returns an array indexed by day of year (1..366; index 0 unused). Days with nothing to learn from get 1.
+    """
+    num = np.bincount(doy_truth, minlength=367)[1:].astype(float)
+    den = np.bincount(doy_pred, weights=w_pred, minlength=367)[1:]
+    window = np.concatenate([np.arange(1, half + 2), np.arange(half, 0, -1)]).astype(float)
+    num, den = (np.convolve(np.concatenate([a[-half:], a, a[:half]]), window, "valid") for a in (num, den))
+    r = np.divide(num, den, out=np.ones_like(num), where=den > 0)
+    return np.concatenate([[1.0], r])
+
+
 def fit_viirs(viirs: pd.DataFrame, modis: pd.DataFrame) -> dict:
-    """viirs: VIIRS cell-days with b, m, matched. modis: MODIS cell-days of the same period with m."""
+    """viirs: VIIRS cell-days with b, doy, matched. modis: MODIS cell-days of the same period with doy."""
     p = viirs.groupby("b").matched.mean()
     k = len(modis) / viirs.b.map(p).sum()
-    base = viirs.b.map(p) * k
-    r = (modis.groupby("m").size() / base.groupby(viirs.m).sum()).replace([np.inf, -np.inf], np.nan).dropna()
+    base = (viirs.b.map(p) * k).to_numpy()
+    doy = viirs.doy.to_numpy()
+    r = season_factor(modis.doy.to_numpy(), doy, base)
+    r = r * len(modis) / (base * r[doy]).sum()  # smoothing must not shift the overall level
     return {"p": p, "k": float(k), "r": r}
 
 
-def viirs_weights(par: dict, b: pd.Series, m: pd.Series) -> pd.Series:
-    return b.map(par["p"]).fillna(par["p"].mean()) * par["k"] * m.map(par["r"]).fillna(1.0)
+def viirs_weights(par: dict, b: pd.Series, doy: pd.Series) -> pd.Series:
+    return b.map(par["p"]).fillna(par["p"].mean()) * par["k"] * par["r"][doy.to_numpy()]
 
 
 def fit_terra(terra: pd.DataFrame, modis: pd.DataFrame) -> pd.Series:
@@ -128,14 +166,21 @@ def fit_n20(df: pd.DataFrame, w: pd.Series) -> tuple[float | None, list[str]]:
 
 def calibrate(frames: list[pd.DataFrame]) -> dict | None:
     """Fit every parameter on the given cell-days. None when there is too little overlap to trust it."""
+    # gaps are found per country: a sensor outage is the same day everywhere, but "MODIS is busy" is not
+    gaps = {
+        stream: pd.DatetimeIndex(sorted(set().union(*(gap_days(f, stream) for f in frames))))
+        for stream in ("viirs_snpp", "viirs_noaa20")
+    }
+    frames = [f.assign(snpp_gap=f.local_date.isin(gap_days(f, "viirs_snpp"))) for f in frames]
     df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
-    fit = df.local_date.between(*FIT)
+    fit = df.local_date.between(*FIT) & ~df.snpp_gap
     viirs, modis = df[fit & (df.stream == "viirs_snpp")], df[fit & (df.stream == "modis")]
     if len(viirs) < MIN_FIT_CELLDAYS or len(modis) < MIN_FIT_CELLDAYS / 2:
         return None
     par = fit_viirs(viirs, modis)
+    par["gap_days"] = gaps
     is_viirs = df.stream.isin(["viirs_snpp", "viirs_noaa20"])
-    w = viirs_weights(par, df.b[is_viirs], df.m[is_viirs])
+    w = viirs_weights(par, df.b[is_viirs], df.doy[is_viirs])
     par["n20_to_snpp"], par["sensor_gap_months"] = fit_n20(df, w)
     tf = df.local_date.between(*TERRA_FIT)
     par["terra"] = fit_terra(df[tf & (df.stream == "modis_terra")], df[tf & (df.stream == "modis")])
@@ -149,14 +194,16 @@ def apply(df: pd.DataFrame, par: dict) -> pd.DataFrame:
     s, d = df.stream, df.local_date
     df["weight"] = np.nan
     v = s.isin(["viirs_snpp", "viirs_noaa20"])
-    df.loc[v, "weight"] = viirs_weights(par, df.b[v], df.m[v])
+    df.loc[v, "weight"] = viirs_weights(par, df.b[v], df.doy[v])
     df.loc[s == "viirs_noaa20", "weight"] *= par["n20_to_snpp"] or 1.0
     df.loc[s == "modis_terra", "weight"] = df.m[s == "modis_terra"].map(par["terra"]).fillna(1.0)
     df.loc[s == "modis", "weight"] = 1.0
+    # a day NOAA-20 did not really observe is taken from MODIS instead of being read as a quiet day
+    n20_gap = d.isin(gap_days(df, "viirs_noaa20"))
     df["in_series"] = (
         ((s == "modis_terra") & (d < AQUA_START))
-        | ((s == "modis") & (d >= AQUA_START) & (d < VIIRS_FROM))
-        | ((s == "viirs_noaa20") & (d >= VIIRS_FROM))
+        | ((s == "modis") & (d >= AQUA_START) & ((d < VIIRS_FROM) | n20_gap))
+        | ((s == "viirs_noaa20") & (d >= VIIRS_FROM) & ~n20_gap)
     )
     df["in_raw"] = (
         ((s == "modis") & (d < RAW_SWITCH))
@@ -205,7 +252,9 @@ def params_to_json(par: dict, source: str) -> dict:
             }
             for b, p in par["p"].items()
         ],
-        "month_factor": {int(m): round(float(v), 4) for m, v in par["r"].items()},
+        "season_factor_by_day_of_year": [round(float(v), 4) for v in par["r"][1:]],
+        "season_half_window_days": SEASON_HALF_WINDOW,
+        "sensor_gap_days": {s: [f"{d:%Y-%m-%d}" for d in days] for s, days in par["gap_days"].items()},
         "n20_to_snpp": None if par["n20_to_snpp"] is None else round(par["n20_to_snpp"], 4),
         "sensor_gap_months": par["sensor_gap_months"],
         "terra_to_modis": {int(m): round(float(v), 4) for m, v in par["terra"].items()},
