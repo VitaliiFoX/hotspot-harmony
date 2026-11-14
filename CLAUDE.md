@@ -64,6 +64,11 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 - All colours come from the custom properties at the top of `web/src/styles.css`, defined for light and dark.
 - When the page asks the API is decided in `web/src/requests.ts` (tested): answers are cached, only a box typed by hand waits 300 ms, and the record not on screen is fetched ahead so the raw / harmonized switch needs no request. Keep new filters on those rules instead of adding a delay.
 - The filters are mirrored in the address (`?region=...&box=w,s,e,n&start=...&end=...&series=...`), so a view can be shared as a link and screenshotted headless.
+- The globe at the top of the page is MapLibre GL JS in globe projection on NASA GIBS Blue Marble tiles (no key; credit "Imagery: NASA GIBS (Blue Marble)"). It is a map, not a chart, so the no-chart-library rule does not cover it. Its stage follows the theme (a starry sky in dark mode, a pale sky in light mode) and keeps its own colour roles at the top of `web/src/globe.css`; its pure logic is `web/src/globe.ts`, under test.
+- The globe shows hotspots of one UTC day through the chosen hour, from `/api/hotspots/day` and `/api/hotspots/days`. They are drawn in one warm colour (`--hotspot`), because blue does not read on the ocean. That colour stays on the globe and its date panel; the calendar keeps the blue ramp.
+- The day and hour are mirrored in the address too (`&date=YYYY-MM-DD&hour=HH`).
+- The GIBS `Reference_Features_15m` and `Reference_Labels_15m` overlays were tried on 2026-11-14 and dropped: many tiles come back opaque black or fail with 500.
+- Headless Chrome with `--virtual-time-budget` draws the globe but not its hotspot and night layers (the MapLibre worker does not finish in virtual time). Judge the globe in a real browser.
 - Look at the page after a visual change: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --window-size=1320,1600 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:5173/?theme=light"`. Headless Chrome will not go narrower than 500 px.
 
 ## Harmonization

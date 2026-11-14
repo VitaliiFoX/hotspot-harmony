@@ -13,11 +13,15 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 
-CONFIG = """
+REGIONS = """
 regions:
   - name: Testland
     bbox: [0, 0, 10, 10]
-sensors:
+"""
+SECOND_REGION = """  - name: Farland
+    bbox: [20, 20, 30, 30]
+"""
+SETTINGS = """sensors:
   modis: {archive: modis, first_year: 2000}
   viirs_snpp: {archive: viirs-snpp, first_year: 2012}
   viirs_noaa20: {archive: viirs-jpss1, first_year: 2018}
@@ -27,6 +31,8 @@ filters:
   drop_confidence: [low]
   keep_types: [0]
 """
+CONFIG = REGIONS + SETTINGS
+CONFIG_TWO_REGIONS = REGIONS + SECOND_REGION + SETTINGS
 
 A, B, C = (0.5, 0.5), (0.5, 1.5), (5.5, 5.5)
 CELL_MONTHS = [  # cell, year, month, sensor, hotspots
@@ -51,11 +57,19 @@ HARMONIZED = [  # cell, year, month, harmonized, raw (fire cell-days), sensor of
     (B, 2013, 8, 4.0, 10, "modis"),
     (C, 2013, 8, 500.0, 700, "modis"),  # outside the test area
 ]
-POINTS = [  # lat, lon, time, sensor
-    (0.4, 0.6, "2013-08-05 12:30:00", "viirs_snpp"),  # in the area, in the dates
-    (0.6, 1.2, "2013-08-20 01:05:00", "modis"),  # in the area, in the dates
-    (0.5, 0.5, "2013-09-02 12:00:00", "viirs_snpp"),  # in the area, after the dates
-    (5.5, 5.5, "2013-08-06 12:00:00", "viirs_snpp"),  # outside the area
+POINTS = [  # lat, lon, time, sensor, confidence class, type, country
+    (0.4, 0.6, "2013-08-05 12:30:00", "viirs_snpp", "nominal", 0, "Testland"),  # in the area, in the dates
+    (0.6, 1.2, "2013-08-20 01:05:00", "modis", "nominal", 0, "Testland"),  # in the area, in the dates
+    (0.5, 0.5, "2013-09-02 12:00:00", "viirs_snpp", "nominal", 0, "Testland"),  # in the area, after the dates
+    (5.5, 5.5, "2013-08-06 12:00:00", "viirs_snpp", "nominal", 0, "Testland"),  # outside the area
+    (25.123449, 21.987651, "2013-08-05 03:07:00", "viirs_snpp", "high", 0, "Farland"),  # the second region
+    (6.0, 6.0, "2013-08-05 00:00:00", "viirs_snpp", "high", 0, "Testland"),  # first minute of the day
+    (6.5, 6.5, "2013-08-04 23:59:00", "viirs_snpp", "nominal", 0, "Testland"),  # last minute of the day before
+    (5.0, 5.0, "2013-08-05 23:59:00", "viirs_snpp", "low", 0, "Testland"),  # dropped: low confidence
+    (5.0, 5.0, "2013-08-05 08:00:00", "viirs_snpp", "high", 2, "Testland"),  # dropped: not a vegetation fire
+    (7.0, 7.0, "2013-08-31 23:59:00", "viirs_noaa20", "nominal", 0, "Testland"),  # NOAA-20 is never used
+    (3.0, 3.0, "2011-08-10 10:00:00", "modis", "nominal", 0, "Testland"),  # before 2012-02 MODIS is used
+    (3.0, 3.0, "2011-08-10 11:00:00", "viirs_snpp", "nominal", 0, "Testland"),  # and VIIRS is not
 ]
 
 
@@ -67,7 +81,7 @@ def box(west, south, east, north):
 AREA = box(0, 0, 2, 1)
 
 
-def build_data(root, harmonized=False):
+def build_data(root, harmonized=False, config_text=CONFIG):
     con = duckdb.connect()
     (root / "agg").mkdir(parents=True)
     rows = ", ".join(f"({lat}, {lon}, 'Testland', {y}, {m}, '{s}', {n})" for (lat, lon), y, m, s, n in CELL_MONTHS)
@@ -85,17 +99,18 @@ def build_data(root, harmonized=False):
                   t(cell_lat, cell_lon, country, year, month, n_harmonized, n_raw, sensor_used))
             to '{root}/agg/harmonized.parquet' (format parquet)
         """)
-    for i, (lat, lon, t, sensor) in enumerate(POINTS):
+    for i, (lat, lon, t, sensor, confidence, kind, country) in enumerate(POINTS):
         folder = root / "points" / f"sensor={sensor}" / f"year={t[:4]}"
         folder.mkdir(parents=True, exist_ok=True)
         con.execute(f"""
-            copy (select {lat} as lat, {lon} as lon, timestamp '{t}' as acq_datetime_utc, 'X' as satellite,
-                         '50' as confidence_raw, 'nominal' as confidence_class, 1.5 as frp, 'D' as daynight,
-                         0 as type, 'sp' as source, 'Testland' as country)
+            copy (select {lat}::double as lat, {lon}::double as lon, timestamp '{t}' as acq_datetime_utc,
+                         'X' as satellite,
+                         '50' as confidence_raw, '{confidence}' as confidence_class, 1.5 as frp, 'D' as daynight,
+                         {kind} as type, 'sp' as source, '{country}' as country)
             to '{folder}/p{i}.parquet' (format parquet)
         """)
     config = root / "regions.yaml"
-    config.write_text(CONFIG)
+    config.write_text(config_text)
     return config
 
 
@@ -108,6 +123,12 @@ def client(tmp_path):
 @pytest.fixture
 def client_harmonized(tmp_path):
     config = build_data(tmp_path, harmonized=True)
+    return TestClient(create_app(data_dir=tmp_path, config_path=config))
+
+
+@pytest.fixture
+def client_two_regions(tmp_path):
+    config = build_data(tmp_path, config_text=CONFIG_TWO_REGIONS)
     return TestClient(create_app(data_dir=tmp_path, config_path=config))
 
 
@@ -287,6 +308,89 @@ def test_csv_export_stops_at_the_row_limit_and_says_so(tmp_path):
     r = client.post("/api/hotspots.csv", json={"geometry": AREA, "start": "2013-08-01", "end": "2013-08-31"})
     assert r.headers["x-truncated"] == "true"
     assert len(list(csv.DictReader(io.StringIO(r.text)))) == 1
+
+
+def test_meta_gives_the_first_and_last_day_of_the_record(client):
+    meta = client.get("/api/meta").json()
+    assert (meta["first_day"], meta["last_day"]) == ("2010-08-01", "2013-08-31")
+
+
+def test_days_of_a_month_count_the_filtered_hotspots_of_every_region(client_two_regions):
+    r = client_two_regions.get("/api/hotspots/days?month=2013-08")
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["month"], body["sensor"], body["unit"]) == ("2013-08", "viirs_snpp", "hotspots")
+    assert [d["day"] for d in body["days"]] == list(range(1, 32))  # every day, zeros included
+    values = {d["day"]: d["value"] for d in body["days"]}
+    # day 5: three VIIRS S-NPP hotspots kept, one low confidence and one non-vegetation dropped
+    assert {day: v for day, v in values.items() if v} == {4: 1, 5: 3, 6: 1}
+    assert values[20] == 0  # MODIS is not used after 2012-02
+    assert values[31] == 0  # NOAA-20 is never used
+
+
+def test_days_of_a_month_before_february_2012_come_from_modis(client):
+    body = client.get("/api/hotspots/days?month=2011-08").json()
+    assert body["sensor"] == "modis"
+    assert {d["day"]: d["value"] for d in body["days"] if d["value"]} == {10: 1}
+
+
+def test_day_lists_hotspots_by_minute_with_their_region(client_two_regions):
+    r = client_two_regions.get("/api/hotspots/day?date=2013-08-05")
+    assert r.status_code == 200
+    assert r.json() == {
+        "date": "2013-08-05",
+        "sensor": "viirs_snpp",
+        "unit": "hotspots",
+        "count": 3,
+        "truncated": False,
+        "regions": ["Testland", "Farland"],
+        "hotspots": [[6.0, 6.0, 0, 0], [21.9877, 25.1234, 187, 1], [0.6, 0.4, 750, 0]],
+    }
+
+
+def test_day_before_february_2012_comes_from_modis(client):
+    body = client.get("/api/hotspots/day?date=2011-08-10").json()
+    assert (body["sensor"], body["count"]) == ("modis", 1)
+    assert body["hotspots"] == [[3.0, 3.0, 600, 0]]
+
+
+def test_day_stops_at_the_row_limit_and_still_counts_every_hotspot(tmp_path):
+    config = build_data(tmp_path, config_text=CONFIG_TWO_REGIONS)
+    client = TestClient(create_app(data_dir=tmp_path, config_path=config, day_limit=2))
+    body = client.get("/api/hotspots/day?date=2013-08-05").json()
+    assert (body["count"], body["truncated"]) == (3, True)
+    assert body["hotspots"] == [[6.0, 6.0, 0, 0], [21.9877, 25.1234, 187, 1]]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/api/hotspots/day?date=2013-09-02",  # after the last month of the record
+        "/api/hotspots/day?date=2000-10-31",  # before the archive starts
+        "/api/hotspots/day?date=2013-02-30",
+        "/api/hotspots/days?month=2013-09",
+        "/api/hotspots/days?month=2000-10",
+    ],
+)
+def test_days_outside_the_record_are_rejected(client, url):
+    r = client.get(url)
+    assert r.status_code == 400
+    assert r.json()["detail"]
+
+
+@pytest.mark.parametrize("url", ["/api/hotspots/day?date=2013-8-5", "/api/hotspots/days?month=2013-13"])
+def test_malformed_dates_are_rejected(client, url):
+    assert client.get(url).status_code == 422
+
+
+def test_day_endpoints_without_data_explain_how_to_build_it(tmp_path):
+    config = tmp_path / "regions.yaml"
+    config.write_text(CONFIG)
+    client = TestClient(create_app(data_dir=tmp_path, config_path=config))
+    for url in ("/api/hotspots/days?month=2013-08", "/api/hotspots/day?date=2013-08-05"):
+        r = client.get(url)
+        assert r.status_code == 503 and "make data" in r.json()["detail"]
+    assert (client.get("/api/meta").json()["first_day"], client.get("/api/meta").json()["last_day"]) == (None, None)
 
 
 def test_api_without_data_explains_how_to_build_it(tmp_path):
