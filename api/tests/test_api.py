@@ -268,6 +268,12 @@ def test_csv_export_returns_the_hotspots_inside_the_area_and_dates(client):
     }  # fmt: skip
 
 
+@pytest.mark.parametrize("start, end", [("2013-02-30", "2013-03-01"), ("2013-02-01", "2013-02-29")])
+def test_csv_export_rejects_a_day_that_does_not_exist(client, start, end):
+    r = client.post("/api/hotspots.csv", json={"geometry": AREA, "start": start, "end": end})
+    assert r.status_code == 400 and "2013-02-" in r.json()["detail"]
+
+
 def test_csv_export_stops_at_the_row_limit_and_says_so(tmp_path):
     config = build_data(tmp_path)
     client = TestClient(create_app(data_dir=tmp_path, config_path=config, csv_limit=1))
