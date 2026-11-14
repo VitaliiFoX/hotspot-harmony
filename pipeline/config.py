@@ -30,6 +30,13 @@ class Config:
     cell_deg: float
     drop_confidence: tuple[str, ...]
     keep_types: tuple[int, ...]
+    world: bool = False  # take every country in the FIRMS archive instead of the listed regions
+
+    def countries(self, only: list[str] | None = None) -> list[str] | None:
+        """Country names to process; None means every country found in the raw data (world mode)."""
+        if self.world:
+            return only or None
+        return self.region_names(only)
 
     def region_names(self, only: list[str] | None = None) -> list[str]:
         names = [r.name for r in self.regions]
@@ -49,4 +56,5 @@ def load_config(path: Path = DEFAULT_CONFIG) -> Config:
         cell_deg=float(raw["grid"]["cell_deg"]),
         drop_confidence=tuple(raw["filters"]["drop_confidence"]),
         keep_types=tuple(int(t) for t in raw["filters"]["keep_types"]),
+        world=bool(raw.get("world", False)),
     )

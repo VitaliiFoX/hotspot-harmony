@@ -334,9 +334,14 @@ def params_to_json(par: dict, source: str) -> dict:
 
 
 def harmonize_all(
-    con: duckdb.DuckDBPyConnection, cell_day: Path, countries: list[str], weights: str = "auto"
+    con: duckdb.DuckDBPyConnection, cell_day: Path, countries: list[str] | None, weights: str = "auto"
 ) -> dict[str, tuple]:
     """country -> (cell-days with weights, parameters, 'own' | 'pooled'). Countries without data are skipped."""
+    if countries is None:
+        rows = con.execute(
+            f"select distinct country from read_parquet('{cell_day.as_posix()}') order by country"
+        ).fetchall()
+        countries = [r[0] for r in rows]
     frames = {c: load_cell_days(con, cell_day, c) for c in countries}
     frames = {c: f for c, f in frames.items() if len(f)}
     own = {c: calibrate([f], weights) for c, f in frames.items()}
@@ -371,7 +376,7 @@ def main() -> None:
     cfg = load_config(args.config)
     con = duckdb.connect()
     agg = args.data / "agg"
-    results = harmonize_all(con, agg / "cell_day.parquet", cfg.region_names(), args.weights)
+    results = harmonize_all(con, agg / "cell_day.parquet", cfg.countries(), args.weights)
     if not results:
         raise SystemExit("harmonize: nothing to do - run pipeline.aggregate first")
 
