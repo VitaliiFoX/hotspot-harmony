@@ -18,8 +18,9 @@ harmonize:
 	uv run python -m pipeline.harmonize
 
 # writes data/agg/harmonization_report.json, docs/VALIDATION.md and docs/sensor_jump_before_after.png
+# NESTED=1 also repeats the choice of detection weight for every held-out year: the figures to quote, about 20 minutes
 validate:
-	uv run python -m pipeline.validate
+	uv run python -m pipeline.validate $(if $(NESTED),--nested-choice)
 
 # Export downloaded CSV files as JSON, e.g.: make json COUNTRY=Ukraine YEAR=2024 FORMAT=geojson
 json:

@@ -2,7 +2,9 @@
 
 Every number comes from data the model did not see:
   * leave-one-year-out: each overlap year is predicted from VIIRS by a model fitted on the other years
-    and compared with what MODIS actually reported;
+    and compared with what MODIS actually reported. With --nested-choice the choice between the table by
+    fire power and the boosted model is made again for every year from the other years, so it has not
+    seen that year either; without it the choice is made once on all years and the report says so;
   * NOAA-20 is checked against MODIS although it was never used to fit the weights;
   * the Terra-only scaling is checked the same way on 2003-2011;
   * the sensor jump check compares the years before and after the raw record switches sensors (2012).
@@ -13,7 +15,7 @@ Output:
     data/agg/harmonization_report.json   read by the API and shown in the app
     docs/sensor_jump_before_after.png           yearly totals, raw record vs harmonized record
 
-Usage:  uv run python -m pipeline.validate
+Usage:  uv run python -m pipeline.validate [--nested-choice]
 """
 
 import argparse
@@ -63,16 +65,20 @@ def scores(d: pd.DataFrame) -> dict:
 def leave_one_year_out(
     viirs: pd.DataFrame, modis: pd.DataFrame, weights: str = "boosted", also: pd.DataFrame | None = None
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
-    """Weights for every year from a model fitted on the other years.
+    """Weights for every year from a model fitted on the other years; `weights` says which was used for it.
 
+    With weights="auto" the table or the boosted model is chosen for every year from the other years alone,
+    the way `pipeline.harmonize` chooses it: a choice made on all years would have seen the held-out one.
     `also` is a second set of cell-days (e.g. with sensor gap days kept) to weigh with the same models,
     so that a second comparison costs no second round of fitting.
     """
     folds, extra = [], []
     for year in sorted(viirs.y.unique()):
-        par = hz.fit_viirs(viirs[viirs.y != year], modis[modis.y != year], weights)
+        train_v, train_m = viirs[viirs.y != year], modis[modis.y != year]
+        kind = hz.choose_weights(train_v, train_m)[0] if weights == "auto" else weights
+        par = hz.fit_viirs(train_v, train_m, kind)
         test = viirs[viirs.y == year]
-        folds.append(test.assign(w=hz.viirs_weights(par, test)))
+        folds.append(test.assign(w=hz.viirs_weights(par, test), weights=kind))
         if also is not None:
             test = also[also.y == year]
             extra.append(test.assign(w=hz.viirs_weights(par, test)))
@@ -109,6 +115,7 @@ def sensor_jump(df: pd.DataFrame) -> dict | None:
 
 
 def validate_country(df: pd.DataFrame, par: dict, weights: str = "boosted") -> dict:
+    """`weights` is what the leave-one-year-out check uses: bins, boosted, or auto to choose again for every year."""
     s, d = df.stream, df.local_date
     # a day the sensor did not observe says nothing about the method: it is left out of fit and comparison,
     # and the same check on every day is reported next to it
@@ -124,7 +131,7 @@ def validate_country(df: pd.DataFrame, par: dict, weights: str = "boosted") -> d
         "baseline_raw_viirs": scores(compare(viirs.assign(w=1.0), modis)),
         "baseline_single_factor": scores(compare(viirs.assign(w=len(modis) / len(viirs)), modis)),
     }
-    if weights == "boosted":  # the same check with the plain table by fire power, to show what the model adds
+    if par["weights"] == "boosted":  # the same check with the plain table by fire power, to show what the model adds
         out["weight_table_instead_of_model"] = scores(compare(leave_one_year_out(viirs, modis, "bins"), modis))
     chk = d.between(hz.N20_START, hz.FIT[1]) & ~d.isin(hz.gap_days(df, "viirs_noaa20"))
     if (chk & (s == "viirs_noaa20")).any():  # NOAA-20 never took part in fitting p, k, r
@@ -155,6 +162,8 @@ def validate_country(df: pd.DataFrame, par: dict, weights: str = "boosted") -> d
     ]  # fmt: skip
     return {
         "validation": out,
+        "weight_chosen_per_held_out_year": weights == "auto",
+        "weights_by_held_out_year": {int(y): kind for y, kind in held_out.groupby("y").weights.first().items()},
         "sensor_jump": sensor_jump(df),
         "interval_by_size": interval_by_size(loyo),
         "modis_orbit_drift": drift,
@@ -209,10 +218,26 @@ def weights_line(entry: dict) -> str:
     tried = entry.get("weights_held_out_month_error") or {}
     if not tried:
         return f"Detection weight: {used}."
+    by_year = entry.get("weights_by_held_out_year") or {}
+    if entry.get("weight_chosen_per_held_out_year"):
+        model_years = [str(y) for y, kind in by_year.items() if kind == "boosted"]
+        table_years = [str(y) for y, kind in by_year.items() if kind != "boosted"]
+        parts = [f"the boosted model for {', '.join(model_years)}"] if model_years else []
+        parts += [f"the table for {', '.join(table_years)}"] if table_years else []
+        nested = (
+            " In the leave-one-year-out check above the same choice is made again for every year from the other"
+            f" years alone: {' and '.join(parts)}."
+        )
+    else:
+        nested = (
+            " In the leave-one-year-out check above this choice was made once, on all overlap years, so the check"
+            " has seen each held-out year in that one step; `make validate NESTED=1` makes the choice again for"
+            " every year."
+        )
     return (
         f"Detection weight: {used}. Chosen on years held out three at a time, country x month error: "
         f"table {tried['bins']:.1%}, boosted model {tried['boosted']:.1%}; the model is used only when it wins "
-        f"by more than {hz.WEIGHTS_MARGIN:.1%}."
+        f"by more than {hz.WEIGHTS_MARGIN * 100:.1f} points.{nested}"
     )
 
 
@@ -299,6 +324,11 @@ def main() -> None:
     ap.add_argument("--data", type=Path, default=DEFAULT_DATA)
     ap.add_argument("--docs", type=Path, default=ROOT / "docs")
     ap.add_argument("--weights", choices=["auto", "boosted", "bins"], default="auto", help="as in pipeline.harmonize")
+    ap.add_argument(
+        "--nested-choice",
+        action="store_true",
+        help="choose table or boosted model again for every held-out year: the figure to quote, about 20 minutes",
+    )
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -316,7 +346,8 @@ def main() -> None:
     for country, (df, par, source) in results.items():
         entry = {"calibration": source, **hz.params_to_json(par, source)}
         if source == "own":
-            entry.update(validate_country(df, par, par["weights"]))
+            chosen = bool(par["weights_held_out_month_error"])  # empty when --weights forced one of the two
+            entry.update(validate_country(df, par, "auto" if args.nested_choice and chosen else par["weights"]))
             if not plotted and entry["sensor_jump"]:
                 plot_sensor_jump(df, country, entry, args.docs / "sensor_jump_before_after.png")
                 plotted = True

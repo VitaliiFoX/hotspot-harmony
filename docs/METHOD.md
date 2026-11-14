@@ -33,13 +33,14 @@ coarser one, but a coarse sensor cannot recover fires it never saw.
        weight = k x share(what the cell-day looked like) x r(day of year)
 
    - `share` is how much of a MODIS fire cell-day this VIIRS cell-day stands for. It is measured,
-     not assumed: every MODIS cell-day is one unit, split equally among the VIIRS cell-days within
-     one cell the same day. Two ways to turn that into a rule are fitted, and each country gets
-     the one that predicts held-out years better:
-     - a **table** by fire power and day or night (the detection curve in VALIDATION.md: the
+     not assumed. Two rules for it are fitted, and each country gets the one that predicts held-out
+     years better:
+     - a **table** by fire power and day or night: the part of VIIRS cell-days of that kind that
+       MODIS also reported within one cell the same day (the detection curve in VALIDATION.md: the
        stronger the fire, the more likely MODIS also saw it);
-     - a **boosted regression model** (scikit-learn, Poisson loss) that also looks at the number
-       and confidence of the detections and the pixel size.
+     - a **boosted regression model** (scikit-learn, Poisson loss). Its target counts every MODIS
+       cell-day as one unit, split equally among the VIIRS cell-days within one cell the same day,
+       and it also looks at the number and confidence of the detections and the pixel size.
 
      The model has to earn its place: it is used only where it beats the table by a clear margin
      on years held out three at a time. It wins in Ukraine and loses in Argentina, so Ukraine gets
@@ -86,15 +87,20 @@ corrections automatically, which a single ratio per country cannot do.
   years and compared with what MODIS actually reported, at four scales: country and 1-degree tile,
   year and month. Sensor gap days are left out of the comparison, since a day the sensor did not
   observe says nothing about the method; the same check with those days counted is reported next
-  to it.
+  to it. The choice between the table and the boosted model is part of the method. The figures in
+  VALIDATION.md come from `make validate NESTED=1`, which makes that choice again for every
+  held-out year from the other years alone, so no step has seen the year it is scored on. Plain
+  `make validate` is several times faster and makes the choice once on all years; the report says
+  which of the two it was.
 - **An independent sensor.** NOAA-20 never took part in fitting `p`, `k`, `r`; it is still checked
   against MODIS.
 - **Sensor jump check.** Mean yearly total of 2012-2016 over 2007-2011, raw record against
   harmonized record.
 - **Two baselines** in the same table: VIIRS as delivered, and one scaling factor per country.
-- **Uncertainty in the app.** The 90% range shown next to a harmonized month comes from the same
-  held-out predictions, by size of the value: small areas are noisier and get wider ranges. Months
-  measured by the reference sensor carry no harmonization error.
+- **Uncertainty.** A 90% range for a harmonized month comes from the same held-out predictions, by
+  size of the value: small areas are noisier and get wider ranges (`interval_by_size` in
+  `data/agg/harmonization_report.json`). Months measured by the reference sensor carry no
+  harmonization error. The app does not show the range yet.
 
 ## What was tried
 
@@ -107,13 +113,16 @@ All figures are country x month error on Ukraine from leave-one-year-out, measur
 | FRP bins x calendar-month factor (the first version) | 8.0% |
 | + sensor gap days left out | 7.0% |
 | + season factor by day of year, +-15 days | 6.5% |
+| + boosted model for the weight, where it wins on held-out years | 6.3% |
 
-| + boosted model for the weight, where it wins on held-out years | 6.1% |
+The last row is the figure of VALIDATION.md, with the choice between table and model made again for
+every held-out year. The ideas below were measured earlier with the model used in every year, which
+gave 6.1%: compare them with that.
 
 The boosted model was measured with LightGBM, XGBoost, CatBoost and scikit-learn: the four agree to
 0.02 points, so the pipeline uses scikit-learn, which needs no extra system library. On Argentina the
-same model is worse than the table (8.0% against 7.4% per month), which is why it is chosen per
-country and not switched on everywhere.
+same model is worse than the table (7.6% against 7.0% per month on years held out three at a time,
+VALIDATION.md), which is why it is chosen per country and not switched on everywhere.
 
 **Measured, not adopted** (`research/harmonize_ml/`, run with `research/harmonize_ml/run.sh`; same
 data with gap days left out, so compare with 6.5% for the table and 6.1% for the model):

@@ -100,15 +100,40 @@ def test_the_boosted_model_is_used_only_when_it_clearly_wins(overlap, monkeypatc
         assert hz.choose_weights(viirs, modis) == (expected, errors)
 
 
-def test_held_out_month_error_is_an_error_on_years_the_fit_did_not_see(overlap):
-    viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
-    error = hz.held_out_month_error(viirs, modis, "bins")
-    assert 0 < error < 0.5  # random synthetic months: far from perfect, far from useless
-    # a fit that sees the test years (all of them, no hold-out) cannot be scored this way by accident
-    par = hz.fit_viirs(viirs, modis, "bins")
-    in_sample = hz.viirs_weights(par, viirs).groupby([viirs.y, viirs.m]).sum()
-    truth = modis.groupby(["y", "m"]).size()
-    assert float((in_sample - truth).abs().sum() / truth.sum()) <= error + 0.02
+@pytest.fixture
+def three_years():
+    """One day of fire a year. VIIRS reports 200, 200 and 400 cell-days; MODIS reports 100 every year."""
+    july = {2013: 200, 2014: 200, 2015: 400}
+    viirs = pd.concat([cell_days("viirs_snpp", [f"{y}-07-01"] * n, matched=1) for y, n in july.items()])
+    modis = pd.concat([cell_days("modis", [f"{y}-07-01"] * 100) for y in july])
+    df = hz.prepare(pd.concat([viirs, modis], ignore_index=True))
+    return df[df.stream == "viirs_snpp"], df[df.stream == "modis"]
+
+
+def test_a_held_out_year_is_predicted_from_the_other_years_only(three_years):
+    viirs, modis = three_years
+    # 2015 from 2013-2014: 200 MODIS / 400 VIIRS = 0.5 per cell-day, times its 400 cell-days = 200
+    # 2013 from 2014-2015: 200 / 600 = 1/3, times 200 = 66.67; 2014 the same
+    held_out = leave_one_year_out(viirs, modis, "bins")
+    assert held_out.groupby("y").w.sum().to_dict() == pytest.approx({2013: 200 / 3, 2014: 200 / 3, 2015: 200.0})
+    assert set(held_out.weights) == {"bins"}
+    # misses of 33.33, 33.33 and 100 on a truth of 300. A fit on all three years would weigh a cell-day
+    # 300 / 800 and miss by 25, 25 and 50: 1/3
+    assert hz.held_out_month_error(viirs, modis, "bins") == pytest.approx(5 / 9)
+
+
+def test_the_choice_of_weight_never_sees_the_held_out_year(three_years, monkeypatch):
+    viirs, modis = three_years
+    seen = []
+
+    def choose(train_viirs, train_modis):
+        seen.append((sorted(train_viirs.y.unique()), sorted(train_modis.y.unique())))
+        return "bins", {}
+
+    monkeypatch.setattr(hz, "choose_weights", choose)
+    held_out = leave_one_year_out(viirs, modis, "auto")
+    assert seen == [([2014, 2015], [2014, 2015]), ([2013, 2015], [2013, 2015]), ([2013, 2014], [2013, 2014])]
+    assert held_out.groupby("y").w.sum().to_dict() == pytest.approx({2013: 200 / 3, 2014: 200 / 3, 2015: 200.0})
 
 
 def test_season_factor_pools_neighbouring_days_and_wraps_at_new_year():

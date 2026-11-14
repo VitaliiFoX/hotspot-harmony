@@ -80,7 +80,7 @@ A day when a VIIRS sensor was not really observing: it reports almost nothing wh
 _Avoid_: outage day, missing day, zero day
 
 **Detection weight**:
-The share of a MODIS fire cell-day that one VIIRS fire cell-day stands for, set by its fire power, day or night, and time of year.
+The share of a MODIS fire cell-day that one VIIRS fire cell-day stands for, set by its fire power, day or night, and time of year; where the boosted model is used, also by the number and confidence of its detections and the pixel size.
 _Avoid_: calibration factor, k (that is only one part of it)
 
 ### Product
