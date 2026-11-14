@@ -139,6 +139,8 @@ function fitRegion(map: MapLibreMap, region: Region): void {
  * The top of the page: a satellite globe of the selected day's hotspots through the selected hour,
  * with the region boxes, the night side, a legend and a table view.
  */
+const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
+
 export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onPickRegion, panel }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -161,10 +163,9 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
       maxZoom: 9,
       renderWorldCopies: false,
       attributionControl: { compact: false },
-      // The wheel always scrolls the page and never zooms the globe, so scrolling past it is silent: no
-      // overlay, no modifier key. Zoom stays on the + / - buttons, double-click and pinch.
-      scrollZoom: false,
-      // On touch screens one finger scrolls the page; two fingers move the globe.
+      // The wheel scrolls the page; Cmd (Mac) or Ctrl + wheel zooms the globe. On touch screens one finger
+      // scrolls the page and two fingers move the globe. The desktop overlay that MapLibre shows on a plain
+      // wheel is hidden in globe.css: the shortcut is written in the legend instead.
       cooperativeGestures: true,
       locale: {
         "CooperativeGesturesHandler.WindowsHelpText": "Scroll to move down the page. Ctrl + scroll zooms the globe.",
@@ -343,6 +344,7 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
             Detected in the selected hour
           </li>
         </ul>
+        <p className="legend-hint">{`${ZOOM_KEY} + scroll zooms the globe; scroll alone moves down the page.`}</p>
         <p>Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble).</p>
       </div>
     </section>

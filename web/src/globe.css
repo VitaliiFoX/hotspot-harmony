@@ -636,3 +636,15 @@ html {
     left: 6px;
   }
 }
+
+/* With a mouse or trackpad the plain-wheel overlay is hidden: the page simply scrolls, and the zoom
+   shortcut is in the legend. Touch screens keep MapLibre's "use two fingers" message. */
+@media (hover: hover) and (pointer: fine) {
+  .stage .maplibregl-cooperative-gesture-screen {
+    display: none;
+  }
+}
+.legend-hint {
+  color: var(--stage-ink);
+  font-weight: 600;
+}
