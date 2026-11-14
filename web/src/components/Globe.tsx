@@ -161,7 +161,10 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
       maxZoom: 9,
       renderWorldCopies: false,
       attributionControl: { compact: false },
-      // The globe fills the first screen; without this the wheel zooms it and the page never scrolls.
+      // The wheel always scrolls the page and never zooms the globe, so scrolling past it is silent: no
+      // overlay, no modifier key. Zoom stays on the + / - buttons, double-click and pinch.
+      scrollZoom: false,
+      // On touch screens one finger scrolls the page; two fingers move the globe.
       cooperativeGestures: true,
       locale: {
         "CooperativeGesturesHandler.WindowsHelpText": "Scroll to move down the page. Ctrl + scroll zooms the globe.",
@@ -276,9 +279,14 @@ export function Globe({ regions, date, hour, day, counts, focusRegion, dark, onP
       <div className="stage-head">
         <h1>Hotspot Harmony</h1>
         <p>Satellite fire hotspots, day by day</p>
-        <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={() => setShowTable(!showTable)}>
-          {showTable ? "Show globe" : "Show table"}
-        </button>
+        <div className="stage-actions">
+          <a className="stage-next" href="#calendar">
+            Burning activity calendar, 2000 to 2025 <span aria-hidden="true">↓</span>
+          </a>
+          <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={() => setShowTable(!showTable)}>
+            {showTable ? "Show globe" : "Show table"}
+          </button>
+        </div>
       </div>
 
       {panel}

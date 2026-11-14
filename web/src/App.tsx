@@ -264,7 +264,7 @@ export function App() {
         }
       />
       </GlobeBoundary>
-      <div className="page">
+      <div className="page" id="calendar">
         <header className="top">
           <div>
             <p className="subtitle">Burning activity calendar from satellite fire hotspots, 2000 to 2025</p>
