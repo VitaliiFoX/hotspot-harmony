@@ -15,6 +15,7 @@ from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
@@ -50,6 +51,8 @@ def create_app(data_dir: Path | None = None, config_path: Path | None = None, cs
         allow_headers=["*"],
         expose_headers=["X-Truncated"],
     )
+    # A calendar answer is ~18 kB of JSON and a CSV export can be tens of MB: both shrink 5-10 times.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.exception_handler(ApiError)
     def api_error(_: Request, error: ApiError) -> JSONResponse:
