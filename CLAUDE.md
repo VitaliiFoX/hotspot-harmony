@@ -72,8 +72,8 @@ options are in [docs/adr/0001](docs/adr/0001-harmonize-to-modis-equivalent-fire-
 method is in [docs/METHOD.md](docs/METHOD.md).
 
 - `pipeline.harmonize` writes `data/agg/harmonized.parquet`; `pipeline.validate` writes `data/agg/harmonization_report.json`, `docs/VALIDATION.md` and `docs/sensor_jump_before_after.png`. Never edit the last two by hand.
-- Reference values, written by `make validate` on 2026-11-14 for Ukraine: held-out error 4.3% per year and 8.0% per month; sensor jump 2.00x in the raw record, 0.90x in the harmonized record. A change that moves these needs an explanation in the PR.
-- The harmonized record is in fire cell-days; the raw record in the API is still in hotspots. Do not compare the two as if they shared a unit until that is settled (see the ADR).
+- Reference values, written by `make validate` on 2026-11-14 with the full archive of both countries: held-out error 4.3% per year and 8.0% per month in Ukraine, 5.4% and 7.7% in Argentina; sensor jump 2.00x raw to 0.90x harmonized in Ukraine, 1.32x to 0.66x in Argentina (where MODIS itself shows less burning in 2012-2016). A change that moves these needs an explanation in the PR.
+- Both series in the API are in fire cell-days: `harmonized` from `n_harmonized`, `raw` from `n_raw` of `data/agg/harmonized.parquet`. Only when that file is missing does `raw` fall back to hotspot counts; the API reports the unit of each series (`unit`, `units`) and the web app prints it, so never hard-code a unit in the UI.
 - The experiments that were tried and rejected are in `research/experiments/` and listed in `docs/METHOD.md`. Read that list before proposing a "smarter" model.
 
 ## Skills in this repo
