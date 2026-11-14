@@ -12,7 +12,8 @@ import re
 import subprocess
 import sys
 
-CYRILLIC = re.compile(r"[Ѐ-ԯ]")
+# Unicode blocks "Cyrillic" and "Cyrillic Supplement", written as code points so this file passes its own check
+CYRILLIC = re.compile(f"[{chr(0x0400)}-{chr(0x052F)}]")
 
 
 def git(*args: str) -> str:
