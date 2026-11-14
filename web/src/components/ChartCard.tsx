@@ -1,4 +1,5 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
+import { downloadPng } from "../exports";
 
 type Props = {
   title: string;
@@ -8,18 +9,35 @@ type Props = {
   chart: ReactNode;
   /** The same numbers as a table: the way to read the chart without colour or a pointer. */
   table: ReactNode;
+  /** File name for "Download PNG"; the button is shown when it is given. */
+  pngName?: string;
+  /** Extra download buttons, e.g. the data behind the chart as CSV. */
+  downloads?: ReactNode;
 };
 
-export function ChartCard({ title, subtitle, options, chart, table }: Props) {
+export function ChartCard({ title, subtitle, options, chart, table, pngName, downloads }: Props) {
   const [showTable, setShowTable] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const figure = useRef<HTMLElement>(null);
+
+  async function savePng() {
+    if (!figure.current || !pngName) return;
+    setSaving(true);
+    try {
+      await downloadPng(figure.current, pngName);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <figure className="card">
+    <figure className="card" ref={figure}>
       <figcaption className="card-head">
         <div>
           <h2>{title}</h2>
           {subtitle && <p className="subtitle">{subtitle}</p>}
         </div>
-        <div className="card-options">
+        <div className="card-options" data-export="skip">
           {!showTable && options}
           <button type="button" className="ghost" aria-pressed={showTable} onClick={() => setShowTable(!showTable)}>
             {showTable ? "Show chart" : "Show table"}
@@ -27,6 +45,16 @@ export function ChartCard({ title, subtitle, options, chart, table }: Props) {
         </div>
       </figcaption>
       {showTable ? <div className="table-wrap">{table}</div> : chart}
+      {(pngName || downloads) && (
+        <div className="card-downloads" data-export="skip">
+          {downloads}
+          {pngName && !showTable && (
+            <button type="button" className="ghost download" onClick={savePng} disabled={saving}>
+              {saving ? "Saving image..." : "Download PNG"}
+            </button>
+          )}
+        </div>
+      )}
     </figure>
   );
 }
