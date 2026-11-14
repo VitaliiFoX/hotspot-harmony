@@ -37,7 +37,7 @@ Requires [uv](https://docs.astral.sh/uv/) and `make`.
 make data                  # download, normalize, aggregate every country in config/regions.yaml
 make data COUNTRY=Ukraine  # one country only
 make test                  # pytest
-make lint                  # ruff
+make lint                  # ruff + English-only check
 ```
 
 `make data` needs no account or key. It downloads public yearly CSV files from FIRMS
@@ -52,7 +52,34 @@ config/regions.yaml   countries, grid size, filters
 pipeline/             ingest -> normalize -> aggregate (+ tests)
 research/             experiments that are not part of the pipeline
 data/                 generated, git-ignored (see data/README.md)
+CLAUDE.md             instructions for AI coding agents
+GLOSSARY.md           the project's vocabulary
+.claude/skills/       agent skills (see "Working with AI agents")
 ```
+
+## Working with AI agents
+
+The repo is set up so that a coding agent can start work without a briefing:
+
+- [`CLAUDE.md`](CLAUDE.md) holds the rules, the data facts that are easy to get wrong, and the open decisions.
+- [`GLOSSARY.md`](GLOSSARY.md) fixes one word per concept, for people and agents alike.
+- [`.claude/skills/`](.claude/skills/) holds eleven skills from
+  [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `.claude/skills/NOTICE.md`).
+
+| Skill | Use |
+|---|---|
+| `tdd`, `codebase-design` | build pipeline logic test-first |
+| `diagnosing-bugs` | find the cause of a wrong number or a failing step |
+| `research` | check a fact against primary sources and save a cited note |
+| `prototype` | answer a design question with throwaway code |
+| `domain-modeling`, `grilling` | sharpen terms and decisions, keep `GLOSSARY.md` and ADRs current |
+| `pr` | write a PR body that is fast to review |
+| `writing-for-agents` | edit `CLAUDE.md` or a skill |
+| `/grill-with-docs` | you type it: get interviewed about a design before building it |
+| `/handoff` | you type it: pack the session into a note for the next person or agent |
+
+The agent picks up every skill except the last two on its own. Update the copies with
+`npx skills update`; `skills-lock.json` records where each one came from.
 
 ## Data
 
@@ -65,6 +92,14 @@ All data come from NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m):
 
 By default the pipeline keeps presumed vegetation fires (FIRMS `type = 0`) and drops
 low-confidence detections. Both filters are set in `config/regions.yaml`.
+
+## Contributing
+
+- **English only.** Code, comments, docs, UI text, commit messages, branch names, PR titles and
+  bodies, issues and review comments are written in English, whoever or whatever writes them.
+  CI fails when Cyrillic text shows up in a tracked file, a commit message, or a PR title or body.
+- Work on a branch and open a pull request against `main`.
+- Run `make test` and `make lint` before you push.
 
 ## Use of AI tools
 
