@@ -52,7 +52,34 @@ config/regions.yaml   countries, grid size, filters
 pipeline/             ingest -> normalize -> aggregate (+ tests)
 research/             experiments that are not part of the pipeline
 data/                 generated, git-ignored (see data/README.md)
+CLAUDE.md             instructions for AI coding agents
+GLOSSARY.md           the project's vocabulary
+.claude/skills/       agent skills (see "Working with AI agents")
 ```
+
+## Working with AI agents
+
+The repo is set up so that a coding agent can start work without a briefing:
+
+- [`CLAUDE.md`](CLAUDE.md) holds the rules, the data facts that are easy to get wrong, and the open decisions.
+- [`GLOSSARY.md`](GLOSSARY.md) fixes one word per concept, for people and agents alike.
+- [`.claude/skills/`](.claude/skills/) holds eleven skills from
+  [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `.claude/skills/NOTICE.md`).
+
+| Skill | Use |
+|---|---|
+| `tdd`, `codebase-design` | build pipeline logic test-first |
+| `diagnosing-bugs` | find the cause of a wrong number or a failing step |
+| `research` | check a fact against primary sources and save a cited note |
+| `prototype` | answer a design question with throwaway code |
+| `domain-modeling`, `grilling` | sharpen terms and decisions, keep `GLOSSARY.md` and ADRs current |
+| `pr` | write a PR body that is fast to review |
+| `writing-for-agents` | edit `CLAUDE.md` or a skill |
+| `/grill-with-docs` | you type it: get interviewed about a design before building it |
+| `/handoff` | you type it: pack the session into a note for the next person or agent |
+
+The agent picks up every skill except the last two on its own. Update the copies with
+`npx skills update`; `skills-lock.json` records where each one came from.
 
 ## Data
 
