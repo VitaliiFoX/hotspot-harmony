@@ -146,12 +146,13 @@ def check(vg, mg, truth, years, gaps) -> None:
         "A3 pipeline now: bins x season by day of year": cached("A3", lambda: loyo(dict(weight="bins", season=15), vg, mg)),
         "M5 boosted weight, LightGBM": cached("M5_lgbm", lambda: loyo(point("lgbm"), vg, mg)),
         "M5 boosted weight, scikit-learn": cached("M5_hgb", lambda: loyo(point("hgb"), vg, mg)),
-        "C4 cell-day model, LightGBM": cached("C4_lgbm", lambda: cell("lgbm")),
-        "C4 cell-day model, scikit-learn": cached("C4_hgb", lambda: cell("hgb")),
+        # LightGBM only for the cell-day model: it is 2.5 times faster than scikit-learn and gives the same error
+        "C4 cell-day model": cached("C4_lgbm", lambda: cell("lgbm")),
     }
-    preds["F mean of M5 and C4, scikit-learn"] = R.blend(preds["M5 boosted weight, scikit-learn"], preds["C4 cell-day model, scikit-learn"])
-    preds["F mean of A3, M5 and C4, scikit-learn"] = pd.concat([preds[n].assign(w=preds[n].w / 3) for n in (
-        "A3 pipeline now: bins x season by day of year", "M5 boosted weight, scikit-learn", "C4 cell-day model, scikit-learn")])
+    a3, m5, c4 = "A3 pipeline now: bins x season by day of year", "M5 boosted weight, scikit-learn", "C4 cell-day model"
+    preds["F1 mean of table weight and cell-day model"] = R.blend(preds[a3], preds[c4])
+    preds["F2 mean of boosted weight and cell-day model"] = R.blend(preds[m5], preds[c4])
+    preds["F3 mean of all three"] = pd.concat([preds[n].assign(w=preds[n].w / 3) for n in (a3, m5, c4)])
     ref = "A3 pipeline now: bins x season by day of year"
     tabs = {n: R.table(p, truth, years) for n, p in preds.items()}
     df = pd.DataFrame([{"model": n, **R.scores(d), **(R.versus(d, tabs[ref]) if n != ref else {})} for n, d in tabs.items()])

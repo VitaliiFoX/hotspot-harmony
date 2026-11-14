@@ -24,9 +24,12 @@ Decided by the team on 2026-11-14.
 
 ## Consequences
 
-- The weight comes from a table by fire power or from a boosted regression model, whichever predicts
-  held-out years better in that country. So two countries can use different rules, and
-  `docs/VALIDATION.md` says which. This keeps the model from being used where it hurts (Argentina).
+- Per country one of five methods fills the VIIRS era: a table by fire power, a boosted weight, a
+  context model, or the mean of the context model with either weight. The table stays unless another
+  method beats it by a clear margin on held-out years. So two countries can use different methods,
+  and `docs/VALIDATION.md` says which. This keeps a model from being used where it hurts (the boosted
+  weight in Argentina).
+- In world mode the plain table is the default: scoring five methods for every country is too slow.
 
 - The raw record served by the API is counted in fire cell-days too (`n_raw`), so the two series differ only in the correction, not in unit. Settled on 2026-11-14 after this ADR was written.
 - The month of a harmonized value is the month of the local solar day, not the UTC month.

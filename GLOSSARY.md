@@ -83,6 +83,14 @@ _Avoid_: outage day, missing day, zero day
 The share of a MODIS fire cell-day that one VIIRS fire cell-day stands for, set by its fire power, day or night, and time of year.
 _Avoid_: calibration factor, k (that is only one part of it)
 
+**Context model**:
+The estimate of the MODIS fire cell-days of one cell on one day from the VIIRS activity in that cell, in the cells around it and on the days before and after. It can account for fires VIIRS did not see at its own overpass.
+_Avoid_: grid model, neighbourhood model, ML model (the boosted weight is one too)
+
+**Method**:
+How the VIIRS era of the harmonized record is computed in one country: detection weights, the context model, or the mean of the two. Chosen per country on held-out years.
+_Avoid_: algorithm, mode, strategy
+
 ### Product
 
 **Burning activity calendar**:

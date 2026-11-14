@@ -60,23 +60,39 @@ def scores(d: pd.DataFrame) -> dict:
     }
 
 
-def leave_one_year_out(
-    viirs: pd.DataFrame, modis: pd.DataFrame, weights: str = "boosted", also: pd.DataFrame | None = None
-) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
-    """Weights for every year from a model fitted on the other years.
+TABLE_ONLY = {"weights": "bins", "context_share": 0.0}  # the plain method, for comparison rows
 
-    `also` is a second set of cell-days (e.g. with sensor gap days kept) to weigh with the same models,
-    so that a second comparison costs no second round of fitting.
+
+def leave_one_year_out(
+    viirs: pd.DataFrame,
+    modis: pd.DataFrame,
+    par: dict,
+    context: pd.DataFrame | None = None,
+    also: pd.DataFrame | None = None,
+    also_context: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """Every year predicted by models fitted on the other years, with the country's method (`par`).
+
+    Returns year, month, tile and predicted value `w`. `also` / `also_context` are a second set of rows
+    (e.g. with sensor gap days kept) scored with the same models, so a second comparison costs no refit.
     """
+    share = par["context_share"]
     folds, extra = [], []
     for year in sorted(viirs.y.unique()):
-        par = hz.fit_viirs(viirs[viirs.y != year], modis[modis.y != year], weights)
-        test = viirs[viirs.y == year]
-        folds.append(test.assign(w=hz.viirs_weights(par, test)))
-        if also is not None:
-            test = also[also.y == year]
-            extra.append(test.assign(w=hz.viirs_weights(par, test)))
-    return (pd.concat(folds), pd.concat(extra)) if also is not None else pd.concat(folds)
+        train_modis = modis[modis.y != year]
+        if share < 1:
+            fitted = hz.fit_viirs(viirs[viirs.y != year], train_modis, par["weights"])
+            for rows, out in ((viirs, folds), (also, extra)):
+                if rows is not None:
+                    test = rows[rows.y == year]
+                    out.append(test[KEYS].assign(w=hz.viirs_weights(fitted, test) * (1 - share)))
+        if share > 0:
+            fitted = hz.fit_context(context[context.y != year], len(train_modis))
+            for rows, out in ((context, folds), (also_context, extra)):
+                if rows is not None:
+                    test = rows[rows.y == year]
+                    out.append(test[KEYS].assign(w=hz.context_values(fitted, test) * share))
+    return pd.concat(folds), (pd.concat(extra) if extra else None)
 
 
 def interval_by_size(d: pd.DataFrame) -> list[dict]:
@@ -108,15 +124,21 @@ def sensor_jump(df: pd.DataFrame) -> dict | None:
     return out
 
 
-def validate_country(df: pd.DataFrame, par: dict, weights: str = "boosted") -> dict:
+def validate_country(df: pd.DataFrame, par: dict) -> dict:
     s, d = df.stream, df.local_date
     # a day the sensor did not observe says nothing about the method: it is left out of fit and comparison,
     # and the same check on every day is reported next to it
     fit_all = d.between(*hz.FIT)
-    fit = fit_all & ~d.isin(hz.gap_days(df, "viirs_snpp"))
+    snpp_gaps = hz.gap_days(df, "viirs_snpp")
+    fit = fit_all & ~d.isin(snpp_gaps)
     viirs, modis = df[fit & (s == "viirs_snpp")], df[fit & (s == "modis")]
     viirs_all, modis_all = df[fit_all & (s == "viirs_snpp")], df[fit_all & (s == "modis")]
-    held_out, held_out_all = leave_one_year_out(viirs, modis, weights, also=viirs_all)
+    context = context_all = None
+    if par["context_share"] > 0:
+        ctx = par["_context"]["viirs_snpp"]
+        context_all = ctx[ctx.local_date.between(*hz.FIT)]
+        context = context_all[~context_all.local_date.isin(snpp_gaps)]
+    held_out, held_out_all = leave_one_year_out(viirs, modis, par, context, also=viirs_all, also_context=context_all)
     loyo, with_gaps = compare(held_out, modis), compare(held_out_all, modis_all)
     out = {
         "viirs_to_modis_leave_one_year_out": scores(loyo),
@@ -124,12 +146,20 @@ def validate_country(df: pd.DataFrame, par: dict, weights: str = "boosted") -> d
         "baseline_raw_viirs": scores(compare(viirs.assign(w=1.0), modis)),
         "baseline_single_factor": scores(compare(viirs.assign(w=len(modis) / len(viirs)), modis)),
     }
-    if weights == "boosted":  # the same check with the plain table by fire power, to show what the model adds
-        out["weight_table_instead_of_model"] = scores(compare(leave_one_year_out(viirs, modis, "bins"), modis))
-    chk = d.between(hz.N20_START, hz.FIT[1]) & ~d.isin(hz.gap_days(df, "viirs_noaa20"))
-    if (chk & (s == "viirs_noaa20")).any():  # NOAA-20 never took part in fitting p, k, r
+    if par["method"] != "bins":  # the same check with the plain table by fire power, to show what the models add
+        out["table_by_fire_power_only"] = scores(compare(leave_one_year_out(viirs, modis, TABLE_ONLY)[0], modis))
+    n20_gaps = hz.gap_days(df, "viirs_noaa20")
+    chk = d.between(hz.N20_START, hz.FIT[1]) & ~d.isin(n20_gaps)
+    if (chk & (s == "viirs_noaa20")).any():  # NOAA-20 never took part in fitting any of the models
+        share = par["context_share"]
         n20 = df[chk & (s == "viirs_noaa20")]
-        out["noaa20_independent"] = scores(compare(n20.assign(w=n20.weight), df[chk & (s == "modis")]))
+        parts = [n20[KEYS].assign(w=n20.weight * (1 - share))]
+        if share > 0:
+            ctx = par["_context"]["viirs_noaa20"]
+            ctx = ctx[ctx.local_date.between(hz.N20_START, hz.FIT[1]) & ~ctx.local_date.isin(n20_gaps)]
+            value = hz.context_values(par["context"], ctx) * (par["n20_to_snpp"] or 1.0) * share
+            parts.append(ctx[KEYS].assign(w=value))
+        out["noaa20_independent"] = scores(compare(pd.concat(parts), df[chk & (s == "modis")]))
     tf = d.between(*hz.TERRA_FIT)
     terra, both = df[tf & (s == "modis_terra")], df[tf & (s == "modis")]
     if len(terra):
@@ -161,10 +191,11 @@ def validate_country(df: pd.DataFrame, par: dict, weights: str = "boosted") -> d
     }
 
 
-def plot_sensor_jump(df: pd.DataFrame, country: str, report: dict, out: Path) -> None:
+def plot_sensor_jump(record: pd.DataFrame, country: str, report: dict, out: Path) -> None:
+    """`record` is the country's table from `hz.record_table`: the same numbers the API serves."""
     surface, ink, ink2, grid = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
-    raw = df[df.in_raw].groupby("y").size()
-    harm = df[df.in_series].groupby("y").weight.sum()
+    yearly = record.groupby("year")[["n_raw", "n_harmonized"]].sum()
+    raw, harm = yearly.n_raw, yearly.n_harmonized
     years = [y for y in harm.index if y > 2000]  # 2000 has two months only
     plt.rcParams.update({"font.size": 10, "text.color": ink, "axes.labelcolor": ink2, "xtick.color": ink2,
                          "ytick.color": ink2, "axes.edgecolor": grid, "figure.facecolor": surface,
@@ -203,17 +234,26 @@ def plot_sensor_jump(df: pd.DataFrame, country: str, report: dict, out: Path) ->
     plt.close(fig)
 
 
-def weights_line(entry: dict) -> str:
-    """Which detection weight this country got, and the held-out errors the choice was made on."""
-    used = "the boosted model" if entry["weights"] == "boosted" else "the table by fire power"
-    tried = entry.get("weights_held_out_month_error") or {}
-    if not tried:
-        return f"Detection weight: {used}."
-    return (
-        f"Detection weight: {used}. Chosen on years held out three at a time, country x month error: "
-        f"table {tried['bins']:.1%}, boosted model {tried['boosted']:.1%}; the model is used only when it wins "
-        f"by more than {hz.WEIGHTS_MARGIN:.1%}."
-    )
+METHOD_NAMES = {
+    "bins": "the table by fire power",
+    "boosted": "the boosted weight",
+    "context": "the context model",
+    "bins+context": "the mean of the table by fire power and the context model",
+    "boosted+context": "the mean of the boosted weight and the context model",
+}
+
+
+def method_line(entry: dict) -> str:
+    """Which method this country got, and the held-out errors the choice was made on."""
+    tried = entry.get("method_held_out_month_error") or {}
+    line = f"Method: {METHOD_NAMES[entry['method']]}."
+    if tried:
+        scores_text = ", ".join(f"{METHOD_NAMES[m].removeprefix('the ')} {e:.1%}" for m, e in tried.items())
+        line += (
+            f" Chosen on years held out three at a time, country x month error: {scores_text}. "
+            f"Anything but the table is used only when it wins by more than {hz.METHOD_MARGIN:.1%}."
+        )
+    return line
 
 
 def write_markdown(report: dict, out: Path) -> None:
@@ -221,7 +261,7 @@ def write_markdown(report: dict, out: Path) -> None:
     rows = [
         ("viirs_to_modis_leave_one_year_out", "Harmonized VIIRS vs MODIS, each year predicted without seeing it"),
         ("viirs_to_modis_sensor_gap_days_included", "The same with sensor gap days counted against the method"),
-        ("weight_table_instead_of_model", "The same with a table by fire power instead of the boosted model"),
+        ("table_by_fire_power_only", "The same with the plain table by fire power instead of the chosen method"),
         ("baseline_single_factor", "Baseline: one scaling factor for the whole country"),
         ("baseline_raw_viirs", "Baseline: VIIRS cell-days as delivered"),
         ("noaa20_independent", "NOAA-20 vs MODIS (NOAA-20 was not used to fit the weights)"),
@@ -276,7 +316,7 @@ def write_markdown(report: dict, out: Path) -> None:
         )
         lines += [
             "",
-            weights_line(e),
+            method_line(e),
             f"Scale k = {e['k']}. NOAA-20 to S-NPP factor = {e['n20_to_snpp']}.",
             f"Months left out of that factor as sensor gaps: {', '.join(e['sensor_gap_months']) or 'none'}.",
             "",
@@ -296,12 +336,14 @@ def main() -> None:
     ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     ap.add_argument("--data", type=Path, default=DEFAULT_DATA)
     ap.add_argument("--docs", type=Path, default=ROOT / "docs")
-    ap.add_argument("--weights", choices=["auto", "boosted", "bins"], default="auto", help="as in pipeline.harmonize")
+    ap.add_argument("--method", choices=["auto", *hz.METHODS], help="as in pipeline.harmonize")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
     agg = args.data / "agg"
-    results = hz.harmonize_all(duckdb.connect(), agg / "cell_day.parquet", cfg.countries(), args.weights)
+    cell_day = agg / "cell_day.parquet"
+    method = args.method or ("bins" if cfg.world else "auto")  # as in pipeline.harmonize
+    results = hz.harmonize_all(duckdb.connect(), cell_day, cfg.countries(), method, cfg.cell_deg)
     report = {
         "generated_at_utc": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "unit": UNIT,
@@ -314,9 +356,10 @@ def main() -> None:
     for country, (df, par, source) in results.items():
         entry = {"calibration": source, **hz.params_to_json(par, source)}
         if source == "own":
-            entry.update(validate_country(df, par, par["weights"]))
+            entry.update(validate_country(df, par))
             if not plotted and entry["sensor_jump"]:
-                plot_sensor_jump(df, country, entry, args.docs / "sensor_jump_before_after.png")
+                record = hz.record_table(df, par, cfg.cell_deg)
+                plot_sensor_jump(record, country, entry, args.docs / "sensor_jump_before_after.png")
                 plotted = True
             v = entry["validation"]["viirs_to_modis_leave_one_year_out"]
             print(f"validate: {country:<12} held-out error {v['wape_country_year']:.1%} per year, "

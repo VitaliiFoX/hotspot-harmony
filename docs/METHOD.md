@@ -34,16 +34,11 @@ coarser one, but a coarse sensor cannot recover fires it never saw.
 
    - `share` is how much of a MODIS fire cell-day this VIIRS cell-day stands for. It is measured,
      not assumed: every MODIS cell-day is one unit, split equally among the VIIRS cell-days within
-     one cell the same day. Two ways to turn that into a rule are fitted, and each country gets
-     the one that predicts held-out years better:
+     one cell the same day. Two ways to turn that into a rule are fitted:
      - a **table** by fire power and day or night (the detection curve in VALIDATION.md: the
        stronger the fire, the more likely MODIS also saw it);
-     - a **boosted regression model** (scikit-learn, Poisson loss) that also looks at the number
-       and confidence of the detections and the pixel size.
-
-     The model has to earn its place: it is used only where it beats the table by a clear margin
-     on years held out three at a time. It wins in Ukraine and loses in Argentina, so Ukraine gets
-     the model and Argentina the table. VALIDATION.md states which one each country got and why.
+     - a **boosted weight**: a boosted regression model (scikit-learn) that also looks at the
+       number and confidence of the detections and the pixel size.
    - `k` is one scale that makes totals match. MODIS also sees fires at hours when VIIRS is not
      overhead (Terra passes in the morning), which no VIIRS detection can stand in for.
    - `r` is the seasonal difference that remains. It follows the day of the year smoothly (each day
@@ -75,6 +70,32 @@ Because the correction lives on each cell-day, the harmonized value of any polyg
 is a plain sum. Fields with small agricultural burns and forests with large fires get different
 corrections automatically, which a single ratio per country cannot do.
 
+## The context model, and how a method is chosen
+
+A weight can only rescale what VIIRS saw. It cannot add a fire that MODIS caught in the morning and
+VIIRS never saw in the afternoon: about four MODIS fire cell-days in ten have no VIIRS cell-day next
+to them that day. But nearly all of them have VIIRS activity close by in space or time. So a second,
+independent estimate looks at context instead of single cell-days:
+
+- one row per 0.25 degree cell and local day that has VIIRS activity in the cell, in one of its
+  eight neighbours, or in the cell the day before or after;
+- inputs: what VIIRS saw in the cell that day, around it that day, and in the cell on the two days
+  before and after, plus place and time of year;
+- target: the MODIS fire cell-days of that cell and day;
+- a boosted regression model (scikit-learn), then one scale so the total matches.
+
+Rows are picked from VIIRS alone, never from MODIS, so the model can be applied where MODIS is gone.
+
+**Nothing boosted is used on trust.** For each country five methods are scored on years held out
+three at a time: the table, the boosted weight, the context model, and the mean of the context model
+with each weight. The plain table stays unless another method beats it by 0.2 points of
+country x month error. `docs/VALIDATION.md` states which method each country got and all five scores.
+This matters: the boosted weight is better than the table in Ukraine and worse in Argentina, while
+the context model helps in both.
+
+In the record the chosen method fills the VIIRS era (from 2022). Where the context model takes part,
+its value for a cell and month is added to the weighted cell-days, each counted by its share.
+
 ## How we know it works
 
 - **Leave-one-year-out.** Each overlap year is predicted from VIIRS by weights fitted on the other
@@ -82,8 +103,8 @@ corrections automatically, which a single ratio per country cannot do.
   year and month. Sensor gap days are left out of the comparison, since a day the sensor did not
   observe says nothing about the method; the same check with those days counted is reported next
   to it.
-- **An independent sensor.** NOAA-20 never took part in fitting `p`, `k`, `r`; it is still checked
-  against MODIS.
+- **An independent sensor.** NOAA-20 never took part in fitting any of the models; it is still
+  checked against MODIS.
 - **Sensor jump check.** Mean yearly total of 2012-2016 over 2007-2011, raw record against
   harmonized record.
 - **Two baselines** in the same table: VIIRS as delivered, and one scaling factor per country.
@@ -103,12 +124,22 @@ All figures are country x month error on Ukraine from leave-one-year-out, measur
 | + sensor gap days left out | 7.0% |
 | + season factor by day of year, +-15 days | 6.5% |
 
-| + boosted model for the weight, where it wins on held-out years | 6.1% |
+| + the method chosen per country on held-out years (context model) | see VALIDATION.md |
 
-The boosted model was measured with LightGBM, XGBoost, CatBoost and scikit-learn: the four agree to
+The boosted weight was measured with LightGBM, XGBoost, CatBoost and scikit-learn: the four agree to
 0.02 points, so the pipeline uses scikit-learn, which needs no extra system library. On Argentina the
-same model is worse than the table (8.0% against 7.4% per month), which is why it is chosen per
-country and not switched on everywhere.
+boosted weight is worse than the table (8.0% against 7.4% per month), which is why a method is chosen
+per country and nothing is switched on everywhere.
+
+Three things about the boosted models that cost time to find:
+
+- scikit-learn's Poisson loss ran away to predictions of 1e63 on the Argentina context table, and its
+  automatic early stopping sometimes quit after 10 rounds. The pipeline uses squared error with a
+  fixed number of rounds, which matched LightGBM's Poisson model on held-out years in both countries.
+- A larger context model (300 or 400 rounds, 63 leaves) scores the same as the small one
+  (150 rounds, 31 leaves), so the small one is used.
+- Feature sums are rounded and rows sorted before fitting. Added up in parallel, sums differ in the
+  last digit from run to run, and the model then differs too.
 
 **Measured, not adopted** (`research/harmonize_ml/`, run with `research/harmonize_ml/run.sh`; same
 data with gap days left out, so compare with 6.5% for the table and 6.1% for the model):
