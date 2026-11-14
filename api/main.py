@@ -6,7 +6,8 @@
     POST /api/hotspots.csv   the hotspots inside an area between two dates
 
 Run locally:  make api   (needs `make data` first)
-Settings: HH_DATA_DIR (default ./data), HH_CORS_ORIGINS (comma-separated, default the Vite dev server).
+Settings: HH_DATA_DIR (default ./data), HH_CONFIG (default config/regions.yaml),
+          HH_CORS_ORIGINS (comma-separated, default the Vite dev server).
 """
 
 import os
@@ -40,7 +41,8 @@ class HotspotsRequest(BaseModel):
 
 def create_app(data_dir: Path | None = None, config_path: Path | None = None, csv_limit: int = 500_000) -> FastAPI:
     data_dir = Path(data_dir or os.environ.get("HH_DATA_DIR") or DEFAULT_DATA)
-    store = Store(data_dir, load_config(config_path or DEFAULT_CONFIG), csv_limit)
+    config_path = Path(config_path or os.environ.get("HH_CONFIG") or DEFAULT_CONFIG)
+    store = Store(data_dir, load_config(config_path), csv_limit)
     app = FastAPI(title="hotspot-harmony", description=__doc__.splitlines()[0])
     origins = os.environ.get("HH_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
     app.add_middleware(

@@ -283,3 +283,10 @@ def test_api_without_data_explains_how_to_build_it(tmp_path):
     assert client.get("/api/health").json() == {"status": "ok", "data": False}
     r = calendar(client)
     assert r.status_code == 503 and "make data" in r.json()["detail"]
+
+
+def test_config_can_come_from_the_environment(tmp_path, monkeypatch):
+    config = build_data(tmp_path)
+    monkeypatch.setenv("HH_CONFIG", str(config))
+    client = TestClient(create_app(data_dir=tmp_path))
+    assert [r["name"] for r in client.get("/api/meta").json()["regions"]] == ["Testland"]
