@@ -65,7 +65,7 @@ def leave_one_year_out(viirs: pd.DataFrame, modis: pd.DataFrame) -> pd.DataFrame
     for year in sorted(viirs.y.unique()):
         par = hz.fit_viirs(viirs[viirs.y != year], modis[modis.y != year])
         test = viirs[viirs.y == year]
-        folds.append(test.assign(w=hz.viirs_weights(par, test.b, test.m)))
+        folds.append(test.assign(w=hz.viirs_weights(par, test.b, test.doy)))
     return pd.concat(folds)
 
 
@@ -100,15 +100,20 @@ def sensor_jump(df: pd.DataFrame) -> dict | None:
 
 def validate_country(df: pd.DataFrame, par: dict) -> dict:
     s, d = df.stream, df.local_date
-    fit = d.between(*hz.FIT)
+    # a day the sensor did not observe says nothing about the method: it is left out of fit and comparison,
+    # and the same check on every day is reported next to it
+    fit_all = d.between(*hz.FIT)
+    fit = fit_all & ~d.isin(hz.gap_days(df, "viirs_snpp"))
     viirs, modis = df[fit & (s == "viirs_snpp")], df[fit & (s == "modis")]
     loyo = compare(leave_one_year_out(viirs, modis), modis)
+    viirs_all, modis_all = df[fit_all & (s == "viirs_snpp")], df[fit_all & (s == "modis")]
     out = {
         "viirs_to_modis_leave_one_year_out": scores(loyo),
+        "viirs_to_modis_sensor_gap_days_included": scores(compare(leave_one_year_out(viirs_all, modis_all), modis_all)),
         "baseline_raw_viirs": scores(compare(viirs.assign(w=1.0), modis)),
         "baseline_single_factor": scores(compare(viirs.assign(w=len(modis) / len(viirs)), modis)),
     }
-    chk = d.between(hz.N20_START, hz.FIT[1])
+    chk = d.between(hz.N20_START, hz.FIT[1]) & ~d.isin(hz.gap_days(df, "viirs_noaa20"))
     if (chk & (s == "viirs_noaa20")).any():  # NOAA-20 never took part in fitting p, k, r
         n20 = df[chk & (s == "viirs_noaa20")]
         out["noaa20_independent"] = scores(compare(n20.assign(w=n20.weight), df[chk & (s == "modis")]))
@@ -189,6 +194,7 @@ def write_markdown(report: dict, out: Path) -> None:
     """docs/VALIDATION.md: the report as tables, generated so that no number is ever typed by hand."""
     rows = [
         ("viirs_to_modis_leave_one_year_out", "Harmonized VIIRS vs MODIS, each year predicted without seeing it"),
+        ("viirs_to_modis_sensor_gap_days_included", "The same with sensor gap days counted against the method"),
         ("baseline_single_factor", "Baseline: one scaling factor for the whole country"),
         ("baseline_raw_viirs", "Baseline: VIIRS cell-days as delivered"),
         ("noaa20_independent", "NOAA-20 vs MODIS (NOAA-20 was not used to fit the weights)"),
@@ -245,6 +251,10 @@ def write_markdown(report: dict, out: Path) -> None:
             "",
             f"Scale k = {e['k']}. NOAA-20 to S-NPP factor = {e['n20_to_snpp']}.",
             f"Months left out of that factor as sensor gaps: {', '.join(e['sensor_gap_months']) or 'none'}.",
+            "",
+            "Sensor gap days (the sensor reported under "
+            f"{hz.GAP_MAX_RATIO} fire cell-days per MODIS one while MODIS had at least {hz.GAP_MIN_MODIS}):",
+            *(f"- {stream}: {', '.join(days) or 'none'}" for stream, days in e["sensor_gap_days"].items()),
             "",
             "MODIS against the VIIRS-equivalent of the same year (1.0 = the sensors agree; Terra alone in brackets):",
             "",

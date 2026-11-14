@@ -6,7 +6,7 @@ status: accepted
 
 The harmonized record counts fire cell-days (a 1 km cell with a hotspot on one local solar day) in
 the amount MODIS Terra + Aqua would have reported. Each VIIRS fire cell-day gets a weight from its
-fire power, day or night, and calendar month, fitted on the overlap period 2012-02 to 2021-12. We
+fire power, day or night, and time of year, fitted on the overlap period 2012-02 to 2021-12. We
 chose this over one factor per cell because the VIIRS-to-MODIS ratio depends on how strong the
 fires are and on the season: on Ukraine, on years the model did not see, it misses by about half
 as much per month as a single factor does (`docs/VALIDATION.md`, written by `make validate`).

@@ -29,7 +29,7 @@ def overlap():
 def test_weights_follow_fire_power_and_keep_the_total(overlap):
     viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
     par = hz.fit_viirs(viirs, modis)
-    w = hz.viirs_weights(par, viirs.b, viirs.m)
+    w = hz.viirs_weights(par, viirs.b, viirs.doy)
 
     p = par["p"]
     assert p[viirs[viirs.frp < 1].b.iloc[0]] == pytest.approx(0.1, abs=0.02)
@@ -42,7 +42,7 @@ def test_record_takes_each_period_from_one_sensor():
     dates = ["2001-05-01", "2002-08-01", "2015-06-01", "2023-06-01"]
     df = hz.prepare(pd.concat([cell_days(s, dates) for s in ("modis", "modis_terra", "viirs_snpp", "viirs_noaa20")],
                               ignore_index=True))  # fmt: skip
-    par = {"p": pd.Series({df.b.iloc[0]: 0.5}), "k": 2.0, "r": pd.Series({5: 1.0, 6: 1.0, 8: 1.0}),
+    par = {"p": pd.Series({df.b.iloc[0]: 0.5}), "k": 2.0, "r": np.ones(367),
            "n20_to_snpp": 0.9, "terra": pd.Series({5: 2.5})}  # fmt: skip
     out = hz.apply(df, par)
     used = out[out.in_series].sort_values("local_date")
@@ -55,6 +55,41 @@ def test_record_takes_each_period_from_one_sensor():
     cells = hz.monthly_cells(out, cell_deg=0.25)
     assert list(cells.sensor_used) == ["modis_terra", "modis", "modis", "viirs_noaa20"]
     assert list(cells.n_raw) == [1, 1, 1, 1] and cells.n_harmonized.sum() == pytest.approx(5.4)
+
+
+def test_season_factor_pools_neighbouring_days_and_wraps_at_new_year():
+    # truth: 4 cell-days on day 10, 2 on day 366; prediction: weight 1 on day 10, 1 on day 1
+    r = hz.season_factor(np.array([10, 10, 10, 10, 366, 366]), np.array([10, 1]), np.array([1.0, 1.0]), half=1)
+    assert r[10] == pytest.approx(4.0)  # window (1, 2, 1) over days 9-11: 2*4 / 2*1
+    assert r[9] == r[11] == pytest.approx(4.0)  # the neighbours borrow from day 10: 1*4 / 1*1
+    assert r[1] == pytest.approx(1.0)  # day 366 is next to day 1: (1*2) / (2*1)
+    assert r[366] == pytest.approx(4.0)  # (2*2) / (1*1)
+    assert r[200] == 1.0  # nothing to learn from: no correction
+
+
+def test_season_factor_keeps_the_total(overlap):
+    viirs, modis = overlap[overlap.stream == "viirs_snpp"], overlap[overlap.stream == "modis"]
+    par = hz.fit_viirs(viirs, modis)
+    assert len(par["r"]) == 367 and par["r"].min() > 0
+    assert hz.viirs_weights(par, viirs.b, viirs.doy).sum() == pytest.approx(len(modis), rel=1e-9)
+
+
+def test_a_day_the_sensor_did_not_observe_is_a_gap_not_a_quiet_day():
+    busy = pd.date_range("2023-07-01", periods=5, freq="D")
+    modis = pd.concat([cell_days("modis", [d] * 150) for d in busy])
+    n20 = pd.concat([cell_days("viirs_noaa20", [d] * (20 if d.day == 3 else 300)) for d in busy])
+    early = cell_days("modis", [pd.Timestamp("2010-07-01")] * 150)  # before NOAA-20 existed: not a gap
+    df = hz.prepare(pd.concat([modis, n20, early], ignore_index=True))
+    assert list(hz.gap_days(df, "viirs_noaa20")) == [pd.Timestamp("2023-07-03")]
+    assert len(hz.gap_days(df, "viirs_snpp")) == 0
+
+    par = {"p": pd.Series({df.b.iloc[0]: 0.5}), "k": 1.0, "r": np.ones(367), "n20_to_snpp": 1.0,
+           "terra": pd.Series({7: 2.0})}  # fmt: skip
+    record = hz.apply(df, par)
+    record = record[record.in_series & (record.y == 2023)]
+    by_day = record.groupby(["local_date", "stream"]).weight.sum().unstack(fill_value=0.0)
+    assert by_day.loc["2023-07-03"].to_dict() == {"modis": 150.0, "viirs_noaa20": 0.0}  # that day comes from MODIS
+    assert by_day.loc["2023-07-02"].to_dict() == {"modis": 0.0, "viirs_noaa20": 150.0}  # 300 cell-days x 0.5
 
 
 def test_sensor_gap_months_are_left_out_of_the_noaa20_factor():

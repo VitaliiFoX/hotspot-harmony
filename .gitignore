@@ -10,5 +10,6 @@ __pycache__/
 .DS_Store
 .env
 node_modules/
+catboost_info/
 dist/
 .claude/launch.json
