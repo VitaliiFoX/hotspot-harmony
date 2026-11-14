@@ -803,3 +803,78 @@ html {
   border-color: var(--hotspot);
   color: #0b0b0b;
 }
+
+/* Folding: a small close button on each card, and a pill that brings it back. */
+.stage-fold {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 13px;
+  background: var(--glass-button);
+  color: var(--stage-ink-2);
+  cursor: pointer;
+}
+.stage .stage-fold:hover {
+  background: var(--glass-button-hover);
+  color: var(--stage-ink);
+}
+.stage-fold-panel {
+  top: 32px;
+  right: 32px;
+}
+.stage-fold-legend {
+  top: 8px;
+  right: 8px;
+}
+.stage-legend {
+  padding-right: 40px;
+}
+.stage-pill {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-solid);
+  box-shadow: var(--glass-shadow);
+  color: var(--stage-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.stage .stage-pill:hover {
+  background: var(--glass-button-hover);
+}
+.stage-pill strong {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--hotspot);
+  color: #0b0b0b;
+  font-variant-numeric: tabular-nums;
+}
+.stage-pill-panel {
+  top: 20px;
+  right: 20px;
+}
+.stage-pill-legend {
+  left: 20px;
+  bottom: 20px;
+}
+@media (max-width: 899px) {
+  .stage-fold {
+    display: none;
+  }
+  .stage-legend {
+    padding-right: 16px;
+  }
+}
