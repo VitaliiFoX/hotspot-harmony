@@ -63,6 +63,10 @@ _Avoid_: calibration window, common years
 The artificial step in a hotspot series at the date its source switches from one sensor to another.
 _Avoid_: seam (in this repo a seam is a place where tests attach), break, discontinuity
 
+**Raw record**:
+The record stitched from MODIS before February 2012 and VIIRS S-NPP from then on, with no correction. It contains the sensor jump.
+_Avoid_: naive series, uncorrected data
+
 **Harmonized record**:
 The single series from 2000 to today in which a value means the same amount of burning whichever sensor observed it.
 _Avoid_: merged data, combined series, unified dataset

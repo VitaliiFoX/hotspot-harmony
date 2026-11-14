@@ -25,8 +25,7 @@ on which satellite was flying.
 | Normalize MODIS and VIIRS to one point schema | done |
 | Aggregate to grid cell x month x sensor | done |
 | Harmonize the sensors and validate | prototype in `research/`, not in the pipeline yet |
-| Current-year data through the FIRMS Area API | not started |
-| API (FastAPI) | not started |
+| API (FastAPI): calendar, anomaly, CSV export | done on the raw series; serves the harmonized series once `data/agg/harmonized.parquet` exists |
 | Web app (map, calendar, anomalies, CSV export) | not started |
 
 ## Run it
@@ -36,6 +35,7 @@ Requires [uv](https://docs.astral.sh/uv/) and `make`.
 ```bash
 make data                  # download, normalize, aggregate every country in config/regions.yaml
 make data COUNTRY=Ukraine  # one country only
+make api                   # serve the API on http://localhost:8000 (endpoints listed at /docs)
 make test                  # pytest
 make lint                  # ruff + English-only check
 ```
@@ -50,6 +50,7 @@ To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) 
 ```
 config/regions.yaml   countries, grid size, filters
 pipeline/             ingest -> normalize -> aggregate (+ tests)
+api/                  FastAPI service over the pipeline's output (+ tests)
 research/             experiments that are not part of the pipeline
 data/                 generated, git-ignored (see data/README.md)
 CLAUDE.md             instructions for AI coding agents
@@ -89,6 +90,8 @@ All data come from NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m):
 - MODIS on Terra and Aqua, from November 2000
 - VIIRS on Suomi NPP, January 2012 to November 2026
 - VIIRS on NOAA-20, from April 2018
+
+The record ends in December 2025, the last year in the FIRMS country archive. 2026 is out of scope.
 
 By default the pipeline keeps presumed vegetation fires (FIRMS `type = 0`) and drops
 low-confidence detections. Both filters are set in `config/regions.yaml`.

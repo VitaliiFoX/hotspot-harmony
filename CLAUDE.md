@@ -16,7 +16,6 @@ reproducible from this repo.
 - Two people and their agents work here in parallel. Fetch and rebase before starting, work on a branch, open a small PR against `main`.
 - Everything that lands in the repo or on GitHub is in English: code, comments, docs, UI text, commit messages, branch names, PR titles and bodies, issues and review comments. Talk to the user in the language they write in; translate before it goes into a file, a commit or a PR. `make lint` and CI fail on Cyrillic text.
 - `research/` holds experiments: excluded from lint, untested, never imported by `pipeline/`. Code that is adopted moves into `pipeline/` together with tests.
-- `FIRMS_MAP_KEY` is read from the environment or `.env` only.
 - Credit the data as "NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m)". Keep the names and logos of NASA and Space Apps out of the product name and branding.
 - The "Use of AI tools" section of the README must stay true. Update it when AI is used for something new.
 
@@ -37,8 +36,8 @@ A sensor ratio far from these means a bug upstream, not a discovery.
 Checked against firms.modaps.eosdis.nasa.gov on 2026-11-14.
 
 - The country archive has `modis`, `viirs-snpp` and `viirs-jpss1` (NOAA-20) up to 2025. It has no 2026 files and no NOAA-21.
-- 2026 comes only from the Area API: `/api/area/csv/{MAP_KEY}/{SOURCE}/{west,south,east,north}/{DAY_RANGE}/{YYYY-MM-DD}`, at most 5 days per request, 5000 transactions per 10 minutes. `/api/country/` is switched off. This ingest is not built yet.
-- Coverage: MODIS from 2000-11-01; VIIRS S-NPP 2012-01-20 to 2026-11-02 (the record has ended); NOAA-20 from 2018-04-01; NOAA-21 from 2023-03-01. Anything after 2026-11-02 has to come from NOAA-20.
+- The record ends at 2025-12. 2026 is out of scope (mentor's call, 2026-11-14), so nothing here needs the FIRMS Area API or a `FIRMS_MAP_KEY`.
+- Coverage: MODIS from 2000-11-01; VIIRS S-NPP 2012-01-20 to 2026-11-02 (the record has ended); NOAA-20 from 2018-04-01; NOAA-21 from 2023-03-01.
 - Near real-time rows are replaced by standard processing after about 5 months.
 - In the raw CSV, MODIS `confidence` is 0-100 and VIIRS is `l`/`n`/`h`; `satellite` is `N` for S-NPP and must be read as text; `acq_time` is UTC `HHMM` with leading zeros, so it must be read as text too.
 
@@ -47,6 +46,13 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 - the meaning of each FIRMS `type` value (the pipeline assumes 0 = presumed vegetation fire);
 - whether near real-time rows carry a `type` column at all;
 - whether the low MODIS counts of 2000-2002 come from Terra flying alone before Aqua (mid-2002).
+
+## API
+
+- `api/` serves two series: `raw` (MODIS before 2012-02, VIIRS S-NPP after, sensor jump included) and `harmonized`. The contract for `data/agg/harmonized.parquet` is the docstring of `api/store.py`; the API picks the file up at start with no code change.
+- A cell belongs to an area of interest when its centre is inside it.
+- Regions are known by bounding box only. An area in a neighbouring country that falls inside a region's box gets zeros and a warning, not an error. Real borders are not in the repo yet.
+- API tests go through HTTP on a record small enough to work out on paper (`api/tests/test_api.py`). Extend that record when adding behaviour.
 
 ## Open decision: how to harmonize
 
