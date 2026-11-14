@@ -28,8 +28,9 @@ on which satellite was flying.
 | Ingest FIRMS country archives (2000-2025) | done |
 | Normalize MODIS and VIIRS to one point schema | done |
 | Aggregate to grid cell x month x sensor | done |
-| Harmonize the sensors and validate | prototype in `research/`, not in the pipeline yet |
-| API (FastAPI): calendar, anomaly, CSV export | done on the raw series; serves the harmonized series once `data/agg/harmonized.parquet` exists |
+| Fire cell-days on a 1 km grid, local solar day | done |
+| Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
+| API (FastAPI): calendar, anomaly, CSV export | done; serves the raw and the harmonized series |
 | Web app: filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done without a map: the area is a region or a box typed in degrees |
 | Map with a drawn area of interest | not started |
 
@@ -38,7 +39,7 @@ on which satellite was flying.
 Requires [uv](https://docs.astral.sh/uv/) and `make`.
 
 ```bash
-make data                  # download, normalize, aggregate every country in config/regions.yaml
+make data                  # download, normalize, aggregate, harmonize, validate every country in config/regions.yaml
 make data COUNTRY=Ukraine  # one country only
 make api                   # serve the API on http://localhost:8000 (endpoints listed at /docs)
 make web                   # serve the web app on http://localhost:5173 (needs `make api` running, and Node 24)
@@ -55,9 +56,10 @@ To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) 
 
 ```
 config/regions.yaml   countries, grid size, filters
-pipeline/             ingest -> normalize -> aggregate (+ tests)
+pipeline/             ingest -> normalize -> aggregate -> harmonize -> validate (+ tests)
 api/                  FastAPI service over the pipeline's output (+ tests)
 web/                  React + TypeScript dashboard (Vite); charts are hand-written SVG, no chart library
+docs/                 METHOD.md, ADRs, and VALIDATION.md + the sensor jump figure (both generated)
 research/             experiments that are not part of the pipeline
 data/                 generated, git-ignored (see data/README.md)
 CLAUDE.md             instructions for AI coding agents

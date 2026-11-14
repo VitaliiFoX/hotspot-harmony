@@ -9,7 +9,7 @@ Two series can be served, each as one value per cell and month:
 Contract for data/agg/harmonized.parquet (one row per cell and month that has burning):
     cell_lat, cell_lon   centre of the cell, degrees
     country              region name as in config/regions.yaml
-    year, month          UTC calendar month
+    year, month          calendar month (of the local solar day, see docs/METHOD.md)
     n_harmonized         the harmonized value
 A cell belongs to an area when its centre is inside it, so any grid size works.
 """

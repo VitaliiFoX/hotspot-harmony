@@ -64,16 +64,16 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 - The filters are mirrored in the address (`?region=...&box=w,s,e,n&start=...&end=...&series=...`), so a view can be shared as a link and screenshotted headless.
 - Look at the page after a visual change: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --window-size=1320,1600 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:5173/?theme=light"`. Headless Chrome will not go narrower than 500 px.
 
-## Open decision: how to harmonize
+## Harmonization
 
-Two approaches exist and they disagree on the unit of the harmonized record:
+Decided: MODIS-equivalent fire cell-days with a weight per VIIRS cell-day. The why and the rejected
+options are in [docs/adr/0001](docs/adr/0001-harmonize-to-modis-equivalent-fire-cell-days.md); the
+method is in [docs/METHOD.md](docs/METHOD.md).
 
-- `research/cellday_prototype/`: MODIS-equivalent fire cell-days on a 1 km grid, VIIRS weighted by fire power and calendar month, with a bridge for the Terra-only start.
-- The original plan: VIIRS-equivalent hotspot counts, one factor per 0.25 degree cell from the overlap period.
-
-Ask the humans before building the API or the web app on either. When it is settled, record it as
-an ADR in `docs/adr/` (the `domain-modeling` skill has the format) and replace this section with a
-pointer to it.
+- `pipeline.harmonize` writes `data/agg/harmonized.parquet`; `pipeline.validate` writes `data/agg/harmonization_report.json`, `docs/VALIDATION.md` and `docs/sensor_jump_before_after.png`. Never edit the last two by hand.
+- Reference values, written by `make validate` on 2026-11-14 for Ukraine: held-out error 4.3% per year and 8.0% per month; sensor jump 2.00x in the raw record, 0.90x in the harmonized record. A change that moves these needs an explanation in the PR.
+- The harmonized record is in fire cell-days; the raw record in the API is still in hotspots. Do not compare the two as if they shared a unit until that is settled (see the ADR).
+- The experiments that were tried and rejected are in `research/experiments/` and listed in `docs/METHOD.md`. Read that list before proposing a "smarter" model.
 
 ## Skills in this repo
 

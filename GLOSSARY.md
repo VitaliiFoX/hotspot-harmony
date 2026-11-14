@@ -71,6 +71,14 @@ _Avoid_: naive series, uncorrected data
 The single series from 2000 to today in which a value means the same amount of burning whichever sensor observed it.
 _Avoid_: merged data, combined series, unified dataset
 
+**Fire cell-day**:
+One 1 km cell with at least one hotspot of one sensor on one local solar day. The harmonized record counts these, in the amount MODIS Terra + Aqua would have reported.
+_Avoid_: active cell, footprint, fire-day
+
+**Detection weight**:
+The share of a MODIS fire cell-day that one VIIRS fire cell-day stands for, set by its fire power, day or night, and calendar month.
+_Avoid_: calibration factor, k (that is only one part of it)
+
 ### Product
 
 **Burning activity calendar**:

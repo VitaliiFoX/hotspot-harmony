@@ -64,6 +64,9 @@ def test_viirs_csv_is_normalized(tmp_path, raw):
     assert list(df.satellite) == ["N", "N", "N"]  # the letter N must not be read as a boolean or null
     assert str(df.acq_datetime_utc[0]) == "2024-01-01 00:07:00"
     assert set(df.country) == {"United_States"}  # country names may contain underscores
+    assert df.scan_km.tolist() == [0.54, 0.62, 0.62]
+    # 00:07 UTC at 38.8 E is 02:42 local solar time, same local date; at 38.8 E a 22:00 UTC pass would be next day
+    assert str(df.local_date[0])[:10] == "2024-01-01"
     assert df.frp.tolist() == [5.23, 5.49, 7.13]
 
 
@@ -83,7 +86,7 @@ def test_both_sensors_share_one_schema_and_partition_by_year(tmp_path, raw):
     df = read_points(points)
     assert set(df.columns) == {
         "lat", "lon", "acq_datetime_utc", "satellite", "confidence_raw", "confidence_class",
-        "frp", "daynight", "type", "source", "country", "sensor", "year",
+        "frp", "daynight", "type", "scan_km", "track_km", "local_date", "source", "country", "sensor", "year",
     }  # fmt: skip
     assert sorted(set(df.sensor)) == ["modis", "viirs_noaa20"]
 

@@ -5,6 +5,9 @@ Output data/agg/cell_month.parquet:
 A row exists only where at least one hotspot passed the filters; a missing row means zero.
 Months are UTC calendar months.
 
+Output data/agg/cell_day.parquet (input of pipeline.harmonize):
+    country, stream, local_date, gx, gy, lat, lon, frp, n_det, has_day, cell_id
+
 Usage:  uv run python -m pipeline.aggregate
 """
 
@@ -57,6 +60,51 @@ def aggregate(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg: Conf
     return con.execute(f"select count(*) from read_parquet('{out.as_posix()}')").fetchall()[0][0]
 
 
+KM_PER_DEG = 111.32
+
+
+def build_cell_days(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg: Config, cell_km: float = 1.0) -> int:
+    """Fire cell-days: one row per sensor stream x local solar day x ~1 km equal-area cell.
+
+    Counting burning cells instead of raw detections removes most of the pixel-size difference between
+    MODIS (1 km) and VIIRS (375 m): several VIIRS pixels on one fire fall into one cell.
+    Streams: modis (Terra + Aqua), modis_terra (Terra alone, for the months before Aqua), viirs_snpp, viirs_noaa20.
+    """
+    d = cell_km / KM_PER_DEG
+    q = cfg.cell_deg
+    ncols = round(360 / q)
+    drop = ", ".join(f"'{c}'" for c in cfg.drop_confidence) or "''"
+    keep = ", ".join(str(t) for t in cfg.keep_types)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    con.execute(f"""
+        copy (
+            with p as (
+                select country, sensor, satellite, local_date, lat, lon, frp, daynight,
+                       cast(floor(lat / {d}) as integer) as gy,
+                       cast(floor(lon * cos(radians((floor(lat / {d}) + 0.5) * {d})) / {d}) as integer) as gx
+                from read_parquet('{points.as_posix()}/**/*.parquet', hive_partitioning = true)
+                where confidence_class not in ({drop}) and type in ({keep})
+            ),
+            s as (
+                select sensor as stream, * from p
+                union all
+                select 'modis_terra', * from p where sensor = 'modis' and satellite = 'Terra'
+            ),
+            c as (
+                select country, stream, local_date, gx, gy, avg(lat) as lat, avg(lon) as lon,
+                       round(sum(frp), 1) as frp, count(*) as n_det, max((daynight = 'D')::integer) as has_day
+                from s group by country, stream, local_date, gx, gy
+            )
+            select *,
+                   cast(floor((lat + 90) / {q}) as bigint) * {ncols}
+                       + least(cast(floor((lon + 180) / {q}) as bigint), {ncols - 1}) as cell_id
+            from c
+            order by country, stream, local_date
+        ) to '{out.as_posix()}' (format parquet, compression zstd)
+    """)
+    return con.execute(f"select count(*) from read_parquet('{out.as_posix()}')").fetchall()[0][0]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -74,6 +122,9 @@ def main() -> None:
     """).fetchall()
     for country, sensor, y0, y1, n in summary:
         print(f"  {country:<12} {sensor:<13} {y0}-{y1}  {n:>10,} hotspots")
+    cell_day = args.data / "agg" / "cell_day.parquet"
+    rows = build_cell_days(con, args.data / "points", cell_day, cfg)
+    print(f"aggregate: {rows:,} fire cell-days (1 km cell x local day x sensor stream) -> {cell_day}")
 
 
 if __name__ == "__main__":
