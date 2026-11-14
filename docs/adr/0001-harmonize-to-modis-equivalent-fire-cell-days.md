@@ -6,7 +6,7 @@ status: accepted
 
 The harmonized record counts fire cell-days (a 1 km cell with a hotspot on one local solar day) in
 the amount MODIS Terra + Aqua would have reported. Each VIIRS fire cell-day gets a weight from its
-fire power, day or night, and calendar month, fitted on the overlap period 2012-02 to 2021-12. We
+fire power, day or night, and time of year, fitted on the overlap period 2012-02 to 2021-12. We
 chose this over one factor per cell because the VIIRS-to-MODIS ratio depends on how strong the
 fires are and on the season: on Ukraine, on years the model did not see, it misses by about half
 as much per month as a single factor does (`docs/VALIDATION.md`, written by `make validate`).
@@ -23,6 +23,10 @@ Decided by the team on 2026-11-14.
   not explainable in one chart.
 
 ## Consequences
+
+- The weight comes from a table by fire power or from a boosted regression model, whichever predicts
+  held-out years better in that country. So two countries can use different rules, and
+  `docs/VALIDATION.md` says which. This keeps the model from being used where it hurts (Argentina).
 
 - The raw record served by the API is counted in fire cell-days too (`n_raw`), so the two series differ only in the correction, not in unit. Settled on 2026-11-14 after this ADR was written.
 - The month of a harmonized value is the month of the local solar day, not the UTC month.

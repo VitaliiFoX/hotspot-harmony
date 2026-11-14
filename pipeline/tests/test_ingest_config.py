@@ -28,6 +28,32 @@ def test_archive_jobs_cover_every_sensor_year():
     assert len(jobs) == sum(2025 - s.first_year + 1 for s in cfg.sensors)
 
 
+def test_force_replaces_a_file_that_is_already_there(tmp_path, monkeypatch):
+    dest = tmp_path / "modis" / "modis_2024_Ukraine.csv"
+    dest.parent.mkdir(parents=True)
+    dest.write_text("old\n")
+
+    class Reply:
+        status_code = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, size):
+            yield b"new\n"
+
+    monkeypatch.setattr("pipeline.ingest.requests.get", lambda *a, **kw: Reply())
+    name, status, size = fetch("modis", 2024, "Ukraine", tmp_path, force=True)
+    assert (status, dest.read_text()) == ("downloaded", "new\n")
+    assert not dest.with_suffix(".part").exists()
+
+
 def test_existing_file_is_not_downloaded_again(tmp_path):
     dest = tmp_path / "modis" / "modis_2024_Ukraine.csv"
     dest.parent.mkdir(parents=True)

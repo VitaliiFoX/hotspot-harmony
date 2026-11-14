@@ -30,21 +30,37 @@ coarser one, but a coarse sensor cannot recover fires it never saw.
 4. **A weight for every VIIRS cell-day.** What is left after gridding is sensitivity: MODIS misses
    weak fires. So each VIIRS cell-day gets
 
-       weight = k x p(fire power, day or night) x r(calendar month)
+       weight = k x share(what the cell-day looked like) x r(day of year)
 
-   - `p` is measured, not assumed: among VIIRS cell-days of that fire power, the share where MODIS
-     also reported fire within one cell the same day. It rises steadily with fire power
-     (table in VALIDATION.md).
+   - `share` is how much of a MODIS fire cell-day this VIIRS cell-day stands for. It is measured,
+     not assumed: every MODIS cell-day is one unit, split equally among the VIIRS cell-days within
+     one cell the same day. Two ways to turn that into a rule are fitted, and each country gets
+     the one that predicts held-out years better:
+     - a **table** by fire power and day or night (the detection curve in VALIDATION.md: the
+       stronger the fire, the more likely MODIS also saw it);
+     - a **boosted regression model** (scikit-learn, Poisson loss) that also looks at the number
+       and confidence of the detections and the pixel size.
+
+     The model has to earn its place: it is used only where it beats the table by a clear margin
+     on years held out three at a time. It wins in Ukraine and loses in Argentina, so Ukraine gets
+     the model and Argentina the table. VALIDATION.md states which one each country got and why.
    - `k` is one scale that makes totals match. MODIS also sees fires at hours when VIIRS is not
      overhead (Terra passes in the morning), which no VIIRS detection can stand in for.
-   - `r` is the seasonal difference that remains.
+   - `r` is the seasonal difference that remains. It follows the day of the year smoothly (each day
+     pools the 15 days before and after it), because the ratio drifts inside a month: in Ukraine it
+     falls steadily from early to late March, and a factor that jumps at month ends misses that.
 
    All three are fitted on 2012-02 .. 2021-12, when both sensors flew and MODIS orbits were stable.
-5. **NOAA-20 continues the record.** Suomi NPP stopped delivering data on 2 November 2026. NOAA-20
+5. **Sensor gap days.** A day when a VIIRS sensor reports under 0.6 fire cell-days per MODIS one,
+   while MODIS has at least 100, is a day the sensor was not really observing (it normally reports
+   about two). Such days are left out of the fit, and in the record that day is taken from MODIS
+   instead of being read as a quiet day. The same outages show up independently in both countries:
+   S-NPP in late March 2012, late July to early August 2022, and July 2024.
+6. **NOAA-20 continues the record.** Suomi NPP stopped delivering data on 2 November 2026. NOAA-20
    carries the same instrument in the same orbit and is tied to S-NPP with one factor. Months where
    the two disagree by more than 20% are treated as sensor gaps, left out of that factor and
    reported (the pipeline finds S-NPP's July-August 2022 gap this way).
-6. **Terra-only start.** Before Aqua (until July 2002) Terra alone is scaled to Terra + Aqua by
+7. **Terra-only start.** Before Aqua (until July 2002) Terra alone is scaled to Terra + Aqua by
    calendar month, fitted on 2003-2011.
 
 Which sensor speaks for which period:
@@ -63,7 +79,9 @@ corrections automatically, which a single ratio per country cannot do.
 
 - **Leave-one-year-out.** Each overlap year is predicted from VIIRS by weights fitted on the other
   years and compared with what MODIS actually reported, at four scales: country and 1-degree tile,
-  year and month.
+  year and month. Sensor gap days are left out of the comparison, since a day the sensor did not
+  observe says nothing about the method; the same check with those days counted is reported next
+  to it.
 - **An independent sensor.** NOAA-20 never took part in fitting `p`, `k`, `r`; it is still checked
   against MODIS.
 - **Sensor jump check.** Mean yearly total of 2012-2016 over 2007-2011, raw record against
@@ -73,23 +91,45 @@ corrections automatically, which a single ratio per country cannot do.
   held-out predictions, by size of the value: small areas are noisier and get wider ranges. Months
   measured by the reference sensor carry no harmonization error.
 
-## Tried and rejected
+## What was tried
 
-Run once on Ukraine on 2026-11-14, scripts in `research/experiments/`. Same leave-one-year-out
-check as above; figures are country x month error.
+All figures are country x month error on Ukraine from leave-one-year-out, measured on 2026-11-14.
 
-| Idea | Result | Why not |
+**Adopted** (`research/harmonize_ml/improve.py`, now in the pipeline):
+
+| Step | Error |
+|---|---|
+| FRP bins x calendar-month factor (the first version) | 8.0% |
+| + sensor gap days left out | 7.0% |
+| + season factor by day of year, +-15 days | 6.5% |
+
+| + boosted model for the weight, where it wins on held-out years | 6.1% |
+
+The boosted model was measured with LightGBM, XGBoost, CatBoost and scikit-learn: the four agree to
+0.02 points, so the pipeline uses scikit-learn, which needs no extra system library. On Argentina the
+same model is worse than the table (8.0% against 7.4% per month), which is why it is chosen per
+country and not switched on everywhere.
+
+**Measured, not adopted** (`research/harmonize_ml/`, run with `research/harmonize_ml/run.sh`; same
+data with gap days left out, so compare with 6.5% for the table and 6.1% for the model):
+
+| Idea | Error | Note |
 |---|---|---|
-| Gradient-boosted model for the weight (pixel size, detection count, confidence) | 7.7% against 8.0% | no real gain, harder to explain |
-| The same plus neighbouring cells and the days before and after | 8.7% | worse: clusters get over-counted |
-| Count-preserving target with neighbours | 7.5% | best found, half a point, not worth a black box |
-| Model that corrects area totals instead of points | 9.0% | worse |
-| Correction by 1-degree tile on top of the weights | no change | regional bias is already small |
-| Dropping the calendar-month factor | 10.5% | seasonality matters |
+| Boosted Poisson model on 0.25 degree cell x day, seeing the days and cells around | 6.1-6.2% | best on small areas: 18.8% against 19.6% per 1-degree tile and month |
+| Mean of the weight models and the cell-day models | 5.9% | best found |
+| Cell-day model with each cell's own history as a feature | worse | 4% low on unseen years: it memorises where the training years burned |
+| Averaging S-NPP and NOAA-20 instead of using one (2018-04 to 2021-12, first version of the weights) | 6.2% against 6.7% | 20.3% against 21.6% per tile and month |
+
+The cell-day model and the blends were measured on Ukraine only; they are not in the pipeline until
+they are checked on a second country. Averaging the two VIIRS sensors is the next candidate.
+
+**Rejected earlier** (`research/experiments/`, measured against the 8.0% version): neighbouring cells
+as features for the weight (8.7%, clusters get over-counted), a model on area totals (9.0%), a
+correction by 1-degree tile (no change), no seasonal factor at all (10.5%).
 
 Two identical VIIRS instruments 50 minutes apart (S-NPP and NOAA-20) disagree by 4.6% per month
-after the same weighting. That is the noise of observation itself, so the remaining room for any
-method is a few percentage points.
+after the same weighting. That is the noise of observation itself, so the room left for any method
+is small.
 
 ## Limits
 

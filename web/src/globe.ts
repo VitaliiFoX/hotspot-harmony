@@ -1,0 +1,232 @@
+// Pure logic behind the globe and the date and time panel: dates, counts, scales and the night side.
+
+import type { FilterSpecification } from "maplibre-gl";
+import type { Bbox, DayHotspot, Region } from "./api";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** The date the globe opens on when the record covers it: a busy day in the southern burning season. */
+export const PREFERRED_DATE = "2025-08-20";
+export const DEFAULT_HOUR = 18;
+
+/** "YYYY-MM-DD" if the text is a real calendar date written that way, otherwise null. */
+export function parseDateParam(text: string | null): string | null {
+  if (!text || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const [year, month, day] = text.split("-").map(Number);
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null;
+  return text;
+}
+
+/** A whole hour 0..23, or null for anything else. */
+export function parseHourParam(text: string | null): number | null {
+  if (!text || !/^\d{1,2}$/.test(text)) return null;
+  const hour = Number(text);
+  return hour <= 23 ? hour : null;
+}
+
+export function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** Keep a date inside first..last; dates compare as text because they are zero-padded. */
+export function clampDate(date: string, first: string, last: string): string {
+  if (date < first) return first;
+  if (date > last) return last;
+  return date;
+}
+
+/** The date to open on: the preferred day when the record covers it, otherwise the last day. */
+export function defaultDate(first: string, last: string): string {
+  return PREFERRED_DATE >= first && PREFERRED_DATE <= last ? PREFERRED_DATE : last;
+}
+
+/** "YYYY-MM" moved by a number of months. */
+export function shiftMonth(month: string, delta: number): string {
+  const [year, index] = month.split("-").map(Number);
+  const total = year * 12 + (index - 1) + delta;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
+}
+
+/**
+ * The same day number in another month, shortened to that month's length (31 March to February
+ * gives the 28th or 29th) and kept inside first..last.
+ */
+export function moveToMonth(date: string, month: string, first: string, last: string): string {
+  const [year, index] = month.split("-").map(Number);
+  const day = Math.min(Number(date.slice(8, 10)), daysInMonth(year, index));
+  return clampDate(`${month}-${String(day).padStart(2, "0")}`, first, last);
+}
+
+/** The days of a month laid out Monday first: null for each blank before the 1st. */
+export function monthGrid(month: string): (string | null)[] {
+  const [year, index] = month.split("-").map(Number);
+  const weekday = new Date(Date.UTC(year, index - 1, 1)).getUTCDay(); // 0 is Sunday
+  const blanks = (weekday + 6) % 7;
+  const days: (string | null)[] = Array.from({ length: blanks }, () => null);
+  for (let day = 1; day <= daysInMonth(year, index); day++) days.push(`${month}-${String(day).padStart(2, "0")}`);
+  return days;
+}
+
+/** A month's day as "YYYY-MM-DD", whether given as the day of the month or already as a date. */
+export function dayKey(month: string, day: number | string): string {
+  if (typeof day === "string" && day.length === 10) return day;
+  return `${month}-${String(Number(day)).padStart(2, "0")}`;
+}
+
+/** "20 August 2025". */
+export function longDate(date: string): string {
+  return `${Number(date.slice(8, 10))} ${MONTH_NAMES[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`;
+}
+
+/** "August 2025". */
+export function longMonth(month: string): string {
+  return `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
+}
+
+/** "18:00". */
+export function hourLabel(hour: number, minute = 0): string {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/** A sensor id as people read it: "viirs_snpp" is "VIIRS S-NPP". */
+export function sensorLabel(sensor: string): string {
+  const known: Record<string, string> = {
+    modis: "MODIS",
+    viirs_snpp: "VIIRS S-NPP",
+    viirs_noaa20: "VIIRS NOAA-20",
+    viirs_noaa21: "VIIRS NOAA-21",
+  };
+  return known[sensor] ?? sensor.replaceAll("_", " ").toUpperCase();
+}
+
+export type RegionCounts = { throughHour: number; inHour: number; day: number };
+export type HourCounts = RegionCounts & { regions: RegionCounts[] };
+
+/** Hotspots from 00:00 through the end of an hour, in that hour and in the whole day, overall and per region. */
+export function countHotspots(hotspots: DayHotspot[], hour: number, regionCount: number): HourCounts {
+  const start = hour * 60;
+  const end = start + 60;
+  const regions: RegionCounts[] = Array.from({ length: regionCount }, () => ({ throughHour: 0, inHour: 0, day: 0 }));
+  const total: RegionCounts = { throughHour: 0, inHour: 0, day: 0 };
+  for (const [, , minute, regionIndex] of hotspots) {
+    const targets = regions[regionIndex] ? [total, regions[regionIndex]] : [total];
+    for (const counts of targets) {
+      counts.day++;
+      if (minute < end) counts.throughHour++;
+      if (minute >= start && minute < end) counts.inHour++;
+    }
+  }
+  return { ...total, regions };
+}
+
+/** Size in px and opacity of a day's dot in the calendar, by the square root of its share of the month's maximum. */
+export function dotStyle(value: number, monthMax: number): { size: number; opacity: number } | null {
+  if (value <= 0 || monthMax <= 0) return null;
+  const share = Math.sqrt(Math.min(value / monthMax, 1));
+  return { size: 4 + 4 * share, opacity: 0.35 + 0.65 * share };
+}
+
+/** Map filters: every hotspot up to the end of the hour, and those detected within the hour. */
+export function hourFilters(hour: number): { through: FilterSpecification; inHour: FilterSpecification } {
+  const start = hour * 60;
+  const end = start + 60;
+  return {
+    through: ["<", ["get", "minute"], end],
+    inHour: ["all", [">=", ["get", "minute"], start], ["<", ["get", "minute"], end]],
+  };
+}
+
+/** The region whose box holds a point, or null. Boxes are checked in the order of the list. */
+export function regionAt(regions: Region[], lon: number, lat: number): Region | null {
+  return regions.find(({ bbox: [w, s, e, n] }) => lon >= w && lon <= e && lat >= s && lat <= n) ?? null;
+}
+
+/** The point on the sphere halfway between the regions' box centres, so a globe centred there shows them all if it can. */
+export function regionsCenter(regions: Region[]): { lon: number; lat: number } {
+  if (regions.length === 0) return { lon: 0, lat: 20 };
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (const { bbox } of regions) {
+    const lon = toRad((bbox[0] + bbox[2]) / 2);
+    const lat = toRad((bbox[1] + bbox[3]) / 2);
+    x += Math.cos(lat) * Math.cos(lon);
+    y += Math.cos(lat) * Math.sin(lon);
+    z += Math.sin(lat);
+  }
+  return { lon: toDeg(Math.atan2(y, x)), lat: toDeg(Math.atan2(z, Math.hypot(x, y))) };
+}
+
+/** A box as a closed ring of [lon, lat] corners. */
+export function boxRing([west, south, east, north]: Bbox): [number, number][] {
+  return [[west, south], [east, south], [east, north], [west, north], [west, south]];
+}
+
+/** Milliseconds of the middle of an hour of a UTC day, the instant the night side is drawn for. */
+export function hourInstant(date: string, hour: number): number {
+  const [year, month, day] = date.split("-").map(Number);
+  return Date.UTC(year, month - 1, day, hour, 30);
+}
+
+/**
+ * Where the Sun is overhead at an instant. Longitude from the UTC time alone (no equation of time,
+ * at most about 4 degrees off); declination from -23.44 cos(360/365 (N + 10)) with N the days since
+ * 1 January 00:00 UTC, within about a degree.
+ */
+export function subsolarPoint(ms: number): { lon: number; lat: number } {
+  const time = new Date(ms);
+  const hours = time.getUTCHours() + time.getUTCMinutes() / 60 + time.getUTCSeconds() / 3600;
+  const dayOfYear = (ms - Date.UTC(time.getUTCFullYear(), 0, 1)) / 86_400_000;
+  let lon = (12 - hours) * 15;
+  if (lon > 180) lon -= 360;
+  if (lon <= -180) lon += 360;
+  const lat = -23.44 * Math.cos(((2 * Math.PI) / 365) * (dayOfYear + 10));
+  return { lon, lat };
+}
+
+/**
+ * The night hemisphere as one polygon: the terminator traced from 180 W to 180 E, closed over the
+ * pole that is in darkness. Near the equinoxes the declination is held a little off zero so the
+ * terminator stays a function of longitude. Latitudes stop at the edge of Web Mercator, because
+ * the map tiles its sources in that projection and cannot place a vertex on a pole.
+ */
+export function nightPolygon(ms: number, steps = 180): { type: "Polygon"; coordinates: [number, number][][] } {
+  const sun = subsolarPoint(ms);
+  const declination = toRad(Math.abs(sun.lat) < 0.1 ? (sun.lat < 0 ? -0.1 : 0.1) : sun.lat);
+  const darkPole = declination > 0 ? -MERCATOR_LIMIT : MERCATOR_LIMIT;
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const lon = -180 + (360 * i) / steps;
+    const lat = toDeg(Math.atan(-Math.cos(toRad(lon - sun.lon)) / Math.tan(declination)));
+    ring.push([lon, round(Math.max(-MERCATOR_LIMIT, Math.min(MERCATOR_LIMIT, lat)))]);
+  }
+  ring.push([180, darkPole], [-180, darkPole], ring[0]);
+  return { type: "Polygon", coordinates: [ring] };
+}
+
+/** The latitude where Web Mercator ends, atan(sinh(pi)). */
+export const MERCATOR_LIMIT = 85.0511;
+
+/** Whether a point is on the night side: the Sun below its horizon. */
+export function isNight(ms: number, lon: number, lat: number): boolean {
+  const sun = subsolarPoint(ms);
+  const elevation =
+    Math.sin(toRad(lat)) * Math.sin(toRad(sun.lat)) +
+    Math.cos(toRad(lat)) * Math.cos(toRad(sun.lat)) * Math.cos(toRad(lon - sun.lon));
+  return elevation < 0;
+}
+
+function toRad(degrees: number): number {
+  return (degrees * Math.PI) / 180;
+}
+
+function toDeg(radians: number): number {
+  return (radians * 180) / Math.PI;
+}
+
+function round(value: number): number {
+  return Math.round(value * 1e4) / 1e4;
+}

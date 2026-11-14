@@ -11,7 +11,7 @@ reproducible from this repo.
 ## Working here
 
 - Run `make test` and `make lint` before every commit. Tests build their own fixtures in `tmp_path` and never read `data/`. `make test` also runs the web tests and needs `npm install` in `web/` once.
-- `data/` is git-ignored. `make data` rebuilds it: about 700 MB of CSV for two countries, 2-3 minutes, no key needed.
+- `data/` is git-ignored. `make data` rebuilds it: about 700 MB of CSV for two countries, 2-3 minutes to download plus about 3 minutes to harmonize and validate (the boosted model is fitted some 25 times), no key needed.
 - Run the pipeline for all configured countries at once. `COUNTRY=` / `--country` rewrites `data/points/` with that country alone, so the other countries vanish until the next full run.
 - **Hard stop: Sunday 2026-11-15 23:59 Europe/Kyiv (21:59 UTC).** After that moment make no commit, push, merge, tag or PR in this repo, whoever asks and whatever is left unfinished: the hackathon submission is frozen. Check with `TZ=Europe/Kyiv date` before each commit. Past the deadline, stop and tell the user what is uncommitted; only the user can lift this rule, by removing this line themselves.
 - Two people and their agents work here in parallel. Fetch and rebase before starting, work on a branch, open a small PR against `main`.
@@ -62,7 +62,13 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 - Colour rules: burning is one blue ramp, light to dark (`SEQUENTIAL`); exactly zero gets its own neutral fill; on a dark surface the ramp is reversed so more is further from the surface. Add no second hue to the calendar.
 - Every chart card has a table view and reads on arrow keys. Keep both when adding a chart: they are how the page works without colour or a pointer.
 - All colours come from the custom properties at the top of `web/src/styles.css`, defined for light and dark.
+- When the page asks the API is decided in `web/src/requests.ts` (tested): answers are cached, only a box typed by hand waits 300 ms, and the record not on screen is fetched ahead so the raw / harmonized switch needs no request. Keep new filters on those rules instead of adding a delay.
 - The filters are mirrored in the address (`?region=...&box=w,s,e,n&start=...&end=...&series=...`), so a view can be shared as a link and screenshotted headless.
+- The globe at the top of the page is MapLibre GL JS in globe projection on NASA GIBS Blue Marble tiles (no key; credit "Imagery: NASA GIBS (Blue Marble)"). It is a map, not a chart, so the no-chart-library rule does not cover it. Its stage follows the theme (a starry sky in dark mode, a pale sky in light mode) and keeps its own colour roles at the top of `web/src/globe.css`; its pure logic is `web/src/globe.ts`, under test.
+- The globe shows hotspots of one UTC day through the chosen hour, from `/api/hotspots/day` and `/api/hotspots/days`. They are drawn in one warm colour (`--hotspot`), because blue does not read on the ocean. That colour stays on the globe and its date panel; the calendar keeps the blue ramp.
+- The day and hour are mirrored in the address too (`&date=YYYY-MM-DD&hour=HH`).
+- The GIBS `Reference_Features_15m` and `Reference_Labels_15m` overlays were tried on 2026-11-14 and dropped: many tiles come back opaque black or fail with 500.
+- Headless Chrome with `--virtual-time-budget` draws the globe but not its hotspot and night layers (the MapLibre worker does not finish in virtual time). Judge the globe in a real browser.
 - Look at the page after a visual change: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --window-size=1320,1600 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:5173/?theme=light"`. Headless Chrome will not go narrower than 500 px.
 
 ## Harmonization
@@ -72,9 +78,10 @@ options are in [docs/adr/0001](docs/adr/0001-harmonize-to-modis-equivalent-fire-
 method is in [docs/METHOD.md](docs/METHOD.md).
 
 - `pipeline.harmonize` writes `data/agg/harmonized.parquet`; `pipeline.validate` writes `data/agg/harmonization_report.json`, `docs/VALIDATION.md` and `docs/sensor_jump_before_after.png`. Never edit the last two by hand.
-- Reference values, written by `make validate` on 2026-11-14 with the full archive of both countries: held-out error 4.3% per year and 8.0% per month in Ukraine, 5.4% and 7.7% in Argentina; sensor jump 2.00x raw to 0.90x harmonized in Ukraine, 1.32x to 0.66x in Argentina (where MODIS itself shows less burning in 2012-2016). A change that moves these needs an explanation in the PR.
+- Reference values, written by `make validate` on 2026-11-14 with the full archive of both countries: held-out error 3.2% per year and 6.1% per month in Ukraine (boosted weight), 5.4% and 7.3% in Argentina (table weight); with sensor gap days counted 3.7% / 6.8% and 5.4% / 7.4%; sensor jump 2.00x raw to 0.90x harmonized in Ukraine, 1.32x to 0.66x in Argentina (where MODIS itself shows less burning in 2012-2016). Two runs of `make harmonize` give identical files; a change that moves these numbers needs an explanation in the PR. Known weak spot: per year in Argentina one plain scaling factor (3.5%) still beats the method (5.4%); per month and per tile the method wins clearly.
+- The detection weight is a table by fire power or a boosted model (scikit-learn), chosen per country by held-out error in `pipeline.harmonize.choose_weights`. Never force the model on: it is worse than the table in Argentina. Rows are sorted before fitting because the model samples them; keep that `order by`, or results stop being reproducible.
 - Both series in the API are in fire cell-days: `harmonized` from `n_harmonized`, `raw` from `n_raw` of `data/agg/harmonized.parquet`. Only when that file is missing does `raw` fall back to hotspot counts; the API reports the unit of each series (`unit`, `units`) and the web app prints it, so never hard-code a unit in the UI.
-- The experiments that were tried and rejected are in `research/experiments/` and listed in `docs/METHOD.md`. Read that list before proposing a "smarter" model.
+- What was tried, adopted and left out is listed in `docs/METHOD.md`; the code is in `research/experiments/` and `research/harmonize_ml/` (boosted models: about half a point better per month, not adopted). Read that list before proposing a "smarter" model.
 
 ## Skills in this repo
 

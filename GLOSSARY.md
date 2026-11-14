@@ -75,8 +75,12 @@ _Avoid_: merged data, combined series, unified dataset
 One 1 km cell with at least one hotspot of one sensor on one local solar day. The harmonized record counts these, in the amount MODIS Terra + Aqua would have reported.
 _Avoid_: active cell, footprint, fire-day
 
+**Sensor gap day**:
+A day when a VIIRS sensor was not really observing: it reports almost nothing while MODIS reports plenty. It is not a quiet day and is never counted as one.
+_Avoid_: outage day, missing day, zero day
+
 **Detection weight**:
-The share of a MODIS fire cell-day that one VIIRS fire cell-day stands for, set by its fire power, day or night, and calendar month.
+The share of a MODIS fire cell-day that one VIIRS fire cell-day stands for, set by its fire power, day or night, and time of year.
 _Avoid_: calibration factor, k (that is only one part of it)
 
 ### Product

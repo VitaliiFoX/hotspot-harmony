@@ -2,11 +2,18 @@
 
 Every VIIRS fire cell-day gets a weight: the answer to "would MODIS (Terra + Aqua) have reported this?"
 
-    weight = k * p(FRP bin, day/night) * r(calendar month)
+    weight = k * share(what the cell-day looked like) * r(day of year)
 
-    p   share of VIIRS cell-days of that fire power that MODIS also saw within +-1 cell the same local day
-    k   one scale so that totals match (MODIS also sees fires at hours when VIIRS is not overhead)
-    r   what is left of the seasonal difference after p
+    share  how much of a MODIS fire cell-day this VIIRS cell-day stands for. Each MODIS cell-day is one
+           unit, split equally among the VIIRS cell-days within +-1 cell the same local day; a boosted
+           regression model learns that share from fire power, day or night, number and confidence of
+           the detections, and pixel size. The model is used only where it earns its place: per country
+           it must beat a plain table by fire power on held-out years, otherwise the table is used.
+    k      one scale so that totals match (MODIS also sees fires at hours when VIIRS is not overhead)
+    r      what is left of the seasonal difference, following the day of the year smoothly
+
+Days when a VIIRS sensor delivered next to nothing while MODIS was busy are sensor gaps, not quiet
+days: they are left out of the fit, and in the record that day is taken from MODIS.
 
 All three are fitted on years when both sensors flew and MODIS orbits were stable. NOAA-20 is tied to
 S-NPP with one factor (same instrument design, same orbit). The months before Aqua use Terra alone,
@@ -44,6 +51,14 @@ RAW_SWITCH = "2012-02-01"  # the raw record: MODIS before this date, VIIRS S-NPP
 N20_START = "2018-04-01"
 FRP_EDGES = [0, 1, 2, 4, 8, 16, 32, 64]  # MW, summed over a VIIRS cell-day
 MIN_FIT_CELLDAYS = 5000  # below this a country borrows the pooled calibration
+SEASON_HALF_WINDOW = 15  # days: the season factor pools +-15 days around each day of the year
+GAP_MIN_MODIS = 100  # a day counts as a sensor gap when MODIS has at least this many cell-days...
+GAP_MAX_RATIO = 0.6  # ...and VIIRS has under 0.6 per MODIS cell-day (it normally has about 2)
+WEIGHTS_MARGIN = 0.002  # the boosted model must beat the table by 0.2 points of monthly error to be used
+WEIGHT_FEATURES = ["lfrp", "lfrp_max", "has_day", "n_det", "n_day", "n_night", "n_high", "scan", "track"]
+BOOSTING = dict(
+    loss="poisson", max_iter=400, learning_rate=0.05, max_leaf_nodes=63, min_samples_leaf=100, random_state=0
+)
 
 RECORD = [
     {"sensor": "modis_terra", "label": "MODIS Terra only, scaled", "from": "2000-11", "to": "2002-06"},
@@ -64,12 +79,29 @@ def load_cell_days(con: duckdb.DuckDBPyConnection, cell_day: Path, country: str)
         from cd, (select unnest([-1, 0, 1]) as dx), (select unnest([-1, 0, 1]) as dy)
         where stream = 'modis'
     """)
+    # count-preserving target: every MODIS cell-day is one unit, split equally among the cell-days of a VIIRS
+    # sensor within +-1 cell that day. Summed over a sensor, shares equal the MODIS cell-days it explains.
+    con.execute("""
+        create or replace temp table share as
+        with pairs as (
+            select v.stream, m.local_date, m.gx as mx, m.gy as my, v.gx, v.gy
+            from cd m, (select unnest([-1, 0, 1]) as dx), (select unnest([-1, 0, 1]) as dy), cd v
+            where m.stream = 'modis' and v.stream like 'viirs%'
+              and v.local_date = m.local_date and v.gx = m.gx + dx and v.gy = m.gy + dy
+        )
+        select stream, local_date, gx, gy, sum(1.0 / n_explaining) as share
+        from (select *, count(*) over (partition by stream, local_date, mx, my) as n_explaining from pairs)
+        group by all
+    """)
     df = con.execute("""
         select cd.*,
                (stream like 'viirs%' and exists (
                    select 1 from modis_nb n where n.local_date = cd.local_date and n.gx = cd.gx and n.gy = cd.gy
-               ))::integer as matched
-        from cd
+               ))::integer as matched,
+               coalesce(share.share, 0.0) as share
+        from cd left join share using (stream, local_date, gx, gy)
+        -- a fixed row order: the boosted model samples rows, so an arbitrary order would change it run to run
+        order by stream, local_date, gx, gy
     """).df()
     return prepare(df)
 
@@ -79,23 +111,94 @@ def prepare(df: pd.DataFrame) -> pd.DataFrame:
     df["local_date"] = pd.to_datetime(df.local_date)
     df["y"] = df.local_date.dt.year
     df["m"] = df.local_date.dt.month
+    df["doy"] = df.local_date.dt.day_of_year
     df["b"] = np.digitize(df.frp, FRP_EDGES) + 10 * df.has_day  # FRP bin, day and night kept apart
+    df["lfrp"] = np.log1p(df.frp.clip(lower=0))
+    df["lfrp_max"] = np.log1p(df.frp_max.clip(lower=0))
     df["tx"] = np.floor(df.lon).astype(int)
     df["ty"] = np.floor(df.lat).astype(int)
     return df
 
 
-def fit_viirs(viirs: pd.DataFrame, modis: pd.DataFrame) -> dict:
-    """viirs: VIIRS cell-days with b, m, matched. modis: MODIS cell-days of the same period with m."""
-    p = viirs.groupby("b").matched.mean()
-    k = len(modis) / viirs.b.map(p).sum()
-    base = viirs.b.map(p) * k
-    r = (modis.groupby("m").size() / base.groupby(viirs.m).sum()).replace([np.inf, -np.inf], np.nan).dropna()
-    return {"p": p, "k": float(k), "r": r}
+def gap_days(df: pd.DataFrame, stream: str) -> pd.DatetimeIndex:
+    """Days when `stream` (a VIIRS sensor) was not really observing: MODIS is busy and the sensor is nearly silent.
+
+    Only looked for inside the sensor's own lifetime, so the years before its launch are not gaps.
+    """
+    own = df[df.stream == stream]
+    if own.empty:
+        return pd.DatetimeIndex([])
+    modis = df[(df.stream == "modis") & df.local_date.between(own.local_date.min(), own.local_date.max())]
+    counts = [modis.groupby("local_date").size().rename("modis"), own.groupby("local_date").size().rename("own")]
+    daily = pd.concat(counts, axis=1, sort=True).fillna(0)
+    return pd.DatetimeIndex(daily.index[(daily.modis >= GAP_MIN_MODIS) & (daily.own < GAP_MAX_RATIO * daily.modis)])
 
 
-def viirs_weights(par: dict, b: pd.Series, m: pd.Series) -> pd.Series:
-    return b.map(par["p"]).fillna(par["p"].mean()) * par["k"] * m.map(par["r"]).fillna(1.0)
+def season_factor(
+    doy_truth: np.ndarray, doy_pred: np.ndarray, w_pred: np.ndarray, half: int = SEASON_HALF_WINDOW
+) -> np.ndarray:
+    """truth / prediction by day of year, pooled over +-`half` days with a triangular window that wraps at New Year.
+
+    Returns an array indexed by day of year (1..366; index 0 unused). Days with nothing to learn from get 1.
+    """
+    num = np.bincount(doy_truth, minlength=367)[1:].astype(float)
+    den = np.bincount(doy_pred, weights=w_pred, minlength=367)[1:]
+    window = np.concatenate([np.arange(1, half + 2), np.arange(half, 0, -1)]).astype(float)
+    num, den = (np.convolve(np.concatenate([a[-half:], a, a[:half]]), window, "valid") for a in (num, den))
+    r = np.divide(num, den, out=np.ones_like(num), where=den > 0)
+    return np.concatenate([[1.0], r])
+
+
+def base_share(par: dict, cells: pd.DataFrame) -> np.ndarray:
+    """The unscaled share of a MODIS cell-day each VIIRS cell-day stands for: boosted model, or the table by FRP bin."""
+    if par.get("model") is not None:
+        return np.clip(par["model"].predict(cells[WEIGHT_FEATURES]), 0, None)
+    return cells.b.map(par["p"]).fillna(par["p"].mean()).to_numpy()
+
+
+def fit_viirs(viirs: pd.DataFrame, modis: pd.DataFrame, weights: str = "boosted") -> dict:
+    """viirs: VIIRS cell-days of the fit period (features, share, matched). modis: MODIS cell-days of that period."""
+    par = {"p": viirs.groupby("b").matched.mean(), "model": None}  # p also feeds the detection curve in the report
+    if weights == "boosted":
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
+        par["model"] = HistGradientBoostingRegressor(**BOOSTING).fit(viirs[WEIGHT_FEATURES], viirs.share)
+    base = base_share(par, viirs)
+    par["k"] = float(len(modis) / base.sum())
+    doy = viirs.doy.to_numpy()
+    r = season_factor(modis.doy.to_numpy(), doy, base * par["k"])
+    par["r"] = r * len(modis) / (base * par["k"] * r[doy]).sum()  # smoothing must not shift the overall level
+    return par
+
+
+def held_out_month_error(viirs: pd.DataFrame, modis: pd.DataFrame, weights: str, groups: int = 3) -> float:
+    """Country x month error when each third of the years is predicted by a fit on the other two thirds."""
+    years = sorted(viirs.y.unique())
+    folds = []
+    for held_out in (years[i::groups] for i in range(groups)):
+        par = fit_viirs(viirs[~viirs.y.isin(held_out)], modis[~modis.y.isin(held_out)], weights)
+        test = viirs[viirs.y.isin(held_out)]
+        folds.append(test.assign(w=viirs_weights(par, test)))
+    pred = pd.concat(folds).groupby(["y", "m"]).w.sum()
+    truth = modis.groupby(["y", "m"]).size()
+    pred, truth = pred.align(truth, fill_value=0.0)
+    return float((pred - truth).abs().sum() / truth.sum())
+
+
+def choose_weights(viirs: pd.DataFrame, modis: pd.DataFrame) -> tuple[str, dict]:
+    """The boosted model only if it beats the table by fire power by a clear margin on held-out years.
+
+    It helps in some countries and hurts in others (measured: better in Ukraine, worse in Argentina),
+    so it has to earn its place each time; on a near tie the simpler table wins.
+    """
+    errors = {w: round(held_out_month_error(viirs, modis, w), 4) for w in ("bins", "boosted")}
+    choice = "boosted" if errors["boosted"] < errors["bins"] - WEIGHTS_MARGIN else "bins"
+    return choice, errors
+
+
+def viirs_weights(par: dict, cells: pd.DataFrame) -> pd.Series:
+    """MODIS-equivalent weight of each VIIRS cell-day in `cells`."""
+    return pd.Series(base_share(par, cells) * par["k"] * par["r"][cells.doy.to_numpy()], index=cells.index)
 
 
 def fit_terra(terra: pd.DataFrame, modis: pd.DataFrame) -> pd.Series:
@@ -126,16 +229,27 @@ def fit_n20(df: pd.DataFrame, w: pd.Series) -> tuple[float | None, list[str]]:
     return factor, [str(p) for p in n.index[busy & ~ok]]
 
 
-def calibrate(frames: list[pd.DataFrame]) -> dict | None:
+def calibrate(frames: list[pd.DataFrame], weights: str = "auto") -> dict | None:
     """Fit every parameter on the given cell-days. None when there is too little overlap to trust it."""
+    # gaps are found per country: a sensor outage is the same day everywhere, but "MODIS is busy" is not
+    gaps = {
+        stream: pd.DatetimeIndex(sorted(set().union(*(gap_days(f, stream) for f in frames))))
+        for stream in ("viirs_snpp", "viirs_noaa20")
+    }
+    frames = [f.assign(snpp_gap=f.local_date.isin(gap_days(f, "viirs_snpp"))) for f in frames]
     df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
-    fit = df.local_date.between(*FIT)
+    fit = df.local_date.between(*FIT) & ~df.snpp_gap
     viirs, modis = df[fit & (df.stream == "viirs_snpp")], df[fit & (df.stream == "modis")]
     if len(viirs) < MIN_FIT_CELLDAYS or len(modis) < MIN_FIT_CELLDAYS / 2:
         return None
-    par = fit_viirs(viirs, modis)
+    choice = {}
+    if weights == "auto":
+        weights, choice = choose_weights(viirs, modis)
+    par = fit_viirs(viirs, modis, weights)
+    par["weights"], par["weights_held_out_month_error"] = weights, choice
+    par["gap_days"] = gaps
     is_viirs = df.stream.isin(["viirs_snpp", "viirs_noaa20"])
-    w = viirs_weights(par, df.b[is_viirs], df.m[is_viirs])
+    w = viirs_weights(par, df[is_viirs])
     par["n20_to_snpp"], par["sensor_gap_months"] = fit_n20(df, w)
     tf = df.local_date.between(*TERRA_FIT)
     par["terra"] = fit_terra(df[tf & (df.stream == "modis_terra")], df[tf & (df.stream == "modis")])
@@ -149,14 +263,16 @@ def apply(df: pd.DataFrame, par: dict) -> pd.DataFrame:
     s, d = df.stream, df.local_date
     df["weight"] = np.nan
     v = s.isin(["viirs_snpp", "viirs_noaa20"])
-    df.loc[v, "weight"] = viirs_weights(par, df.b[v], df.m[v])
+    df.loc[v, "weight"] = viirs_weights(par, df[v])
     df.loc[s == "viirs_noaa20", "weight"] *= par["n20_to_snpp"] or 1.0
     df.loc[s == "modis_terra", "weight"] = df.m[s == "modis_terra"].map(par["terra"]).fillna(1.0)
     df.loc[s == "modis", "weight"] = 1.0
+    # a day NOAA-20 did not really observe is taken from MODIS instead of being read as a quiet day
+    n20_gap = d.isin(gap_days(df, "viirs_noaa20"))
     df["in_series"] = (
         ((s == "modis_terra") & (d < AQUA_START))
-        | ((s == "modis") & (d >= AQUA_START) & (d < VIIRS_FROM))
-        | ((s == "viirs_noaa20") & (d >= VIIRS_FROM))
+        | ((s == "modis") & (d >= AQUA_START) & ((d < VIIRS_FROM) | n20_gap))
+        | ((s == "viirs_noaa20") & (d >= VIIRS_FROM) & ~n20_gap)
     )
     df["in_raw"] = (
         ((s == "modis") & (d < RAW_SWITCH))
@@ -195,6 +311,9 @@ def params_to_json(par: dict, source: str) -> dict:
         "source": source,  # own | pooled
         "fit_period": list(FIT),
         "fit_viirs_celldays": par["n_fit"],
+        "weights": par["weights"],  # boosted (scikit-learn HistGradientBoostingRegressor, Poisson) | bins (table)
+        "weights_held_out_month_error": par["weights_held_out_month_error"],  # what the choice was based on
+        "weight_features": WEIGHT_FEATURES if par["weights"] == "boosted" else ["frp bin", "has_day"],
         "k": round(par["k"], 4),
         "detection_curve": [
             {
@@ -205,14 +324,18 @@ def params_to_json(par: dict, source: str) -> dict:
             }
             for b, p in par["p"].items()
         ],
-        "month_factor": {int(m): round(float(v), 4) for m, v in par["r"].items()},
+        "season_factor_by_day_of_year": [round(float(v), 4) for v in par["r"][1:]],
+        "season_half_window_days": SEASON_HALF_WINDOW,
+        "sensor_gap_days": {s: [f"{d:%Y-%m-%d}" for d in days] for s, days in par["gap_days"].items()},
         "n20_to_snpp": None if par["n20_to_snpp"] is None else round(par["n20_to_snpp"], 4),
         "sensor_gap_months": par["sensor_gap_months"],
         "terra_to_modis": {int(m): round(float(v), 4) for m, v in par["terra"].items()},
     }
 
 
-def harmonize_all(con: duckdb.DuckDBPyConnection, cell_day: Path, countries: list[str] | None) -> dict[str, tuple]:
+def harmonize_all(
+    con: duckdb.DuckDBPyConnection, cell_day: Path, countries: list[str] | None, weights: str = "auto"
+) -> dict[str, tuple]:
     """country -> (cell-days with weights, parameters, 'own' | 'pooled'). Countries without data are skipped."""
     if countries is None:
         rows = con.execute(
@@ -221,9 +344,11 @@ def harmonize_all(con: duckdb.DuckDBPyConnection, cell_day: Path, countries: lis
         countries = [r[0] for r in rows]
     frames = {c: load_cell_days(con, cell_day, c) for c in countries}
     frames = {c: f for c, f in frames.items() if len(f)}
-    own = {c: calibrate([f]) for c, f in frames.items()}
+    own = {c: calibrate([f], weights) for c, f in frames.items()}
     good = [frames[c] for c, p in own.items() if p is not None]
-    pooled = calibrate(good) if good else None
+    # the pooled calibration costs a fit on every country at once: only when some country needs to borrow it
+    need_pooled = any(p is None or p["n20_to_snpp"] is None for p in own.values())
+    pooled = calibrate(good, weights) if good and need_pooled else None
     out = {}
     for c, f in frames.items():
         par, source = (own[c], "own") if own[c] is not None else (pooled, "pooled")
@@ -240,12 +365,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     ap.add_argument("--data", type=Path, default=DEFAULT_DATA)
+    ap.add_argument(
+        "--weights",
+        choices=["auto", "boosted", "bins"],
+        default="auto",
+        help="detection weight: boosted model, table by fire power, or (auto) the model only where it wins held-out",
+    )
     args = ap.parse_args()
 
     cfg = load_config(args.config)
     con = duckdb.connect()
     agg = args.data / "agg"
-    results = harmonize_all(con, agg / "cell_day.parquet", cfg.countries())
+    results = harmonize_all(con, agg / "cell_day.parquet", cfg.countries(), args.weights)
     if not results:
         raise SystemExit("harmonize: nothing to do - run pipeline.aggregate first")
 
@@ -258,7 +389,8 @@ def main() -> None:
     for c, (df, par, source) in results.items():
         s = df[df.in_series]
         print(
-            f"harmonize: {c:<12} calibration {source:<6} k={par['k']:.3f} n20_to_snpp={par['n20_to_snpp'] or 1:.3f}  "
+            f"harmonize: {c:<12} calibration {source:<6} weights {par['weights']:<7} k={par['k']:.3f} "
+            f"n20_to_snpp={par['n20_to_snpp'] or 1:.3f}  "
             f"{s.local_date.min():%Y-%m} .. {s.local_date.max():%Y-%m}  {s.weight.sum():>12,.0f} harmonized cell-days"
         )
         if par["sensor_gap_months"]:
