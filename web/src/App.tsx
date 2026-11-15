@@ -565,22 +565,20 @@ export function App() {
             countries={countries ?? []}
             onEnsureCountries={() => void ensureCountries()}
             onPickCountry={pickCountry}
-          />
-        )}
-
-        {meta && (
-          <nav className="presets" aria-label={t("Example areas")}>
-            <span>{t("Examples")}</span>
-            {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
-              <a
-                key={preset.name}
-                href={presetHref(preset, new URLSearchParams(window.location.search))}
-                title={t(preset.note)}
-              >
-                {t(preset.name)}
-              </a>
-            ))}
-          </nav>
+          >
+            <nav className="presets" aria-label={t("Example areas")}>
+              <span>{t("Examples")}</span>
+              {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
+                <a
+                  key={preset.name}
+                  href={presetHref(preset, new URLSearchParams(window.location.search))}
+                  title={t(preset.note)}
+                >
+                  {t(preset.name)}
+                </a>
+              ))}
+            </nav>
+          </Filters>
         )}
 
         {noData && picked && meta && filters && (

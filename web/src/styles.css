@@ -237,17 +237,27 @@ label.inline > span,
 .theme > span {
   margin: 0;
 }
+/* A grid of one column: the legend on its row, the fields under it. As a grid row the legend sets the width of
+   the group only when it is the widest row, and the row gap stands in for its margin, so it sits on the same line
+   as the label of a plain field next to the group. */
 fieldset {
   border: 0;
   padding: 0;
   margin: 0;
-  display: flex;
+  display: grid;
   gap: 6px;
-  flex-wrap: wrap;
+  justify-items: start;
 }
+/* Floated, the legend is an ordinary grid item instead of a caption drawn into the border. */
 fieldset > legend {
   float: left;
-  width: 100%;
+  margin-bottom: 0;
+}
+.coordinates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-self: stretch;
 }
 .coordinate {
   position: relative;
@@ -305,8 +315,34 @@ fieldset > legend {
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
 }
-.filters > .primary {
+/* Second row: the record switch leads, the example areas follow, the download closes it as a quiet button. */
+.filters-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 24px;
+  width: 100%;
+  padding-top: 16px;
+  border-top: 1px solid var(--grid);
+}
+.filters-record .segmented > button {
+  padding: 0 16px;
+}
+/* The switch between the two records is the main control of the card: the chosen one is filled with ink. */
+.filters-record .segmented > button[aria-pressed="true"],
+.filters-record .segmented > button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--surface);
+}
+.filters-download {
+  align-self: flex-end;
   margin-left: auto;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.filters-download:hover:not(:disabled) {
+  border-color: var(--ink-2);
+  color: var(--ink);
 }
 /* The region as a search: a button that names the place, and under it a field over the list of what it finds. */
 .region-search {
@@ -377,21 +413,34 @@ fieldset > legend {
   color: var(--muted);
   cursor: default;
 }
-/* One-click example areas under the filters: links, so each is also a view to share. */
+/* One-click example areas in the filters card: links, so each is also a view to share. Labelled like a field. */
 .presets {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 16px;
-  padding: 0 4px;
-  color: var(--ink-2);
-  font-size: 13px;
+  gap: 6px;
+  min-width: 0;
 }
+/* 3 px more under the label puts the chips level with the buttons inside the record switch. */
 .presets > span {
-  color: var(--muted);
+  width: 100%;
+  margin-bottom: 3px;
+  color: var(--ink-2);
+  font-size: 12px;
 }
 .presets a {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--accent);
+  font-size: 13px;
+  text-decoration: none;
+}
+.presets a:hover {
+  background: var(--wash);
+  text-decoration: underline;
 }
 .filter-problem {
   width: 100%;
@@ -889,6 +938,9 @@ tbody th {
   }
   .coordinate {
     flex: 1 1 calc(50% - 3px);
+  }
+  .filters-download {
+    flex: 1 1 100%;
   }
 }
 
