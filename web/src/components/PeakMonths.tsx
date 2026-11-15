@@ -1,7 +1,8 @@
+import { monthShort, monthTitle, t, tn } from "../i18n";
 import { type KeyboardEvent, type PointerEvent, useState } from "react";
 import type { Climatology } from "../api";
 import { useElementWidth } from "../hooks";
-import { MONTHS, MONTHS_LONG, PEAK_SHARE, columnPath, formatValue, monthSpans, peakMonths } from "../scale";
+import { MONTHS, PEAK_SHARE, columnPath, formatValue, monthSpans, peakMonths } from "../scale";
 import { type Tip, Tooltip } from "./Tooltip";
 
 type Props = { climatology: Climatology[]; unit: string };
@@ -19,8 +20,7 @@ export function PeakMonthsSummary({ climatology }: { climatology: Climatology[] 
   if (peak.months.length === 0) {
     return (
       <p className="peak-summary">
-        No month burns in a typical year here: every monthly median is zero. The seasonal chart shows the years that
-        did burn.
+        {t("No month burns in a typical year here: every monthly median is zero. The seasonal chart shows the years that did burn.")}
       </p>
     );
   }
@@ -28,7 +28,9 @@ export function PeakMonthsSummary({ climatology }: { climatology: Climatology[] 
     <p className="peak-summary">
       <strong className="peak-months">{monthSpans(peak.months)}</strong>
       <span>
-        {`${peak.months.length} ${peak.months.length === 1 ? "month holds" : "months hold"} ${percent(peak.held)} of the burning of a typical year`}
+        {tn(peak.months.length, "{n} month holds {share} of the burning of a typical year", "{n} months hold {share} of the burning of a typical year", {
+          share: percent(peak.held),
+        })}
       </span>
     </p>
   );
@@ -72,14 +74,14 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
       ? null
       : {
           ...pointer,
-          title: MONTHS_LONG[active],
+          title: monthTitle(active + 1),
           rows: [
-            { value: percent(shares[active]), label: "of the burning of a typical year" },
+            { value: percent(shares[active]), label: t("of the burning of a typical year") },
             {
               value: formatValue(activeClimatology?.median ?? 0),
-              label: `${unit}, median over ${activeClimatology?.years ?? 0} years`,
+              label: tn(activeClimatology?.years ?? 0, "{unit}, median over {n} year", "{unit}, median over {n} years", { unit }),
             },
-            ...(peak.months.includes(active + 1) ? [{ value: "Peak", label: "one of the peak burning months" }] : []),
+            ...(peak.months.includes(active + 1) ? [{ value: t("Peak"), label: t("one of the peak burning months") }] : []),
           ],
         };
 
@@ -88,11 +90,11 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
       <ul className="legend">
         <li>
           <span className="box-key" style={{ background: "var(--accent)" }} />
-          {`Peak burning months: together at least ${percent(PEAK_SHARE)} of a typical year`}
+          {t("Peak burning months: together at least {share} of a typical year", { share: percent(PEAK_SHARE) })}
         </li>
         <li>
           <span className="box-key" style={{ background: "var(--axis)" }} />
-          Other months
+          {t("Other months")}
         </li>
       </ul>
       {width > 0 && (
@@ -100,7 +102,10 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
           width={width}
           height={HEIGHT}
           role="img"
-          aria-label={`Share of a typical year's burning in each month; peak burning months: ${monthSpans(peak.months) || "none"}. Use the left and right arrow keys to read months.`}
+          aria-label={t(
+            "Share of a typical year's burning in each month; peak burning months: {months}. Use the left and right arrow keys to read months.",
+            { months: monthSpans(peak.months) || t("none") },
+          )}
           tabIndex={0}
           onPointerMove={onPointerMove}
           onPointerLeave={() => setActive(null)}
@@ -123,7 +128,7 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
                   </text>
                 )}
                 <text className="tick" x={MARGIN.left + (index + 0.5) * slot} y={HEIGHT - 8} textAnchor="middle">
-                  {name}
+                  {monthShort(index + 1)}
                 </text>
               </g>
             );
@@ -140,24 +145,24 @@ export function PeakMonthsTable({ climatology, unit }: Props) {
   const byMonth = new Map(climatology.map((c) => [c.month, c]));
   return (
     <table>
-      <caption>{`Each month's median over the record, in ${unit}, and its share of a typical year`}</caption>
+      <caption>{t("Each month's median over the record, in {unit}, and its share of a typical year", { unit })}</caption>
       <thead>
         <tr>
-          <th scope="col">Month</th>
-          <th scope="col">Median</th>
-          <th scope="col">Share of a typical year</th>
-          <th scope="col">Peak burning month</th>
+          <th scope="col">{t("Month")}</th>
+          <th scope="col">{t("Median")}</th>
+          <th scope="col">{t("Share of a typical year")}</th>
+          <th scope="col">{t("Peak burning month")}</th>
         </tr>
       </thead>
       <tbody>
-        {MONTHS_LONG.map((name, index) => {
+        {MONTHS.map((name, index) => {
           const median = byMonth.get(index + 1)?.median ?? 0;
           return (
             <tr key={name}>
-              <th scope="row">{name}</th>
+              <th scope="row">{monthTitle(index + 1)}</th>
               <td>{formatValue(median)}</td>
               <td>{peak.total > 0 ? percent(median / peak.total) : "–"}</td>
-              <td>{peak.months.includes(index + 1) ? "Yes" : ""}</td>
+              <td>{peak.months.includes(index + 1) ? t("Yes") : ""}</td>
             </tr>
           );
         })}

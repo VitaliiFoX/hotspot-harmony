@@ -1,6 +1,7 @@
 // How far the harmonized record can be trusted: the wording and the choices of the trust block, kept pure.
 
 import type { ErrorScale, TrustCheck, TrustCountry } from "./api";
+import { dayInWords, t } from "./i18n";
 
 /** The scales of the check, coarse to fine, as the table shows them. */
 export const SCALES: readonly ErrorScale[] = ["country_year", "country_month", "tile_year", "tile_month"];
@@ -22,11 +23,6 @@ export const CHECK_LABELS: Record<TrustCheck, string> = {
   raw_viirs: "Baseline: VIIRS as delivered, no correction",
 };
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
 /** A share as a percentage with one decimal: 0.0662 is "6.6%". */
 export function percent(share: number): string {
   return `${(share * 100).toFixed(1)}%`;
@@ -35,7 +31,7 @@ export function percent(share: number): string {
 /** A ratio as the change it means: 2.0 is "+100%", 0.902 is "−10%". */
 export function change(ratio: number): string {
   const percentChange = Math.round((ratio - 1) * 100);
-  if (percentChange === 0) return "no change";
+  if (percentChange === 0) return t("no change");
   return percentChange > 0 ? `+${percentChange}%` : `−${-percentChange}%`;
 }
 
@@ -68,9 +64,9 @@ export function validateCommand(country: TrustCountry): string {
 /** "2026-11-14T21:50:59Z" as "14 November 2026, 21:50 UTC". */
 export function reportTime(iso: string | null): string {
   const match = iso?.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
-  if (!match) return "an unknown time";
+  if (!match) return t("an unknown time");
   const [, year, month, day, hour, minute] = match;
-  return `${Number(day)} ${MONTH_NAMES[Number(month) - 1]} ${year}, ${hour}:${minute} UTC`;
+  return `${dayInWords(`${year}-${month}-${day}`)}, ${hour}:${minute} UTC`;
 }
 
 /**
