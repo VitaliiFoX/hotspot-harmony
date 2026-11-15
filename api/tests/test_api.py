@@ -151,6 +151,30 @@ def test_calendar_sums_the_cells_inside_the_area_month_by_month(client):
     assert months[(2011, 3)]["value"] == 0
 
 
+# An area drawn by hand: the triangle (0, 0), (2, 0), (0, 1.2), given as lon, lat. Its sloping side is
+# lat = 1.2 - 0.6 lon, so at lon 0.5 it passes at lat 0.9, above A, and at lon 1.5 at lat 0.3, below B.
+# Its bounding box is wider than the test area and holds both cells; the triangle holds A alone.
+DRAWN = {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [0, 1.2], [0, 0]]]}
+
+
+def test_a_drawn_area_counts_the_cells_inside_its_outline_not_inside_its_bounding_box(client):
+    r = client.post("/api/calendar", json={"geometry": DRAWN, "start": "2010-01", "end": "2013-12"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["cells_used"] == 1
+    months = {(m["year"], m["month"]): m["value"] for m in body["months"]}
+    assert months[(2011, 8)] == 20  # A alone; the box of the same bounds gives 22
+    assert months[(2013, 8)] == 60  # and 64
+
+
+def test_csv_export_of_a_drawn_area_keeps_the_hotspots_inside_its_outline(client):
+    r = client.post("/api/hotspots.csv", json={"geometry": DRAWN, "start": "2013-08-01", "end": "2013-08-31"})
+    assert r.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(r.text)))
+    # (0.6, 1.2) is in the bounding box but above the sloping side, which passes at lat 0.48 there.
+    assert [(row["lat"], row["lon"]) for row in rows] == [("0.4", "0.6")]
+
+
 def test_raw_series_switches_from_modis_to_viirs_in_february_2012(client):
     months = {(m["year"], m["month"]): m for m in calendar(client).json()["months"]}
     assert (months[(2012, 1)]["value"], months[(2012, 1)]["sensor"]) == (7, "modis")
