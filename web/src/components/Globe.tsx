@@ -8,9 +8,10 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
+import { type Country, type Tap, countryAt, isDoubleTap } from "../countries";
 import {
   type BurnCell, type HourCounts, MERCATOR_LIMIT, boxRing, cellSentence, cellSquares, cellStops, hourFilters, hourInstant, longDate,
-  stopLabel, timeLabel, nightPolygon, regionAt, terminatorLine, regionsCenter, trendSentence,
+  stopLabel, timeLabel, nightPolygon, terminatorLine, regionsCenter, trendSentence,
 } from "../globe";
 
 type Props = {
@@ -24,7 +25,14 @@ type Props = {
   focusRegion: string | null;
   /** Page theme; the sky around the globe follows it. */
   dark: boolean;
-  onPickRegion: (name: string) => void;
+  /** The borders a double-click finds a country by; empty until they arrive. */
+  countries: Country[];
+  /** The country picked on the globe, or null. Its border is outlined, and the calendar counts inside it. */
+  country: Country | null;
+  /** False when no record is loaded for the picked country. */
+  countryHasData: boolean;
+  /** Called with the name of the country double-clicked on the globe, or with null to let it go. */
+  onPickCountry: (name: string | null) => void;
   /** The corners of the area of interest drawn on the globe, or null when the area is a box. */
   area: Corner[] | null;
   /** Called with the corners of a finished drawing, or with null to remove the drawn area. */
@@ -115,6 +123,7 @@ const STYLE: StyleSpecification = {
     cells: { type: "geojson", data: EMPTY },
     terminator: { type: "geojson", data: EMPTY },
     regions: { type: "geojson", data: EMPTY },
+    country: { type: "geojson", data: EMPTY },
     area: { type: "geojson", data: EMPTY },
     hotspots: { type: "geojson", data: EMPTY },
   },
@@ -190,7 +199,7 @@ const STYLE: StyleSpecification = {
     },
     {
       // The region boxes are no longer drawn: the real country borders show where a region is. The layer
-      // stays, hidden, as the anchor the street map is inserted under; clicks still find a region by its box.
+      // stays, hidden, as the anchor the street map is inserted under.
       id: "region-outline",
       type: "line",
       source: "regions",
@@ -204,6 +213,21 @@ const STYLE: StyleSpecification = {
       source: "cells",
       layout: { visibility: "none" },
       paint: { "fill-color": CELL_RAMP[2], "fill-opacity": 0.72, "fill-antialias": false },
+    },
+    {
+      // The border of the picked country, in the ink of a drawn area: both are the area the calendar counts.
+      id: "country-casing",
+      type: "line",
+      source: "country",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": AREA_CASING, "line-width": 5 },
+    },
+    {
+      id: "country-outline",
+      type: "line",
+      source: "country",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": AREA_INK, "line-width": 2.2 },
     },
     {
       id: "area-fill",
@@ -422,8 +446,8 @@ function CalendarIcon() {
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
 export function Globe({
-  regions, date, time, day, counts, focusRegion, dark, onPickRegion, area, onDrawArea, areaError, period, focus = null,
-  series = "harmonized", trendError = 0, panel,
+  regions, date, time, day, counts, focusRegion, dark, countries, country, countryHasData, onPickCountry, area, onDrawArea,
+  areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -462,11 +486,18 @@ export function Globe({
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
   const regionsRef = useRef(regions);
-  const pickRef = useRef(onPickRegion);
-  const focusRef = useRef(focusRegion);
+  // Picking a country: the map's handlers are attached once, so they read the borders and the callback through refs.
+  const countriesRef = useRef(countries);
+  const pickRef = useRef(onPickCountry);
+  const countryRef = useRef(country);
   regionsRef.current = regions;
-  pickRef.current = onPickRegion;
-  focusRef.current = focusRegion;
+  countriesRef.current = countries;
+  pickRef.current = onPickCountry;
+  countryRef.current = country;
+  // The last click or tap, to tell when the next one makes a double: a mouse and a finger are read the same way.
+  const lastTap = useRef<Tap | null>(null);
+  // The country the map last flew to, so that one picked here is not flown to twice.
+  const flownTo = useRef<string | null>(null);
 
   // Drawing an area of interest. The map's handlers are attached once, so they read the drawing through
   // a ref; the state mirrors it for what React renders.
@@ -586,11 +617,14 @@ export function Globe({
         "CooperativeGesturesHandler.MobileHelpText": "Use two fingers to move the globe.",
       },
     });
+    // A double-click or a double tap picks a country, so it must not zoom as well: the buttons and the wheel do.
+    map.doubleClickZoom.disable();
     map.addControl(new NavigationControl({ visualizePitch: false }), "top-left");
     map.getCanvas().setAttribute(
       "aria-label",
       "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it; "
-        + "plus and minus, or Ctrl or Command with the scroll wheel, to zoom.",
+        + "plus and minus, or Ctrl or Command with the scroll wheel, to zoom. "
+        + "Double-click a country to see its burning calendar below.",
     );
     // Development only: lets a headless browser drive the map (see "Look at the globe" in CLAUDE.md).
     if (import.meta.env.DEV) (window as unknown as { __hhMap?: MapLibreMap }).__hhMap = map;
@@ -621,12 +655,17 @@ export function Globe({
         return drawActions.current.pickCell(boxCorners([lon - half, lat - half, lon + half, lat + half]));
       }
       if (justClosed()) return;
-      const region = regionAt(regionsRef.current, event.lngLat.lng, event.lngLat.lat);
-      if (!region) return;
-      pickRef.current(region.name);
-      // Inside the region already chosen a drawn area stays (see pickRegion in App), and so does the view on it.
-      if (areaRef.current && region.name === focusRef.current) return;
-      fitRegion(map, region);
+      // Two clicks or taps on one spot pick the country under them; a single one only starts the wait.
+      const tap: Tap = { time: performance.now(), x: event.point.x, y: event.point.y };
+      const double = isDoubleTap(lastTap.current, tap);
+      lastTap.current = double ? null : tap;
+      if (!double) return;
+      const { lng, lat } = event.lngLat.wrap();
+      const found = countryAt(countriesRef.current, lng, lat);
+      if (!found) return;
+      flownTo.current = found.name;
+      pickRef.current(found.name);
+      fitBox(map, found.view, 6);
     });
     map.on("mousemove", (event) => {
       if (draw.current.active) {
@@ -639,8 +678,7 @@ export function Globe({
         });
         return;
       }
-      const inside = regionAt(regionsRef.current, event.lngLat.lng, event.lngLat.lat) !== null;
-      map.getCanvas().style.cursor = inside ? "pointer" : "";
+      map.getCanvas().style.cursor = "";
     });
     // A cell under the pointer says how often, how much and when it burns.
     const popup = new Popup({ closeButton: false, closeOnClick: false, className: "cell-popup", maxWidth: "260px" });
@@ -783,6 +821,18 @@ export function Globe({
     if (ready) paintArea();
   }, [ready, area]);
 
+  // The border of the picked country.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    (map.getSource("country") as GeoJSONSource).setData(
+      country ? { type: "Feature", properties: {}, geometry: country.geometry } : EMPTY,
+    );
+    // A country that arrives with the page (from a link) is flown to; one picked here is already on its way.
+    if (country && flownTo.current !== country.name) fitBox(map, country.view, 6);
+    flownTo.current = country?.name ?? null;
+  }, [ready, country]);
+
   // An area that arrives with the page (from a link) is flown to once; one drawn here is already in view.
   const areaSeen = useRef(false);
   useEffect(() => {
@@ -797,8 +847,9 @@ export function Globe({
     const map = mapRef.current;
     const previous = lastFocus.current;
     lastFocus.current = focusRegion;
-    // A drawn area keeps the view on itself, even when it moves the region filter to another country.
-    if (areaRef.current) return;
+    // A drawn area keeps the view on itself, even when it moves the region filter to another country; so does a
+    // picked country, which is flown to by its own border.
+    if (areaRef.current || countryRef.current) return;
     if (!map || !focusRegion || previous === null || previous === focusRegion) return;
     const region = regions.find((r) => r.name === focusRegion);
     if (region) fitRegion(map, region);
@@ -891,7 +942,7 @@ export function Globe({
       </div>
 
       {showCells && !drawing && (
-        <div className={area ? "stage-draw stage-cells is-raised" : "stage-draw stage-cells"} role="group" aria-label="What the cells show">
+        <div className={area || country ? "stage-draw stage-cells is-raised" : "stage-draw stage-cells"} role="group" aria-label="What the cells show">
           <div className="segmented">
             <button type="button" aria-pressed={cellView === "amount"} onClick={() => showCellView("amount")}>
               How much
@@ -948,6 +999,28 @@ export function Globe({
             )}
             <button type="button" className="stage-toggle" onClick={() => onDrawArea(null)}>
               Remove the area
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!drawing && !area && country && (
+        <div className="stage-draw">
+          <p role="status">
+            {!countryHasData
+              ? `${country.name}: no record is loaded for this country yet.`
+              : areaError
+                ? `${country.name}: ${areaError}`
+                : `${country.name}. The calendar below now counts the burning inside its border.`}
+          </p>
+          <div className="stage-draw-actions">
+            {!areaError && (
+              <a className="stage-toggle is-strong" href="#calendar">
+                {countryHasData ? "See its calendar" : "See what is missing"} <span aria-hidden="true">↓</span>
+              </a>
+            )}
+            <button type="button" className="stage-toggle" onClick={() => onPickCountry(null)}>
+              Let the country go
             </button>
           </div>
         </div>
@@ -1023,12 +1096,15 @@ export function Globe({
             </li>
           </ul>
         )}
+        <p className="legend-hint">Double-click a country to see its burning calendar below.</p>
         <p className="legend-hint">{`${ZOOM_KEY} + scroll zooms the globe; scroll alone moves down the page.`}</p>
         <p>
           Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Map:{" "}
           <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" "}
           <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">© OpenMapTiles</a>, data{" "}
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>.
+          Borders a country is picked by:{" "}
+          <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>.
         </p>
         </div>
       ) : (

@@ -6,8 +6,10 @@ export type ExportContext = {
   region: string;
   /** West, south, east, north of the area of interest, degrees: its bounds when the area was drawn. */
   box: readonly number[];
-  /** The area of interest as well-known text, longitude first. */
+  /** The area of interest as well-known text, longitude first; empty when it is a country's border. */
   wkt: string;
+  /** The country picked on the globe, when the area of interest is its border. */
+  country?: string | null;
 };
 
 function cell(value: string | number | null): string {
@@ -26,13 +28,15 @@ function round(value: number, digits = 3): number {
  * median and middle half over the whole record, and the month's ratio to its median. Every row repeats the
  * record, unit and area so a row read on its own still says what it is. The area is given twice: its bounds
  * in four columns, and its exact outline as well-known text, which differs from the bounds when it was drawn.
+ * A country picked on the globe is named in `country` instead: its border (web/public/countries.geojson) has
+ * thousands of points, too many to repeat on every row, so `area_wkt` is then empty.
  */
 export function calendarCsv(calendar: Calendar, context: ExportContext): string {
   const climatology = new Map(calendar.climatology.map((c) => [c.month, c]));
   const [west, south, east, north] = context.box;
   const header = [
     "year", "month", "value", "unit", "record", "sensor", "month_median", "month_p25", "month_p75",
-    "ratio_to_median", "region", "west", "south", "east", "north", "area_wkt",
+    "ratio_to_median", "region", "country", "west", "south", "east", "north", "area_wkt",
   ];
   const rows = calendar.months.map((m) => {
     const c = climatology.get(m.month);
@@ -40,7 +44,7 @@ export function calendarCsv(calendar: Calendar, context: ExportContext): string 
     return [
       m.year, m.month, round(m.value), calendar.unit, calendar.series, m.sensor ?? "",
       c ? round(c.median) : null, c ? round(c.p25) : null, c ? round(c.p75) : null,
-      ratio, context.region, west, south, east, north, context.wkt,
+      ratio, context.region, context.country ?? "", west, south, east, north, context.wkt,
     ];
   });
   return [header, ...rows].map((row) => row.map(cell).join(",")).join("\n") + "\n";

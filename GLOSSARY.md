@@ -45,6 +45,16 @@ _Avoid_: pilot, territory
 The polygon a user draws to ask about burning activity. It can be any shape inside a region.
 _Avoid_: zone, selection, AOI
 
+**Picked country**:
+A country chosen on the globe by a double-click. Its border is then the area of interest. It has a record only
+when it is a region; any other country shows that no record is loaded yet.
+_Avoid_: selected country, clicked country
+
+**Border**:
+The outline of a country from Natural Earth, simplified to about 2 km, in `web/public/countries.geojson`.
+A cell belongs to a country when the cell's centre is inside its border.
+_Avoid_: boundary, frontier
+
 **Cell**:
 One square of the regular latitude-longitude grid that hotspots are counted in.
 _Avoid_: pixel (that is the sensor's footprint), tile, bin
