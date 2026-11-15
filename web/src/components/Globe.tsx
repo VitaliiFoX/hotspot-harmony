@@ -8,7 +8,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ShareButton } from "./ShareButton";
 import { formatCount, monthTitle, numberLocale, t } from "../i18n";
-import { formatValue } from "../scale";
+import { THERMAL, formatValue } from "../scale";
 import { type Span, cursorLabel, spanLabel } from "../period";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
@@ -73,7 +73,7 @@ const HOTSPOT = "#ff8a3d";
 // drawn as one surface with no steps in the colours of a thermal camera, dark violet where it is cold, through
 // pink, orange and amber to near white where it is hottest, so the mode reads as a different thing from the day's
 // orange hotspots (which it hides). As --thermal-0 .. --thermal-4 in globe.css.
-const THERMAL_RAMP = ["#2c0352", "#fd369b", "#fe8915", "#ffb60d", "#fefbec"] as const;
+const THERMAL_RAMP = THERMAL;
 // "How it changed": second half of the period against the first, in doublings from -2 (a quarter) to +2 (four
 // times); less burning in blue, more in red, a change within the method's error neutral. As --trend-* in globe.css.
 const TREND_RAMP = ["#2166ac", "#67a9cf", "#f4f1ea", "#ef8a62", "#b2182b"] as const;

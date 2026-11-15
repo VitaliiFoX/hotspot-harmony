@@ -9,7 +9,6 @@ type Props = {
   climatology: Climatology[];
   unit: string;
   mode: ScaleMode;
-  dark: boolean;
   highlightYear: number;
   onHighlightYear: (year: number) => void;
   /** The months the map at the top of the page is on, "YYYY-MM", outlined here; none while it shows the whole period. */
@@ -33,7 +32,7 @@ const SENSOR_NAMES: Record<string, string> = {
 
 /** Years down, months across, one cell per month coloured by how much burned. */
 export function CalendarHeatmap({
-  months, climatology, unit, mode, dark, highlightYear, onHighlightYear, shownMonths = [], onShowMonth,
+  months, climatology, unit, mode, highlightYear, onHighlightYear, shownMonths = [], onShowMonth,
 }: Props) {
   const [tip, setTip] = useState<Tip | null>(null);
   const [active, setActive] = useState<string | null>(null);
@@ -88,68 +87,71 @@ export function CalendarHeatmap({
   const readMonth = (m: string) => `${monthTitle(Number(m.slice(5, 7)))} ${m.slice(0, 4)}`;
   return (
     <div className="calendar">
-      <div
-        ref={grid}
-        className="calendar-grid"
-        role="application"
-        aria-label={[
-          t("Burning activity calendar, {first} to {last}. Use the arrow keys to read months, or switch to the table.", {
-            first: years[0],
-            last: years[years.length - 1],
-          }),
-          onShowMonth ? t("Press Enter to see the hotspots of that month on the map.") : "",
-        ].filter(Boolean).join(" ")}
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        onBlur={() => showAt("", 0, 0)}
-        onPointerLeave={() => showAt("", 0, 0)}
-      >
-        <span />
-        {MONTHS.map((name, index) => (
-          <span key={name} className="calendar-month">
-            {monthShort(index + 1)}
+      {/* A dark plate under the grid and its legend, whatever the theme: see .calendar-plate. */}
+      <div className="calendar-plate">
+        <div
+          ref={grid}
+          className="calendar-grid"
+          role="application"
+          aria-label={[
+            t("Burning activity calendar, {first} to {last}. Use the arrow keys to read months, or switch to the table.", {
+              first: years[0],
+              last: years[years.length - 1],
+            }),
+            onShowMonth ? t("Press Enter to see the hotspots of that month on the map.") : "",
+          ].filter(Boolean).join(" ")}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          onBlur={() => showAt("", 0, 0)}
+          onPointerLeave={() => showAt("", 0, 0)}
+        >
+          <span />
+          {MONTHS.map((name, index) => (
+            <span key={name} className="calendar-month">
+              {monthShort(index + 1)}
+            </span>
+          ))}
+          {years.map((year) => (
+            <div className="calendar-row" key={year}>
+              <button
+                type="button"
+                tabIndex={-1}
+                className={`calendar-year${year === highlightYear ? " is-selected" : ""}`}
+                title={t("Highlight {year} in the seasonal chart", { year })}
+                onClick={() => onHighlightYear(year)}
+              >
+                {year}
+              </button>
+              {MONTHS.map((_, index) => {
+                const key = `${year}-${index + 1}`;
+                const cell = byKey.get(key);
+                const shown = shownMonths.includes(monthOfKey(key));
+                return (
+                  <span
+                    key={key}
+                    data-key={key}
+                    className={`calendar-cell${cell ? "" : " is-empty"}${key === active ? " is-active" : ""}${shown ? " is-shown" : ""}${
+                      cell && onShowMonth ? " is-pickable" : ""
+                    }`}
+                    style={cell ? { background: cellColor(cell.value, min, max, mode) } : undefined}
+                    onPointerMove={(event) => showAt(key, event.clientX, event.clientY)}
+                    onClick={cell && onShowMonth ? () => onShowMonth(monthOfKey(key)) : undefined}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="scale-legend" aria-hidden="true">
+          <span className="scale-zero" style={{ background: ZERO_FILL }} />
+          <span>0</span>
+          <span className="scale-ramp" style={{ background: rampGradient() }} />
+          <span>
+            {mode === "log"
+              ? t("{min} to {max} {unit}, log scale", { min: formatValue(min), max: formatValue(max), unit })
+              : t("up to {max} {unit}", { max: formatValue(max), unit })}
           </span>
-        ))}
-        {years.map((year) => (
-          <div className="calendar-row" key={year}>
-            <button
-              type="button"
-              tabIndex={-1}
-              className={`calendar-year${year === highlightYear ? " is-selected" : ""}`}
-              title={t("Highlight {year} in the seasonal chart", { year })}
-              onClick={() => onHighlightYear(year)}
-            >
-              {year}
-            </button>
-            {MONTHS.map((_, index) => {
-              const key = `${year}-${index + 1}`;
-              const cell = byKey.get(key);
-              const shown = shownMonths.includes(monthOfKey(key));
-              return (
-                <span
-                  key={key}
-                  data-key={key}
-                  className={`calendar-cell${cell ? "" : " is-empty"}${key === active ? " is-active" : ""}${shown ? " is-shown" : ""}${
-                    cell && onShowMonth ? " is-pickable" : ""
-                  }`}
-                  style={cell ? { background: cellColor(cell.value, min, max, mode, dark) } : undefined}
-                  onPointerMove={(event) => showAt(key, event.clientX, event.clientY)}
-                  onClick={cell && onShowMonth ? () => onShowMonth(monthOfKey(key)) : undefined}
-                />
-              );
-            })}
-          </div>
-        ))}
-      </div>
-      <div className="scale-legend" aria-hidden="true">
-        <span className="scale-zero" style={{ background: dark ? ZERO_FILL.dark : ZERO_FILL.light }} />
-        <span>0</span>
-        <span className="scale-ramp" style={{ background: rampGradient(dark) }} />
-        <span>
-          {mode === "log"
-            ? t("{min} to {max} {unit}, log scale", { min: formatValue(min), max: formatValue(max), unit })
-            : t("up to {max} {unit}", { max: formatValue(max), unit })}
-        </span>
+        </div>
       </div>
       {onShowMonth && (
         <p className="calendar-note">

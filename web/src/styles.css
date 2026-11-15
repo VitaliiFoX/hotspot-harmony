@@ -826,6 +826,19 @@ fieldset > legend {
   gap: 16px;
 }
 
+/* The calendar reads like the map: thermal colours on a dark plate, whatever the theme, so dark violet recedes
+   and near white is the most. On a white card the hottest month would vanish and the coldest stand out. The
+   plate takes the dark theme's roles, so the labels, the rings and the outlines inside it follow. */
+.calendar-plate {
+  --surface: #10131a;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  padding: 12px 12px 12px 4px;
+  border-radius: var(--radius-chip);
+  background: var(--surface);
+  color: var(--ink);
+}
 .calendar-grid {
   display: grid;
   grid-template-columns: 48px repeat(12, minmax(0, 1fr));
@@ -866,7 +879,7 @@ fieldset > legend {
   outline: 2px solid var(--ink);
   outline-offset: 0;
 }
-/* The month the map at the top is on: a ring set off from the cell, in ink, so the blue ramp stays the only hue. */
+/* The month the map at the top is on: a ring set off from the cell, in ink, a colour the ramp does not use. */
 .calendar-cell.is-shown {
   position: relative;
   z-index: 1;
