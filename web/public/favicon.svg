@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Hotspot Harmony</title>
+  <rect width="64" height="64" rx="14" fill="#0b1f3a"/>
+  <circle cx="25" cy="32" r="15" fill="none" stroke="#9cc3ee" stroke-width="4"/>
+  <circle cx="39" cy="32" r="15" fill="none" stroke="#ff8a3d" stroke-width="4"/>
+  <path d="M32 18.7a15 15 0 0 1 0 26.6a15 15 0 0 1 0-26.6z" fill="#ffffff"/>
+</svg>
