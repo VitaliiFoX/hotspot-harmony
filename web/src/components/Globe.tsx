@@ -75,10 +75,12 @@ const NIGHT_SKY: SkySpecification = {
   "sky-horizon-blend": 0.6,
   "atmosphere-blend": ATMOSPHERE,
 };
+const DAY_IMAGERY_LIFT = 0.07;
+// A soft blue rim, not white: a white halo around the dark ocean was the harshest edge on the page.
 const DAY_SKY: SkySpecification = {
-  "sky-color": "#cfe0f3",
-  "horizon-color": "#ffffff",
-  "fog-color": "#cfe0f3",
+  "sky-color": "#a9c4e5",
+  "horizon-color": "#7fb0ea",
+  "fog-color": "#a9c4e5",
   "sky-horizon-blend": 0.6,
   "atmosphere-blend": ATMOSPHERE,
 };
@@ -805,7 +807,11 @@ export function Globe({
   }, [focusRegion, regions]);
 
   useEffect(() => {
-    if (ready) mapRef.current?.setSky(dark ? NIGHT_SKY : DAY_SKY);
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    map.setSky(dark ? NIGHT_SKY : DAY_SKY);
+    // On the light page the near-black ocean is lifted a little, so the disc is not a hole in the sky.
+    map.setPaintProperty("imagery", "raster-brightness-min", dark ? 0 : DAY_IMAGERY_LIFT);
   }, [ready, dark]);
 
   useEffect(() => {
