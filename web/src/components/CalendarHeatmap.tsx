@@ -1,7 +1,7 @@
-import { monthName, monthShort, monthTitle, t } from "../i18n";
+import { formatDecimal, monthName, monthShort, monthTitle, t } from "../i18n";
 import { type KeyboardEvent, useMemo, useRef, useState } from "react";
 import type { Climatology, MonthValue } from "../api";
-import { MONTHS, type ScaleMode, SEQUENTIAL, ZERO_FILL, cellColor, formatValue } from "../scale";
+import { MONTHS, type ScaleMode, ZERO_FILL, cellColor, formatValue, rampGradient } from "../scale";
 import { type Tip, Tooltip } from "./Tooltip";
 
 type Props = {
@@ -39,7 +39,7 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
     const median = medians.get(cell.month) ?? 0;
     const rows = [{ value: formatValue(cell.value), label: unit }];
     rows.push({ value: formatValue(median), label: t("median for {month}", { month: monthName(cell.month) }) });
-    if (median > 0) rows.push({ value: `${(cell.value / median).toFixed(2)}×`, label: t("of that median") });
+    if (median > 0) rows.push({ value: `${formatDecimal(cell.value / median, 2)}×`, label: t("of that median") });
     if (cell.sensor) rows.push({ value: t(SENSOR_NAMES[cell.sensor] ?? cell.sensor), label: t("sensor") });
     return { title: `${monthTitle(cell.month)} ${cell.year}`, rows };
   }
@@ -65,7 +65,6 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
     if (box) showAt(key, box.left + box.width / 2, box.top + box.height / 2);
   }
 
-  const steps = dark ? [...SEQUENTIAL].reverse() : SEQUENTIAL;
   return (
     <div className="calendar">
       <div
@@ -117,11 +116,7 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
       <div className="scale-legend" aria-hidden="true">
         <span className="scale-zero" style={{ background: dark ? ZERO_FILL.dark : ZERO_FILL.light }} />
         <span>0</span>
-        <span className="scale-ramp">
-          {steps.map((color) => (
-            <span key={color} style={{ background: color }} />
-          ))}
-        </span>
+        <span className="scale-ramp" style={{ background: rampGradient(dark) }} />
         <span>
           {mode === "log"
             ? t("{min} to {max} {unit}, log scale", { min: formatValue(min), max: formatValue(max), unit })
