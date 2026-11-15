@@ -20,6 +20,23 @@ gh release create data-2026-11-15 hotspot-harmony-data.tar.gz \
 The `Dockerfile` reads that file through its `DATA_URL` build argument. A new record means a new release
 tag and the new link as the default of `DATA_URL`.
 
+Since 2026-11-15 the default is the record of every country (147 MB packed): the harmonized record and the
+report of `make world`, with the hotspots of Argentina and Ukraine, since those of every country are 6 GB.
+The image then runs with `HH_CONFIG=config/world.yaml`, set in the `Dockerfile`.
+
+```sh
+mkdir -p data/deploy_world/agg && cp -R data/points data/deploy_world/points
+cp data/world/agg/harmonized.parquet data/world/agg/harmonization_report.json data/deploy_world/agg/
+COPYFILE_DISABLE=1 tar -czf hotspot-harmony-world.tar.gz -C data/deploy_world \
+  agg/harmonized.parquet agg/harmonization_report.json points
+gh release create data-world-2026-11-15 hotspot-harmony-world.tar.gz --title "World record for the demo, 2026-11-15"
+```
+
+Measured on 2026-11-15 on a laptop, not in the limited container, with `HH_DUCKDB_MEMORY=150MB` and
+`HH_DUCKDB_THREADS=1`: 205 MB idle, 257 MB after the requests of one page (1-degree tiles), 425 MB after
+`/api/cells` at 0.25 degrees for the whole world. To go back to the two countries, build the image with
+`--build-arg DATA_URL=<the data-2026-11-15 link>` and run it with `HH_CONFIG=config/regions.yaml`.
+
 ## 2. The API on Render
 
 New > Web Service > Public Git Repository, with the address of this repository.
