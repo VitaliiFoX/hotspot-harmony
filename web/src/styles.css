@@ -801,3 +801,23 @@ button.download {
   fill: var(--ink-2);
   font-weight: 600;
 }
+
+/* The parts of the harmonized record over the yearly columns: which sensor each year comes from. */
+.record-span {
+  stroke: var(--ink-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.record-edge {
+  stroke: var(--ink-2);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.record-label {
+  fill: var(--ink-2);
+  font-size: 11px;
+}
+td.text-cell {
+  text-align: left;
+  white-space: normal;
+}

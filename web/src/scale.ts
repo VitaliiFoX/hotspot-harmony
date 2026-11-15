@@ -166,3 +166,36 @@ export function monthSpans(months: readonly number[]): string {
     .map(([first, last]) => (first === last ? MONTHS[first - 1] : `${MONTHS[first - 1]}–${MONTHS[last - 1]}`));
   return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
+
+type RecordPartLike = { sensor: string; label: string; from: string; to: string | null };
+
+function monthIndex(yyyyMm: string): number {
+  return Number(yyyyMm.slice(0, 4)) * 12 + Number(yyyyMm.slice(5, 7)) - 1;
+}
+
+/**
+ * Where each part of the harmonized record lies on a yearly axis whose columns run from `firstYear` to `lastYear`:
+ * `start` and `end` in columns from the first, to the month. Parts are cut to the axis; parts off it are dropped.
+ */
+export function recordSpans(
+  parts: readonly RecordPartLike[],
+  firstYear: number,
+  lastYear: number,
+): { sensor: string; label: string; start: number; end: number }[] {
+  const origin = firstYear * 12;
+  const limit = (lastYear + 1) * 12;
+  return parts
+    .map((part) => {
+      const from = Math.max(origin, monthIndex(part.from));
+      const to = Math.min(limit, part.to ? monthIndex(part.to) + 1 : limit);
+      return { sensor: part.sensor, label: part.label, start: (from - origin) / 12, end: (to - origin) / 12 };
+    })
+    .filter((span) => span.end > span.start);
+}
+
+/** The labels of the record parts that a calendar year draws on, in order. */
+export function partsOfYear(parts: readonly RecordPartLike[], year: number): string[] {
+  return parts
+    .filter((part) => monthIndex(part.from) <= year * 12 + 11 && (part.to === null || monthIndex(part.to) >= year * 12))
+    .map((part) => part.label);
+}
