@@ -483,11 +483,7 @@ export function App() {
       const start = `${filters.start}-01`;
       const end = lastDay(filters.end);
       const { blob, truncated } = await fetchHotspotsCsv({ geometry: area.geometry, start, end });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `hotspots_${start}_${end}.csv`;
-      link.click();
-      URL.revokeObjectURL(link.href);
+      downloadBlob(blob, `hotspots_${start}_${end}.csv`);
       if (truncated && meta) {
         setExportNote(
           t("The export stops at {limit} hotspots. Choose a smaller area or a shorter period to get all of them.", {
