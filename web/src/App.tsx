@@ -563,6 +563,7 @@ export function App() {
             problem={problem}
             hasData={!noData}
             countries={countries ?? []}
+            onEnsureCountries={() => void ensureCountries()}
             onPickCountry={pickCountry}
           />
         )}

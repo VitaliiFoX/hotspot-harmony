@@ -10,6 +10,8 @@ type Props = {
   /** What the filters are on now: the picked country, or else the region. */
   current: string;
   onPick: (place: Place) => void;
+  /** Called when the search list opens so country borders can be loaded on demand. */
+  onOpen?: () => void;
 };
 
 function SearchIcon() {
@@ -26,7 +28,7 @@ function SearchIcon() {
  * list of what the text finds. The regions come first; every other country of the world follows, marked when
  * no record is loaded for it. Arrow keys move through the list, Enter takes a line, Escape closes.
  */
-export function RegionSearch({ regions, countries, current, onPick }: Props) {
+export function RegionSearch({ regions, countries, current, onPick, onOpen }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -93,7 +95,13 @@ export function RegionSearch({ regions, countries, current, onPick }: Props) {
         aria-expanded={open}
         aria-labelledby={`${id}-label ${id}-button`}
         title={t("Search a region or a country")}
-        onClick={() => (open ? close(false) : setOpen(true))}
+        onClick={() => {
+          if (open) close(false);
+          else {
+            onOpen?.();
+            setOpen(true);
+          }
+        }}
       >
         <SearchIcon />
         <span>{t(current)}</span>
