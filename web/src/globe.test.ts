@@ -435,6 +435,17 @@ describe("cellGroups", () => {
   });
 });
 
+describe("cellSurface with the cells of every country", () => {
+  it("takes more cells than a function call takes arguments", () => {
+    // 200,000 cells in a row of 0.25 degrees: the world record at 0.25 degrees has 186,604.
+    const many = Array.from({ length: 200_000 }, (_, i) => ({ lon: i * 0.25, lat: 0, color: [255, 0, 0, 1] as Rgba }));
+    const surface = cellSurface(many, 0.25);
+    expect(surface.columns).toBe(200_002); // one empty cell on each side
+    expect(surface.bounds).toEqual([-0.25, -0.25, 50_000, 0.25]);
+    expect(surface.at(49_999.75, 0)).toEqual([255, 0, 0, 1]);
+  });
+});
+
 describe("cellImage", () => {
   const red: Rgba = [200, 0, 0, 1];
   const image = cellImage([{ lon: 0, lat: 0, color: red }, { lon: 1, lat: 0, color: [0, 0, 100, 1] }], 1, 4)!;
