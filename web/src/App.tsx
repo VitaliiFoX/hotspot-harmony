@@ -22,6 +22,7 @@ import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
+import { monthError, sameMonthRatio } from "./trust";
 import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
@@ -308,6 +309,20 @@ export function App() {
     filters && !filters.area && regionBox && filters.box.every((text, i) => Number(text) === regionBox[i]),
   );
   const trusted = validation && filters ? validation.countries[filters.region] : undefined;
+  // The headline month, its sensor, and what the method's error and the raw record say about it.
+  const headline = calendar ? (calendar.season_peak ?? calendar.anomaly) : null;
+  const headlineSensor =
+    headline && calendar ? (calendar.months.find((m) => m.year === headline.year && m.month === headline.month)?.sensor ?? null) : null;
+  const headlineError =
+    calendar?.series === "harmonized" && trusted
+      ? { share: monthError(trusted, headlineSensor, wholeRegion), modis: headlineSensor === "modis" }
+      : null;
+  const rawSame =
+    headline && calendar?.series === "harmonized" && otherCalendar?.series === "raw"
+      ? sameMonthRatio(otherCalendar, headline.year, headline.month)
+      : null;
+  // Only where the raw record is VIIRS (from 2012-02) does it say something else than MODIS.
+  const headlineRaw = rawSame && rawSame.sensor?.startsWith("viirs") ? { ratio: rawSame.ratio } : null;
 
   // Parts every exported file is named by: what, where, when and which record.
   const fileParts = filters && calendar ? [filters.region, filters.start, filters.end, calendar.series] : [];
@@ -429,6 +444,9 @@ export function App() {
               climatology={calendar.climatology}
               unit={unit}
               busiest={Boolean(calendar.season_peak)}
+              error={headlineError}
+              raw={headlineRaw}
+              recordEnd={meta?.last_month ?? null}
             />
 
             <ChartCard

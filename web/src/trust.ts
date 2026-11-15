@@ -72,3 +72,37 @@ export function reportTime(iso: string | null): string {
   const [, year, month, day, hour, minute] = match;
   return `${Number(day)} ${MONTH_NAMES[Number(month) - 1]} ${year}, ${hour}:${minute} UTC`;
 }
+
+/**
+ * The error that applies to one month of the harmonized record, at the scale of the area (country or 1-degree tile):
+ * a VIIRS month takes the larger of the held-out and the NOAA-20 checks, a Terra-only month the Terra-only check,
+ * and a MODIS month none, since it is MODIS as reported. Null when no check covers it.
+ */
+export function monthError(country: TrustCountry, sensor: string | null, wholeRegion: boolean): number | null {
+  const scale: ErrorScale = wholeRegion ? "country_month" : "tile_month";
+  if (sensor?.startsWith("viirs")) return Math.max(country.checks.harmonized[scale], country.checks.noaa20?.[scale] ?? 0);
+  if (sensor === "modis_terra") return country.checks.terra_only?.[scale] ?? null;
+  return null;
+}
+
+/**
+ * Above, below or within the method's error: a month is called unusual only when it is further from its median than
+ * the error that applies to it. A rough threshold, not a confidence interval. Without an error any ratio counts.
+ */
+export function verdictKind(ratio: number | null, error: number | null): "above" | "below" | "within" | "none" {
+  if (ratio === null) return "none";
+  if (error !== null && Math.abs(ratio - 1) <= error) return "within";
+  return ratio >= 1 ? "above" : "below";
+}
+
+/** One month against the median of its calendar month in the same record, to two decimals; null without a median. */
+export function sameMonthRatio(
+  calendar: { months: { year: number; month: number; value: number; sensor: string | null }[]; climatology: { month: number; median: number }[] },
+  year: number,
+  month: number,
+): { ratio: number; sensor: string | null } | null {
+  const item = calendar.months.find((m) => m.year === year && m.month === month);
+  const median = calendar.climatology.find((c) => c.month === month)?.median ?? 0;
+  if (!item || median <= 0) return null;
+  return { ratio: Math.round((item.value / median) * 100) / 100, sensor: item.sensor };
+}

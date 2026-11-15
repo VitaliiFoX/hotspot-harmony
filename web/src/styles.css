@@ -349,10 +349,28 @@ fieldset > legend {
   opacity: 0.55;
 }
 
+.headline {
+  display: grid;
+  gap: 10px;
+}
 .tiles {
   display: grid;
   grid-template-columns: 1.6fr repeat(3, 1fr);
   gap: 16px;
+}
+/* A month within the method's error is not called unusual: its ratio is shown, quieter. */
+.tile-hero.is-within .hero {
+  color: var(--ink-2);
+}
+.headline-notes {
+  display: grid;
+  gap: 4px;
+  padding: 0 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.headline-notes strong {
+  color: var(--ink);
 }
 .tile {
   display: flex;
