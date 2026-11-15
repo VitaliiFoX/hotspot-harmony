@@ -7,7 +7,7 @@ import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
 } from "./area";
 import { type Country, BORDER_SOURCE, countryBoxText, fetchCountries, findCountry, namesCountry, regionOfCountry } from "./countries";
-import { AnomalyTiles } from "./components/AnomalyTiles";
+import { HeadlineCard } from "./components/HeadlineCard";
 import { CalendarHeatmap, CalendarTable } from "./components/CalendarHeatmap";
 import { ChartCard } from "./components/ChartCard";
 import { calendarCsv, downloadBlob, exportName } from "./exports";
@@ -15,7 +15,9 @@ import { DateTimePanel } from "./components/DateTimePanel";
 import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
-import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
+import {
+  DEFAULT_TIME, type MapView, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, parseViewParam, timeLabel,
+} from "./globe";
 import { type Span, type View, makeSpan, monthSpan, parseView, periodAround, spanDays } from "./period";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { RecordTimeline } from "./components/RecordTimeline";
@@ -81,7 +83,7 @@ export function App() {
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   // The same view in the record not on screen, from the look-ahead: the raw line over the harmonized years.
   const [otherCalendar, setOtherCalendar] = useState<Calendar | null>(null);
-  // The busiest grid cells of the area, and the one the globe should fly to ("Show on the globe").
+  // The busiest grid cells of the area, and the one the globe should fly to ("Show on the map").
   const [topCells, setTopCells] = useState<Cells | null>(null);
   const [globeFocus, setGlobeFocus] = useState<{ lat: number; lon: number; n: number } | null>(null);
   const [date, setDate] = useState<string | null>(null);
@@ -92,10 +94,15 @@ export function App() {
   });
   // One day, a calendar month or a period from day to day. In a month or a period `date` is the day the panel's
   // calendar is turned to, and the slider runs over the days of the span instead of the minutes of a day.
-  const [view, setView] = useState<View>(() => parseView(new URLSearchParams(window.location.search).get("view")));
+  const [spanView, setSpanView] = useState<View>(() => {
+    const query = new URLSearchParams(window.location.search);
+    return parseView(query.get("span") ?? query.get("view"));
+  });
   const [periodSpan, setPeriodSpan] = useState<Span | null>(null);
   // Day of the span the slider is on; null is its last day, where a new span opens.
   const [cursor, setCursor] = useState<number | null>(null);
+  // The map at the top of the page: the 3D globe, or the flat world map.
+  const [mapView, setMapView] = useState<MapView>(() => parseViewParam(new URLSearchParams(window.location.search).get("view")));
   const [monthDays, setMonthDays] = useState<MonthDays | null>(null);
   const [day, setDay] = useState<DayHotspots | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
@@ -176,11 +183,11 @@ export function App() {
         const last = loaded.last_day ?? lastDay(loaded.last_month);
         const linkedDate = parseDateParam(query.get("date"));
         const opened = linkedDate ? clampDate(linkedDate, first, last) : defaultDate(first, last);
-        // A period comes as &view=period&date=first day&to=last day; its calendar opens on the last day's month.
+        // A period comes as &span=period&date=first day&to=last day; its calendar opens on the last day's month.
         const linkedEnd = parseDateParam(query.get("to"));
         const span = makeSpan(opened, linkedEnd ? clampDate(linkedEnd, first, last) : opened, first, last);
         setPeriodSpan(span);
-        setDate(parseView(query.get("view")) === "period" ? span.end : opened);
+        setDate(parseView(query.get("span") ?? query.get("view")) === "period" ? span.end : opened);
       })
       .catch((reason: Error) => setError(t("Cannot reach the API: {reason}. Start it with `make api`.", { reason: reason.message })));
   }, []);
@@ -222,9 +229,9 @@ export function App() {
 
   // What the globe shows: null for one day, else the month of `date` or the period picked.
   const span = useMemo((): Span | null => {
-    if (view === "day" || !date || !firstDay || !finalDay) return null;
-    return view === "month" ? monthSpan(date, firstDay, finalDay) : (periodSpan ?? periodAround(date, firstDay, finalDay));
-  }, [view, date, periodSpan, firstDay, finalDay]);
+    if (spanView === "day" || !date || !firstDay || !finalDay) return null;
+    return spanView === "month" ? monthSpan(date, firstDay, finalDay) : (periodSpan ?? periodAround(date, firstDay, finalDay));
+  }, [spanView, date, periodSpan, firstDay, finalDay]);
   const spanLength = span ? spanDays(span) : 0;
   // A new span opens on its last day, so the globe shows all of it at once.
   useEffect(() => setCursor(null), [span?.start, span?.end]);
@@ -234,26 +241,27 @@ export function App() {
     if (!date) return;
     const query = new URLSearchParams(window.location.search);
     query.delete("hour");
-    if (span && view === "period") {
-      query.set("view", "period");
+    if (query.get("view") && query.get("view") !== "flat") query.delete("view");
+    if (span && spanView === "period") {
+      query.set("span", "period");
       query.set("date", span.start);
       query.set("to", span.end);
     } else {
-      if (view === "month") query.set("view", "month");
-      else query.delete("view");
+      if (spanView === "month") query.set("span", "month");
+      else query.delete("span");
       query.set("date", date);
       query.delete("to");
     }
     query.set("time", timeLabel(time));
     writeAddress(query);
-  }, [date, time, view, span]);
+  }, [date, time, spanView, span]);
 
   /** Switch between one day, its month and a period; a period opens as the week up to the day on screen. */
-  function changeView(next: View) {
+  function changeSpanView(next: View) {
     if (!date || !firstDay || !finalDay) return;
-    if (next === "period" && view !== "period") setPeriodSpan(span ?? periodAround(date, firstDay, finalDay));
+    if (next === "period" && spanView !== "period") setPeriodSpan(span ?? periodAround(date, firstDay, finalDay));
     if (next === "day" && span) setDate(span.end);
-    setView(next);
+    setSpanView(next);
   }
 
   /** A period picked in the calendar: the calendar stays on the month of its last day. */
@@ -261,6 +269,15 @@ export function App() {
     setPeriodSpan(next);
     setDate(next.end);
   }
+
+  // Only the flat map is written, so a link to the globe stays what it was.
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if ((query.get("view") === "flat") === (mapView === "flat")) return;
+    if (mapView === "flat") query.set("view", "flat");
+    else query.delete("view");
+    writeAddress(query);
+  }, [mapView]);
 
   const month = date?.slice(0, 7) ?? null;
   useEffect(() => {
@@ -535,6 +552,12 @@ export function App() {
     downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
   }
 
+  // What an example link keeps of the current view: the theme, the language and the flat map. The view is taken from
+  // state, as the address catches up with it only after this render.
+  const presetView = new URLSearchParams(window.location.search);
+  if (mapView === "flat") presetView.set("view", "flat");
+  else presetView.delete("view");
+
   return (
     <>
       <GlobeBoundary>
@@ -552,6 +575,8 @@ export function App() {
         country={picked}
         countryHasData={!noData}
         onPickCountry={pickCountry}
+        view={mapView}
+        onViewChange={setMapView}
         area={filters?.area ?? null}
         onDrawArea={drawArea}
         areaError={filters?.area || picked ? error : null}
@@ -566,10 +591,10 @@ export function App() {
             <DateTimePanel
               date={date}
               time={time}
-              view={view}
+              view={spanView}
               span={span}
               cursor={cursorDay}
-              onView={changeView}
+              onView={changeSpanView}
               onPeriod={pickPeriod}
               onCursor={setCursor}
               firstDay={firstDay}
@@ -632,7 +657,7 @@ export function App() {
               {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
                 <a
                   key={preset.name}
-                  href={presetHref(preset, new URLSearchParams(window.location.search))}
+                  href={presetHref(preset, presetView)}
                   title={t(preset.note)}
                 >
                   {t(preset.name)}
@@ -686,14 +711,18 @@ export function App() {
 
         {!noData && calendar && (
           <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
-            <AnomalyTiles
+            <HeadlineCard
               anomaly={calendar.season_peak ?? calendar.anomaly}
               climatology={calendar.climatology}
+              months={calendar.months}
               unit={unit}
               busiest={Boolean(calendar.season_peak)}
               error={headlineError}
               raw={headlineRaw}
               recordEnd={meta?.last_month ?? null}
+              series={filters?.series ?? calendar.series}
+              available={meta?.series ?? []}
+              onSeries={(series) => setFilters((current) => (current ? { ...current, series } : current))}
             />
 
             <InShort lines={inShort} />

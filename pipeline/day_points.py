@@ -16,20 +16,15 @@ Usage:  uv run python -m pipeline.day_points [--config config/world.yaml] [--for
 import argparse
 import datetime as dt
 import json
-import re
-import shutil
-import tempfile
-import zipfile
 from pathlib import Path
 
 import duckdb
 
 from pipeline.config import DEFAULT_CONFIG, DEFAULT_DATA, Config, load_config
 from pipeline.harmonize import RAW_SWITCH
-from pipeline.normalize import point_rows
+from pipeline.normalize import ZIP_NAME, point_rows, zip_csvs
 
 SCALE = 10_000  # coordinates are stored as round(degrees * SCALE)
-ZIP_NAME = re.compile(r"^(?P<archive>.+)_(?P<year>[0-9]{4})_all_countries\.zip$")
 SWITCH_YEAR = int(RAW_SWITCH[:4])
 
 
@@ -55,14 +50,7 @@ def build_year(
     """Write the day view's hotspots of one global zip to `target`. Returns how many were kept."""
     drop = ", ".join(f"'{c}'" for c in cfg.drop_confidence) or "''"
     keep = ", ".join(str(t) for t in cfg.keep_types)
-    tmp = Path(tempfile.mkdtemp(prefix="day_points_", dir=zip_path.parent.parent))
-    try:
-        with zipfile.ZipFile(zip_path) as z:
-            members = [m for m in z.namelist() if m.startswith(f"{archive}/{year}/") and m.endswith(".csv")]
-            for m in members:
-                with z.open(m) as src, open(tmp / Path(m).name, "wb") as out:
-                    shutil.copyfileobj(src, out, 1 << 20)
-        files = sorted(tmp.glob("*.csv"))
+    with zip_csvs(zip_path, archive, year) as files:
         if not files:
             return 0
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -79,9 +67,7 @@ def build_year(
             ) to '{part.as_posix()}' (format parquet, compression zstd, compression_level 19)
         """)
         part.replace(target)
-        return con.execute(f"select count(*) from read_parquet('{target.as_posix()}')").fetchone()[0]
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    return con.execute(f"select count(*) from read_parquet('{target.as_posix()}')").fetchone()[0]
 
 
 def build(data: Path, cfg: Config, force: bool = False) -> dict:

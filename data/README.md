@@ -14,5 +14,6 @@ Everything here except this file is git-ignored and rebuilt by `make data`.
 | `agg/harmonized.parquet` | `pipeline.harmonize` | the harmonized record per 0.25 deg cell and month, read by the API |
 | `agg/calibration.json` | `pipeline.harmonize` | fitted parameters per country |
 | `agg/harmonization_report.json` | `pipeline.validate` | validation metrics shown in the app |
+| `world/points/`, `world/agg/` | `make world` | the same files for every country: points from the global zips, fire cell-days, and the record, calibration and report of `pipeline.world` |
 
 Source: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m), https://firms.modaps.eosdis.nasa.gov/

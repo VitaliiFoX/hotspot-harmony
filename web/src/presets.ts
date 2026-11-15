@@ -38,13 +38,17 @@ export const PRESETS: Preset[] = [
   },
 ];
 
-/** The address of a preset, keeping only the page's theme and language from the current view; the period starts with the record. */
+/**
+ * The address of a preset, keeping only the page's theme and language, and the flat map, from the current view; the
+ * period starts with the record.
+ */
 export function presetHref(preset: Preset, current: URLSearchParams): string {
   const query = new URLSearchParams();
   for (const kept of ["theme", "lang"]) {
     const value = current.get(kept);
     if (value) query.set(kept, value);
   }
+  if (current.get("view") === "flat") query.set("view", "flat");
   query.set("region", preset.region);
   query.set("area", formatAreaParam(preset.area));
   query.set("end", preset.end);

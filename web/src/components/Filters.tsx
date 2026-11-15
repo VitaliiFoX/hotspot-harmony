@@ -99,7 +99,7 @@ export function Filters({
       <fieldset>
         <legend>
           {drawn
-            ? t("Area of interest: drawn on the globe, {n} corners. Its bounds, degrees", { n: value.area?.length ?? 0 })
+            ? t("Area of interest: drawn on the map, {n} corners. Its bounds, degrees", { n: value.area?.length ?? 0 })
             : value.country
               ? t("Area of interest: {country}, inside its border. Its bounds, degrees", { country: t(value.country) })
               : t("Area of interest, degrees")}

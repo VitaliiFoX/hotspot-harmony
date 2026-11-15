@@ -38,16 +38,18 @@ on which satellite was flying.
 | Web app: 3D satellite globe, date and time picker, filters, calendar, charts, downloads | done; a region or any country can be found by the search in the filters, or a box typed in degrees; the calendar opens on the log scale; downloads: calendar data as CSV, every chart as PNG |
 | Area of interest drawn on the globe | done; "Draw an area" places the corners of a polygon by click, and the calendar, the charts and both CSV downloads then count what is inside its outline; the area travels in the link (`&area=lon,lat;...`). Only inside the regions that have data |
 | Country picked on the globe | done for the countries with data (Argentina, Ukraine); a double-click or a double tap on a country outlines its border, and the calendar, the charts and the downloads then count what is inside it; the country travels in the link (`&country=Name`). Any other country of the world can be picked too and shows a "No record yet" card until its data are loaded: one entry in `config/regions.yaml`, then `make data` |
-| Headline: the season's peak against its history | done; the busiest of the last 12 months of the period, against the same month in every year of the record |
+| Headline: the season's peak against its history | done; one card: the busiest of the last 12 months of the period against the same month in every year of the record, as a verdict, a ratio to the median, its place among the years and a strip plot of those years (with a table view), next to what the raw record would say; a Record switch in the card |
 | Unusual months and the area in words | done; a card lists the months that stand out from the same month of the other years (robust z of 3.5 or more and beyond the method's error), largest first, each showing its year on the calendar; "In short" gives the peak months, the busiest year, the change between the halves of the period and what stands out, figure first, each line a link to its card, from those figures only (the season's verdict is left to the headline above it) |
 | Peak burning months (critical periods) | done; a card under the calendar names the fewest months that hold 60% of a typical year of the area, with each month's share, a table view and arrow-key reading |
 | The sensor jump on the yearly chart | done; the raw record is a line over the harmonized columns, and a strip names the sensor behind each year |
 | Sensor gap days on the globe | done; days a sensor was down are hatched in the date panel and called missing data, not a quiet day |
 | Where it burns on the globe | done; a switch colours 0.25-degree cells by fire cell-days a year per 100 km² over the chosen period, or 1-degree tiles by how burning changed between the halves of the period (either size can be chosen for either view); a tile says how many years it burned in and in which month most, and a click makes it the area of interest. On the raw record the change map shows the rise the 2012 sensor switch fakes |
-| Where in the area it burns most | done; a card lists the five busiest grid cells of the chosen area with their month, and "Show on the globe" flies there |
+| Where in the area it burns most | done; a card lists the five busiest grid cells of the chosen area with their month, and "Show on the map" flies there |
+| Globe or flat map | done; a switch on the map lays the same world flat (Web Mercator) with every layer, the drawn area and the tiles kept; the choice travels in the link (`&view=flat`) |
 | Example areas | done; links in the filters card open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
 | Hotspots of every country for the globe's day view | file built, not served yet; `make day-points` reads the 48 FIRMS global zips (9.4 GB) one at a time into `data/day_points/`: 277 million hotspots of 234 countries, 2000-11 to 2025-12, in 1.14 GB (MODIS before 2012-02, VIIRS S-NPP after, filters applied). For Ukraine and Argentina it holds exactly the hotspots of `data/points/`. On 1,459 of its 9,131 days it holds more than the API's day limit of 50,000 (the busiest, 2023-09-23, 148,702). The API's day view does not read it yet |
+| Every country harmonized and checked | pipeline done, not served yet; `make world` fits the table by fire power per country (by 10-degree squares where held-out years favour them) and checks 128 countries, with 99.8% of the world's fire cell-days, on years the method did not see: [docs/VALIDATION_WORLD.md](docs/VALIDATION_WORLD.md) (generated). The API and the web app still serve Ukraine and Argentina |
 | Public demo | not deployed yet |
 
 ## How far to trust it
@@ -55,7 +57,7 @@ on which satellite was flying.
 Every year of 2012-2021, the years the method is fitted on, was left out in turn: the method was fitted on
 the other years, and its harmonized VIIRS for the left-out year was compared with what MODIS reported.
 The error is the sum of the misses over the sum of what MODIS reported (WAPE). From
-[docs/VALIDATION.md](docs/VALIDATION.md), written by `make validate NESTED=1` on 2026-11-14 21:50 UTC,
+[docs/VALIDATION.md](docs/VALIDATION.md), written by `make validate NESTED=1` on 2026-11-15 15:19 UTC,
 where the method itself was also chosen again for every left-out year:
 
 | | Ukraine | Argentina |
@@ -71,6 +73,21 @@ saw in 2012-2016, not something the harmonization did. Where the method loses: p
 one scaling factor for the whole country does better (3.5%), and that factor was fitted on all years,
 the scored one included. The method, the options that were tried and left out, and why, are in
 [docs/METHOD.md](docs/METHOD.md) and [ADR 0001](docs/adr/0001-harmonize-to-modis-equivalent-fire-cell-days.md).
+
+### Every country
+
+`make world` runs the method for every country of the FIRMS archive, with the plain table by fire power
+and, where held-out years favour it, one calibration per 10-degree square instead of one per country
+(45 countries, Russia, Canada, India and Australia among them). From
+[docs/VALIDATION_WORLD.md](docs/VALIDATION_WORLD.md), written by `pipeline.world`:
+
+- 128 countries, with 99.8% of the world's fire cell-days, are checked on held-out years. The other 107,
+  mostly islands and small states, have too little MODIS/VIIRS overlap and borrow a calibration; they are not checked.
+- Error per country and month: under 10% in 54 countries that hold 93.0% of the fire cell-days
+  (Democratic Republic of the Congo 3.8%, Brazil 3.5%, Australia 3.7%, Russia 4.8%); the median country is at 11.5%.
+- The sensor jump of the whole world, mean yearly total 2012-2016 over 2007-2011: 2.58x in the raw record, 0.94x harmonized.
+
+The app does not serve this record yet: its trust block and its "Where it burns" layer are built for two countries.
 
 ## Limitations
 
@@ -101,14 +118,15 @@ make borders               # rebuild web/public/countries.geojson from Natural E
 
 To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) and run `make data`.
 
-To process the whole world, use [`config/world.yaml`](config/world.yaml):
+To harmonize every country, into `data/world/`:
 
 ```bash
-make data CONFIG=config/world.yaml   # every country, from one FIRMS zip per sensor and year
-make api CONFIG=config/world.yaml    # serve it; the region list then holds a single "World" entry
+make world   # 9.4 GB of FIRMS zips, read one at a time; needs about 25 GB of disk and 24 GB of memory
 ```
 
-This downloads about 10 GB of zips and extracts about 50 GB of CSV files into `data/raw/`.
+It took 4 minutes to normalize, 2 to aggregate and 7 to harmonize and check on an 18-core laptop, after the
+downloads. `make data CONFIG=config/world.yaml` does the same through 50 GB of extracted CSV and needs far more
+memory; `make api CONFIG=config/world.yaml` serves a world record with a single "World" region.
 
 ## Layout
 

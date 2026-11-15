@@ -43,6 +43,8 @@ export const UK: Record<string, string> = {
   "Oct.short": "жовт",
   "Nov.short": "лист",
   "Dec.short": "груд",
+  // A place in a ranking, masculine to agree with the month names: 1-й, 10-й, 22-й.
+  "{place}.ordinal": "{place}-й",
   Mo: "Пн",
   Tu: "Вт",
   We: "Ср",
@@ -159,13 +161,22 @@ export const UK: Record<string, string> = {
   "the {month} median": "від медіани за {month}",
   "{month} {year} against its history": "{month} {year} проти своєї історії",
   "n/a": "н/д",
-  "{unit}; the busiest of the last 12 months": "{unit}; найактивніший з останніх 12 місяців",
-  "{month} median": "Медіана за {month}",
-  "Rank among years": "Місце серед років",
-  "of the {month}s on record burned less": "років цей місяць горів менше",
-  "Without harmonization: {raw}×.": "Без гармонізації: {raw}×.",
-  "The raw record would put {month} {year} at {raw}× a typical {month} instead of {ratio}×, because it sets VIIRS, which sees many more small fires, against a median that is partly MODIS.":
-    "Сирий ряд дав би для місяця {month} {year} {raw}× від типового замість {ratio}×, бо порівнює VIIRS, який бачить значно більше дрібних пожеж, з медіаною, що частково складається з MODIS.",
+  "The busiest of {n} {month}s": "Найактивніший {month} із {n}",
+  "{rank} busiest of {n} {month}s": "{rank} найактивніший {month} із {n}",
+  "{month} {year} is the busiest of the last 12 months of the period": "{month} {year} — найактивніший з останніх 12 місяців періоду",
+  "{month} {year} is the last month of the period": "{month} {year} — останній місяць періоду",
+  "Without harmonization": "Без гармонізації",
+  "The raw record sets VIIRS, which sees many more small fires, against a median that is partly MODIS.":
+    "Сирий ряд порівнює VIIRS, який бачить значно більше дрібних пожеж, з медіаною, що частково складається з MODIS.",
+  "Each dot is one {month}, {first} to {last}": "Кожна точка — {month} одного з років {first}–{last}",
+  "Each dot is one {month}, {first} to {last}; the median is over all {n} years on record":
+    "Кожна точка — {month} одного з років {first}–{last}; медіана — за всі {n} рік ряду|Кожна точка — {month} одного з років {first}–{last}; медіана — за всі {n} роки ряду|Кожна точка — {month} одного з років {first}–{last}; медіана — за всі {n} років ряду",
+  "{month} {year}: {value} {unit}": "{month} {year}: {value} ({unit})",
+  "median {value}": "медіана {value}",
+  "{month} in every year, in {unit}": "{month} кожного року, {unit}",
+  "{month} in every year, in {unit}: {own}; {median}. Use the left and right arrow keys to read the years.":
+    "{month} кожного року, {unit}: {own}; {median}. Читайте роки клавішами зі стрілками ліворуч і праворуч.",
+  Place: "Місце",
   "The record ends with {year}, the last year in the FIRMS country archive, so the latest month here is not the current one.":
     "Ряд закінчується {year} роком, останнім в архіві FIRMS за країнами, тож останній місяць тут не поточний.",
   "A hotspot is a fire the satellite detected: clouds, smoke and the time of the overpass hide some fires, so no hotspot does not prove there was no fire.":
@@ -211,8 +222,8 @@ export const UK: Record<string, string> = {
   "Period, from": "Період, з",
   to: "до",
   Region: "Регіон",
-  "Area of interest: drawn on the globe, {n} corners. Its bounds, degrees":
-    "Область інтересу: намальована на глобусі, кутів: {n}. Її межі, градуси",
+  "Area of interest: drawn on the map, {n} corners. Its bounds, degrees":
+    "Область інтересу: намальована на карті, кутів: {n}. Її межі, градуси",
   "Area of interest, degrees": "Область інтересу, градуси",
   "Remove the drawn area": "Прибрати намальовану область",
   Record: "Ряд",
@@ -223,15 +234,19 @@ export const UK: Record<string, string> = {
   "Download hotspots (CSV)": "Завантажити гарячі точки (CSV)",
 
   "An area can have at most {max} corners.": "Область може мати не більше {max} кутів.",
-  "Scroll to move down the page. {key} + scroll zooms the globe.":
-    "Прокручуйте, щоб рухатися сторінкою. {key} + прокрутка масштабує глобус.",
-  "Use two fingers to move the globe.": "Рухайте глобус двома пальцями.",
+  "Scroll to move down the page. {key} + scroll zooms the map.":
+    "Прокручуйте, щоб рухатися сторінкою. {key} + прокрутка масштабує карту.",
+  "Use two fingers to move the map.": "Рухайте карту двома пальцями.",
   "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it; plus and minus, or Ctrl or Command with the scroll wheel, to zoom.":
     "Глобус із гарячими точками вибраного дня. Перетягуйте або повертайте його клавішами зі стрілками; масштаб — плюс і мінус або Ctrl чи Command з коліщатком.",
   "Click to make it your area.": "Клацніть, щоб зробити це своєю областю.",
   "raw record": "сирий ряд",
   "harmonized record": "гармонізований ряд",
   "Globe of hotspots": "Глобус гарячих точок",
+  "Map of hotspots": "Карта гарячих точок",
+  "Map view": "Вигляд карти",
+  Globe: "Глобус",
+  "Flat map": "Пласка карта",
   "Satellite fire hotspots, day by day": "Супутникові гарячі точки пожеж, день за днем",
   "Burning activity calendar, 2000 to 2025": "Календар активності горіння, 2000–2025",
   "Back to the day": "Назад до дня",
@@ -239,6 +254,7 @@ export const UK: Record<string, string> = {
   "Redraw the area": "Перемалювати область",
   "Draw an area": "Намалювати область",
   "Show globe": "Показати глобус",
+  "Show map": "Показати карту",
   "Hide the date panel": "Сховати панель дати",
   Hide: "Сховати",
   "Show the date panel": "Показати панель дати",
@@ -253,7 +269,7 @@ export const UK: Record<string, string> = {
   "How it changed": "Як змінилося",
   "1° tiles": "Квадрати 1°",
   "0.25° cells": "Клітинки 0,25°",
-  "Click the globe to place the corners of your area of interest.": "Клацайте на глобусі, щоб поставити кути своєї області.",
+  "Click the map to place the corners of your area of interest.": "Клацайте на карті, щоб поставити кути своєї області.",
   "{n} of at least 3 corners placed.": "Поставлено кутів: {n} з щонайменше 3.",
   "{n} corners. Click the first corner, double-click or press Enter to finish.":
     "Кутів: {n}. Щоб завершити, клацніть перший кут, двічі клацніть або натисніть Enter.",
@@ -288,16 +304,16 @@ export const UK: Record<string, string> = {
   "Hotspots through the selected time": "Гарячі точки до вибраного часу",
   "Detected in the hour up to it": "Виявлені за годину до нього",
   "Where hotspots crowd, orange turns red": "Де гарячих точок багато, помаранчевий стає червоним",
-  "{key} + scroll zooms the globe; scroll alone moves down the page.":
-    "{key} + прокрутка масштабує глобус; сама прокрутка рухає сторінку.",
+  "{key} + scroll zooms the map; scroll alone moves down the page.":
+    "{key} + прокрутка масштабує карту; сама прокрутка рухає сторінку.",
   "Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Map:":
     "Дані: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 м). Знімки: NASA GIBS (Blue Marble). Карта:",
   data: "дані",
   "© OpenStreetMap contributors": "© учасники OpenStreetMap",
   "Show the legend and data credits": "Показати легенду і джерела даних",
   "Legend and credits": "Легенда і джерела",
-  "The 3D globe needs WebGL2, which this browser does not offer. The burning activity calendar below works without it.":
-    "Для 3D-глобуса потрібен WebGL2, якого цей браузер не має. Календар активності горіння нижче працює і без нього.",
+  "The map needs WebGL2, which this browser does not offer. The burning activity calendar below works without it.":
+    "Для карти потрібен WebGL2, якого цей браузер не має. Календар активності горіння нижче працює і без нього.",
 
   "In short": "Коротко",
   "No month burns in a typical year here: every monthly median is zero. The seasonal chart shows the years that did burn.":
@@ -341,7 +357,7 @@ export const UK: Record<string, string> = {
   "Most in": "Найбільше в",
   Map: "Карта",
   "{n} of {years}": "{n} з {years}",
-  "Show on the globe": "Показати на глобусі",
+  "Show on the map": "Показати на карті",
   "The {n} grid cells of the area with the most {unit} a year, {start} to {end}, harmonized record. A cell is {deg}° on a side, about {km2} km² here.":
     "{n} клітинка сітки області з найбільшою кількістю за рік ({unit}), {start} – {end}, гармонізований ряд. Сторона клітинки {deg}°, тут це близько {km2} км².|{n} клітинки сітки області з найбільшою кількістю за рік ({unit}), {start} – {end}, гармонізований ряд. Сторона клітинки {deg}°, тут це близько {km2} км².|{n} клітинок сітки області з найбільшою кількістю за рік ({unit}), {start} – {end}, гармонізований ряд. Сторона клітинки {deg}°, тут це близько {km2} км².",
 
@@ -439,6 +455,8 @@ export const UK: Record<string, string> = {
   "Back to the box of {region}": "Назад до прямокутника регіону {region}",
   "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it; plus and minus, or Ctrl or Command with the scroll wheel, to zoom. Double-click a country to see its burning calendar below.":
     "Глобус із гарячими точками вибраного дня. Перетягуйте або повертайте його клавішами зі стрілками; масштаб — плюс і мінус або Ctrl чи Command з коліщатком. Двічі клацніть країну, щоб побачити її календар горіння нижче.",
+  "Map of the selected day's hotspots. Drag or use the arrow keys to move it; plus and minus, or Ctrl or Command with the scroll wheel, to zoom. Double-click a country to see its burning calendar below.":
+    "Карта з гарячими точками вибраного дня. Перетягуйте або рухайте її клавішами зі стрілками; масштаб — плюс і мінус або Ctrl чи Command з коліщатком. Двічі клацніть країну, щоб побачити її календар горіння нижче.",
   "Double-click a country to see its burning calendar below.": "Двічі клацніть країну, щоб побачити її календар горіння нижче.",
   "Borders a country is picked by:": "Кордони для вибору країни:",
   "{country}: no record is loaded for this country yet.": "{country}: ряд для цієї країни ще не завантажено.",
