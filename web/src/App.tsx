@@ -17,14 +17,17 @@ import { GlobeBoundary } from "./components/GlobeBoundary";
 import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
+import { InShort } from "./components/InShort";
 import { TopPlaces } from "./components/TopPlaces";
+import { UnusualMonths } from "./components/UnusualMonths";
+import { summaryLines, unusualMonths } from "./insights";
 import { TrustBlock } from "./components/TrustBlock";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
-import { monthError, sameMonthRatio } from "./trust";
-import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel } from "./scale";
+import { monthError, sameMonthRatio, verdictKind } from "./trust";
+import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
 function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } {
@@ -346,6 +349,35 @@ export function App() {
       : null;
   // Only where the raw record is VIIRS (from 2012-02) does it say something else than MODIS.
   const headlineRaw = rawSame && rawSame.sensor?.startsWith("viirs") ? { ratio: rawSame.ratio } : null;
+  // Unusual months and the area in words, from what the page computes; the raw record has no method error.
+  const harmonizedTrust = calendar?.series === "harmonized" ? trusted : undefined;
+  const unusual = useMemo(
+    () =>
+      calendar
+        ? unusualMonths(calendar.months, (sensor) => (harmonizedTrust ? monthError(harmonizedTrust, sensor, wholeRegion) : null))
+        : [],
+    [calendar, harmonizedTrust, wholeRegion],
+  );
+  const inShort = calendar
+    ? summaryLines({
+        peak: (() => {
+          const peak = peakMonths(calendar.climatology);
+          return peak.months.length ? { months: peak.months, held: peak.held } : null;
+        })(),
+        yearly: calendar.yearly,
+        unit: calendar.unit,
+        headline: headline
+          ? { year: headline.year, month: headline.month, ratio: headline.ratio, kind: verdictKind(headline.ratio, headlineError?.share ?? null) }
+          : null,
+        unusual,
+        yearError: harmonizedTrust ? harmonizedTrust.checks.harmonized[wholeRegion ? "country_year" : "tile_year"] : null,
+      })
+    : [];
+
+  function showYearOnCalendar(year: number) {
+    setHighlightYear(year);
+    document.getElementById("burning-calendar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   // Parts every exported file is named by: what, where, when and which record.
   const fileParts = filters && calendar ? [filters.region, filters.start, filters.end, calendar.series] : [];
@@ -478,7 +510,10 @@ export function App() {
               recordEnd={meta?.last_month ?? null}
             />
 
+            <InShort lines={inShort} />
+
             <ChartCard
+              id="burning-calendar"
               title="Burning activity calendar"
               subtitle={`Monthly ${unit} in the area, over ${calendar.cells_used.toLocaleString("en-US")} ${calendar.cells_used === 1 ? "grid cell" : "grid cells"} with burning`}
               options={
@@ -508,6 +543,13 @@ export function App() {
                   Download calendar data (CSV)
                 </button>
               }
+            />
+
+            <UnusualMonths
+              unusual={unusual}
+              unit={unit}
+              raw={calendar.series === "raw"}
+              onShow={showYearOnCalendar}
             />
 
             <ChartCard

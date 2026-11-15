@@ -109,6 +109,10 @@ _Avoid_: average year, normal year
 The fewest calendar months that together hold 60% of a typical year of an area, largest monthly median first. The app's answer to the challenge's "critical periods". It describes burning activity, not fire risk.
 _Avoid_: fire season, risk period, critical months
 
+**Unusual month**:
+A month of an area that stands out from the same calendar month of the other years of the period: a robust z of 3.5 or more (from the median and the median absolute deviation) and further from the median than the method's error for that month.
+_Avoid_: anomaly (the headline compares one month only), outlier, extreme event
+
 **Burning activity calendar**:
 A grid of years by months showing how much burning the harmonized record holds for an area of interest.
 _Avoid_: heatmap (that is only its drawing), fire calendar

@@ -73,8 +73,7 @@ export function AnomalyTiles({ anomaly, climatology, unit, busiest = false, erro
           <span className="tile-note">{`of ${month}s on record burned less`}</span>
         </div>
       </div>
-      {(raw || recordEndYear) && (
-        <div className="headline-notes">
+      <div className="headline-notes">
           {raw && anomaly.ratio !== null && (
             <p>
               <strong>{`Without harmonization: ${raw.ratio.toFixed(2)}×.`}</strong>
@@ -86,8 +85,11 @@ export function AnomalyTiles({ anomaly, climatology, unit, busiest = false, erro
               {`The record ends with ${recordEndYear}, the last year in the FIRMS country archive, so the latest month here is not the current one.`}
             </p>
           )}
-        </div>
-      )}
+          <p>
+            A hotspot is a fire the satellite detected: clouds, smoke and the time of the overpass hide some fires, so no
+            hotspot does not prove there was no fire.
+          </p>
+      </div>
     </section>
   );
 }

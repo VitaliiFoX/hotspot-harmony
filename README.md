@@ -38,6 +38,7 @@ on which satellite was flying.
 | Web app: 3D satellite globe, date and time picker, filters, calendar, charts, downloads | done; a region can be picked on the globe or a box typed in degrees; the calendar opens on the log scale; downloads: calendar data as CSV, every chart as PNG |
 | Area of interest drawn on the globe | done; "Draw an area" places the corners of a polygon by click, and the calendar, the charts and both CSV downloads then count what is inside its outline; the area travels in the link (`&area=lon,lat;...`). Only inside the regions that have data |
 | Headline: the season's peak against its history | done; the busiest of the last 12 months of the period, against the same month in every year of the record |
+| Unusual months and the area in words | done; a card lists the months that stand out from the same month of the other years (robust z of 3.5 or more and beyond the method's error), largest first, each showing its year on the calendar; "In short" says the peak months, the busiest year, the change between the halves of the period, the season's verdict and what stands out, from those figures only |
 | Peak burning months (critical periods) | done; a card under the calendar names the fewest months that hold 60% of a typical year of the area, with each month's share, a table view and arrow-key reading |
 | The sensor jump on the yearly chart | done; the raw record is a line over the harmonized columns, and a strip names the sensor behind each year |
 | Sensor gap days on the globe | done; days a sensor was down are hatched in the date panel and called missing data, not a quiet day |
@@ -68,6 +69,15 @@ saw in 2012-2016, not something the harmonization did. Where the method loses: p
 one scaling factor for the whole country does better (3.5%), and that factor was fitted on all years,
 the scored one included. The method, the options that were tried and left out, and why, are in
 [docs/METHOD.md](docs/METHOD.md) and [ADR 0001](docs/adr/0001-harmonize-to-modis-equivalent-fire-cell-days.md).
+
+## Limitations
+
+- A hotspot is a fire the satellite detected. Clouds, smoke and the time of the overpass hide some fires, so no
+  hotspot does not prove there was no fire. The record counts detected burning.
+- The record ends in December 2025, the last year in the FIRMS country archive: there is no current month yet.
+- The method's error was measured per country and per 1-degree tile. Smaller areas, such as a 0.25-degree cell, are
+  finer than that, and the app says so where it shows them.
+- From 2022 the record of Ukraine also holds the fires of the war in the east and south.
 
 ## Run it
 
