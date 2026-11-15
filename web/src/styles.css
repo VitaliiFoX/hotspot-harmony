@@ -587,28 +587,130 @@ fieldset > legend {
   opacity: 0.55;
 }
 
+/* The headline: one card with the verdict, the ratio, what the raw record would say, the place among the years and
+   a strip of those years. Its lines stay short enough to read (about 75 characters). */
 .headline {
   display: grid;
   gap: 10px;
 }
-.tiles {
+.headline-card {
   display: grid;
-  grid-template-columns: 1.6fr repeat(3, 1fr);
-  gap: 16px;
+  gap: 18px;
+}
+.headline-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.headline-verdict {
+  max-width: 60ch;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.headline-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+}
+.headline-ratio,
+.headline-raw {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 240px;
+  max-width: 46ch;
 }
 /* A month within the method's error is not called unusual: its ratio is shown, quieter. */
-.tile-hero.is-within .hero {
+.headline-ratio.is-within .hero {
   color: var(--ink-2);
 }
-.headline-notes {
-  display: grid;
-  gap: 4px;
-  padding: 0 4px;
+.headline-raw {
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+.headline-raw-label {
   color: var(--ink-2);
   font-size: 13px;
 }
-.headline-notes strong {
+.headline-raw-value {
+  color: var(--ink-2);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.headline-note {
+  max-width: 75ch;
+  color: var(--muted);
+  font-size: 13px;
+}
+.headline-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.headline-rank strong {
+  font-size: 18px;
+  font-weight: 600;
+}
+.strip {
+  display: grid;
+  gap: 6px;
+}
+.strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.strip svg {
+  overflow: visible;
+}
+.strip-dot {
+  fill: var(--muted);
+  fill-opacity: 0.45;
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+.strip-dot.is-own {
+  fill: var(--accent);
+  fill-opacity: 1;
+  stroke-width: 2;
+}
+.strip-ring {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.strip-median {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+.strip-median-label {
+  fill: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.strip-label {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.strip tr.is-own > * {
   color: var(--ink);
+  font-weight: 600;
+}
+.headline-caveats {
+  max-width: 75ch;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 13px;
 }
 .tile {
   display: flex;
@@ -992,7 +1094,6 @@ tbody th {
 }
 
 @media (max-width: 900px) {
-  .tiles,
   .trust-figures {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1012,7 +1113,6 @@ tbody th {
   }
 }
 @media (max-width: 560px) {
-  .tiles,
   .trust-figures {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -52,6 +52,17 @@ export function tn(count: number, one: string, other: string, values: Record<str
   return fill(form, all);
 }
 
+/**
+ * A place in a ranking as a word: 1st, 2nd, 3rd, 11th, 22nd. In Ukrainian the masculine form from uk.ts, which
+ * agrees with every month name, all of them masculine.
+ */
+export function ordinal(place: number): string {
+  if (current === "uk") return fill(UK["{place}.ordinal"], { place });
+  const teen = place % 100 >= 11 && place % 100 <= 13;
+  const suffix = teen ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[place % 10] ?? "th";
+  return `${place}${suffix}`;
+}
+
 /** The locale numbers and dates are written in. */
 export function numberLocale(): string {
   return current === "uk" ? "uk-UA" : "en-US";
