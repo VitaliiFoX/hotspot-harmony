@@ -2,6 +2,7 @@ import { t } from "../i18n";
 import { type KeyboardEvent, type PointerEvent, useState } from "react";
 import type { RecordPart, YearTotal } from "../api";
 import { useElementWidth } from "../hooks";
+import { HeatGradient, heatPaint, useHeatId } from "./HeatGradient";
 import { brokenLinePath, columnPath, formatTick, formatValue, niceTicks, partsOfYear, recordSpans, valuesByYear } from "../scale";
 import { type Tip, Tooltip } from "./Tooltip";
 
@@ -48,6 +49,9 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props)
   const labelEvery = slot >= 34 ? 1 : slot >= 17 ? 2 : 5;
   const switchIndex = sensorSwitch ? yearly.findIndex((item) => item.year === sensorSwitch.year) : -1;
   const hasPartial = yearly.some((item) => !item.complete);
+  // The columns share one gradient, from the baseline to the top of the tallest of them.
+  const heat = useHeatId();
+  const tallest = Math.max(0, ...yearly.map((item) => item.value));
   const spans =
     record && yearly.length ? recordSpans(record, yearly[0].year, yearly[yearly.length - 1].year) : [];
   const linePoints = lineValues.map((value, index): [number, number] | null =>
@@ -91,12 +95,12 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props)
       {(hasPartial || line) && (
         <ul className="legend">
           <li>
-            <span className="box-key" style={{ background: "var(--accent)" }} />
+            <span className="box-key heat-key" />
             {line ? (hasPartial ? t("{columns}, full year", { columns: line.columns }) : line.columns) : t("Full year")}
           </li>
           {hasPartial && (
             <li>
-              <span className="box-key" style={{ background: "var(--accent-soft)" }} />
+              <span className="box-key heat-key is-partial" />
               {t("Partial year")}
             </li>
           )}
@@ -124,6 +128,7 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props)
           onKeyDown={onKeyDown}
           onBlur={() => setActive(null)}
         >
+          <HeatGradient id={heat} from={baseline} to={y(tallest)} />
           {ticks.map((tick) => (
             <g key={tick}>
               <line className={tick === 0 ? "axis" : "gridline"} x1={MARGIN.left} x2={width - MARGIN.right} y1={y(tick)} y2={y(tick)} />
@@ -138,6 +143,7 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props)
               <g key={item.year}>
                 <path
                   className={`column${item.complete ? "" : " is-partial"}${index === active ? " is-active" : ""}`}
+                  style={{ fill: heatPaint(heat) }}
                   d={columnPath(left, baseline, thickness, baseline - y(item.value))}
                 />
                 {item.year % labelEvery === 0 && (

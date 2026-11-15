@@ -47,11 +47,11 @@ export function TopPlaces({ top, onShow }: Props) {
             {top.cells.map((cell) => (
               <tr key={`${cell.lat},${cell.lon}`}>
                 <th scope="row">{latLonLabel(cell.lat, cell.lon)}</th>
-                <td>{formatValue(cell.per_year)}</td>
-                <td>{stopLabel((cell.per_year / cellAreaKm2(cell.lat, top.cell_deg)) * 100)}</td>
-                <td>{t("{n} of {years}", { n: cell.years_burning, years: top.years })}</td>
-                <td>{monthTitle(cell.peak_month)}</td>
-                <td>
+                <td data-label={t("A year")}>{formatValue(cell.per_year)}</td>
+                <td data-label={t("Per 100 km²")}>{stopLabel((cell.per_year / cellAreaKm2(cell.lat, top.cell_deg)) * 100)}</td>
+                <td data-label={t("Years burning")}>{t("{n} of {years}", { n: cell.years_burning, years: top.years })}</td>
+                <td data-label={t("Most in")}>{monthTitle(cell.peak_month)}</td>
+                <td className="top-places-go">
                   <button type="button" className="ghost" onClick={() => onShow(cell)}>
                     {t("Show on the map")}
                   </button>

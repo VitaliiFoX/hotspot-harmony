@@ -176,6 +176,9 @@ function MonthStrip({ anomaly, climatology, months, unit }: StripProps) {
     return Math.max(0, Math.min(at - w / 2, width - w));
   }
   const ownText = own >= 0 ? t("{month} {year}: {value} {unit}", { month: monthTitle(anomaly.month), year: anomaly.year, value: formatValue(years[own].value), unit }) : "";
+  // Over the dot the unit is left out where the strip is narrower than the whole text: the caption above names it.
+  const ownLabel =
+    own >= 0 && ownText.length * CHAR > width ? `${monthTitle(anomaly.month)} ${anomaly.year}: ${formatValue(years[own].value)}` : ownText;
   const medianText = t("median {value}", { value: formatValue(anomaly.median) });
   const medianX = x(anomaly.median);
 
@@ -254,7 +257,7 @@ function MonthStrip({ anomaly, climatology, months, unit }: StripProps) {
             >
               <line className="axis" x1={SIDE} x2={width - SIDE} y1={axisY} y2={axisY} />
               {ticks.map((tick) =>
-                Math.abs(x(tick) - medianX) < (medianText.length * CHAR) / 2 + 16 ? null : (
+                Math.abs(x(tick) - medianX) < (medianText.length * CHAR) / 2 + 28 ? null : (
                   <text key={tick} className="tick" x={x(tick)} y={axisY + 16} textAnchor={tick === 0 ? "start" : tick === top ? "end" : "middle"}>
                     {formatTick(tick, top)}
                   </text>
@@ -270,8 +273,8 @@ function MonthStrip({ anomaly, climatology, months, unit }: StripProps) {
               {own >= 0 && (
                 <>
                   <circle className="strip-dot is-own" cx={x(years[own].value)} cy={y(own)} r={DOT + 1.5} />
-                  <text className="strip-label" x={labelX(ownText, x(years[own].value))} y={14}>
-                    {ownText}
+                  <text className="strip-label" x={labelX(ownLabel, x(years[own].value))} y={14}>
+                    {ownLabel}
                   </text>
                 </>
               )}

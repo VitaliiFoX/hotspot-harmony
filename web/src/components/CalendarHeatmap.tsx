@@ -1,7 +1,7 @@
 import { formatDecimal, monthName, monthShort, monthTitle, t } from "../i18n";
 import { type KeyboardEvent, useMemo, useRef, useState } from "react";
 import type { Climatology, MonthValue } from "../api";
-import { MONTHS, type ScaleMode, ZERO_FILL, cellColor, formatValue, rampGradient } from "../scale";
+import { MONTHS, type ScaleMode, ZERO_FILL, cellColor, formatValue, monthTick, rampGradient } from "../scale";
 import { type Tip, Tooltip } from "./Tooltip";
 
 type Props = {
@@ -108,7 +108,8 @@ export function CalendarHeatmap({
           <span />
           {MONTHS.map((name, index) => (
             <span key={name} className="calendar-month">
-              {monthShort(index + 1)}
+              <span className="calendar-month-short">{monthShort(index + 1)}</span>
+              <span className="calendar-month-letter">{monthTick(index + 1, 0)}</span>
             </span>
           ))}
           {years.map((year) => (
