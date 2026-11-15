@@ -1,0 +1,12 @@
+// The web app on Cloudflare: a Worker with static assets only, the built files of `npm run build`.
+// .github/workflows/deploy.yml uploads it on every push to main that changes web/; see docs/DEPLOY.md.
+{
+  "name": "hotspot-harmony",
+  "compatibility_date": "2026-11-15",
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "auto-trailing-slash",
+    // One page: any other path opens it too.
+    "not_found_handling": "single-page-application"
+  }
+}
