@@ -6,7 +6,8 @@ sensors (MODIS and VIIRS), and a burning activity calendar for any area you draw
 Built during the 2026 NASA Space Apps Challenge for the challenge
 [Harmonization of MODIS and VIIRS Hot Spots](https://www.spaceappschallenge.org/2026/challenges/modis-and-viirs-hot-spots/).
 
-**Demo:** not deployed yet.
+**Demo:** <https://hotspot-harmony.vlad-sapozhnyk.workers.dev>. The API behind it runs on a free instance that sleeps
+after 15 minutes without a request, so the first load can take about a minute.
 
 ![The globe on 8 April 2020, with an area drawn around the Chornobyl exclusion zone](docs/screenshots/globe-chornobyl-2020-04-08.png)
 
@@ -114,7 +115,7 @@ on which satellite was flying.
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
 | Hotspots of every country for the globe's day view | file built, not served yet; `make day-points` reads the 48 FIRMS global zips (9.4 GB) one at a time into `data/day_points/`: 277 million hotspots of 234 countries, 2000-11 to 2025-12, in 1.14 GB (MODIS before 2012-02, VIIRS S-NPP after, filters applied). For Ukraine and Argentina it holds exactly the hotspots of `data/points/`. On 1,459 of its 9,131 days it holds more than the API's day limit of 50,000 (the busiest, 2023-09-23, 148,702). The API's day view does not read it yet |
 | Every country harmonized and checked | pipeline done, not served yet; `make world` fits the table by fire power per country (by 10-degree squares where held-out years favour them) and checks 128 countries, with 99.8% of the world's fire cell-days, on years the method did not see: [docs/VALIDATION_WORLD.md](docs/VALIDATION_WORLD.md) (generated). The API and the web app still serve Ukraine and Argentina |
-| Public demo | not deployed yet; the API has a `Dockerfile` and the steps for a free host are in [docs/DEPLOY.md](docs/DEPLOY.md) |
+| Public demo | live at <https://hotspot-harmony.vlad-sapozhnyk.workers.dev>, with the record of Argentina and Ukraine: the web app as a Cloudflare Worker, the API on a free Render instance, which sleeps after 15 minutes without a request and takes about a minute to wake. `.github/workflows/deploy.yml` uploads the web app on every push to `main` that changes it and asks Render to rebuild the API when the API changes; the setup is in [docs/DEPLOY.md](docs/DEPLOY.md) |
 
 ## How far to trust it
 
