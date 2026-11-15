@@ -456,14 +456,47 @@ function hexRgb(hex: string): [number, number, number] {
  * around the value, the first or the last colour outside them. The same reading as the map's own
  * `interpolate` expression, so a cell keeps the colour its legend promises.
  */
-export function rampRgba(value: number, stops: readonly number[], colors: readonly string[]): Rgba {
+/**
+ * Everything outside a country, as one polygon: the world with the country cut out. Laid dark over the map it
+ * leaves the picked country the only lit place. Each hole winds against the outer ring, as MapLibre needs.
+ */
+export function outsideMask(geometry: { type: "MultiPolygon"; coordinates: number[][][][] }) {
+  const signed = (ring: number[][]) =>
+    ring.reduce((sum, [x, y], i) => {
+      const [nx, ny] = ring[(i + 1) % ring.length];
+      return sum + (x * ny - nx * y);
+    }, 0);
+  const world = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+  const outer = signed(world) > 0;
+  const holes = geometry.coordinates
+    .map((polygon) => polygon[0])
+    .filter((ring) => ring && ring.length >= 4)
+    .map((ring) => (signed(ring) > 0 === outer ? [...ring].reverse() : ring));
+  return {
+    type: "Feature" as const,
+    properties: {},
+    geometry: { type: "Polygon" as const, coordinates: [world, ...holes] },
+  };
+}
+
+/** Where the name of a country is written: the middle of the part worth flying to. */
+export function labelPoint(view: readonly [number, number, number, number]): [number, number] {
+  const [west, south, east, north] = view;
+  return [Math.round(((west + east) / 2) * 1000) / 1000, Math.round(((south + north) / 2) * 1000) / 1000];
+}
+
+/** Opacity along the burning ramp of the map: the quietest places fade into the imagery instead of covering it. */
+export const SURFACE_ALPHA = [0, 0.55, 0.85, 0.95, 1] as const;
+
+export function rampRgba(value: number, stops: readonly number[], colors: readonly string[], alphas?: readonly number[]): Rgba {
   let upper = stops.findIndex((stop) => value <= stop);
   if (upper === -1) upper = stops.length - 1;
   const lower = Math.max(0, upper - 1);
   const span = stops[upper] - stops[lower];
   const share = span > 0 ? Math.max(0, Math.min(1, (value - stops[lower]) / span)) : 0;
   const [from, to] = [hexRgb(colors[lower]), hexRgb(colors[upper])];
-  return [0, 1, 2].map((i) => from[i] + (to[i] - from[i]) * share).concat(1) as Rgba;
+  const alpha = alphas ? alphas[lower] + (alphas[upper] - alphas[lower]) * share : 1;
+  return [0, 1, 2].map((i) => from[i] + (to[i] - from[i]) * share).concat(alpha) as Rgba;
 }
 
 /** A cell of "Where it burns" with the colour it is drawn in. */
