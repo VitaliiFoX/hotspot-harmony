@@ -1271,7 +1271,7 @@ html {
 }
 .legend-ramp.is-thermal {
   background: linear-gradient(
-    90deg, transparent, var(--thermal-1) 25%, var(--thermal-2) 50%, var(--thermal-3) 75%, var(--thermal-4)
+    90deg, color-mix(in srgb, var(--thermal-0) 45%, transparent), var(--thermal-1) 25%, var(--thermal-2) 50%, var(--thermal-3) 75%, var(--thermal-4)
   );
 }
 .legend-ramp.is-trend {

@@ -12,7 +12,7 @@ import { THERMAL, formatValue } from "../scale";
 import { type Span, cursorLabel, spanLabel } from "../period";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
-import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
+import { insideCountry, type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
   type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, SURFACE_ALPHA, labelPoint, outsideMask, cellSentence, cellSquares, cellStops, openingTileDeg,
   changeLabel, flatFillZoom, hourFilters, hourInstant, zeroNote, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
@@ -957,7 +957,11 @@ export function Globe({
     fetchCells(period.start, period.end, controller.signal, { deg: tileDeg, series })
       .then((answer) => {
         const squares = cellSquares(answer.cells, answer.cell_deg, error);
-        const stops = cellStops(squares.features.map((f) => f.properties.density));
+        // With a country picked, its own cells set the ramp, so a quiet country still shows where it burns most.
+        const inside = country
+          ? squares.features.filter((f) => insideCountry(country, f.properties.lon, f.properties.lat))
+          : [];
+        const stops = cellStops((inside.length ? inside : squares.features).map((f) => f.properties.density));
         (map.getSource("cells") as GeoJSONSource).setData(squares);
         setCells({
           years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
@@ -998,7 +1002,7 @@ export function Globe({
         if (reason.name !== "AbortError") setCellsError(reason.message);
       });
     return () => controller.abort();
-  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError]);
+  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError, country?.name]);
 
   /** Leave the table for the globe and fly to a cell, its neighbours around it. */
   function flyToCell(cell: { lat: number; lon: number }) {

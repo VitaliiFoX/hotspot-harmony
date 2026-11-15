@@ -486,7 +486,7 @@ export function labelPoint(view: readonly [number, number, number, number]): [nu
 }
 
 /** Opacity along the burning ramp of the map: the quietest places fade into the imagery instead of covering it. */
-export const SURFACE_ALPHA = [0, 0.55, 0.85, 0.95, 1] as const;
+export const SURFACE_ALPHA = [0.45, 0.7, 0.9, 1, 1] as const;
 
 export function rampRgba(value: number, stops: readonly number[], colors: readonly string[], alphas?: readonly number[]): Rgba {
   let upper = stops.findIndex((stop) => value <= stop);
