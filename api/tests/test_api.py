@@ -364,6 +364,24 @@ def test_csv_export_stops_at_the_row_limit_and_says_so(tmp_path):
     assert len(list(csv.DictReader(io.StringIO(r.text)))) == 1
 
 
+def test_csv_export_of_the_world_record_refuses_an_area_and_period_too_large_to_sort(tmp_path):
+    config = build_data(tmp_path)
+    world = tmp_path / "world.yaml"
+    world.write_text("world: true\n" + config.read_text())
+    client = TestClient(create_app(data_dir=tmp_path, config_path=world))
+    globe = {"type": "Polygon", "coordinates": [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]]}
+    # 64,800 square degrees: 46 days are 2,980,800 and pass, 47 days are 3,045,600 and do not
+    fits = {"geometry": globe, "start": "2013-08-01", "end": "2013-09-15"}
+    too_large = {"geometry": globe, "start": "2013-08-01", "end": "2013-09-16"}
+    assert client.post("/api/hotspots.csv", json=fits).status_code == 200
+    r = client.post("/api/hotspots.csv", json=too_large)
+    assert r.status_code == 400
+    assert "too large" in r.json()["detail"]
+    # the same area and period on a record of listed regions is not refused
+    plain = TestClient(create_app(data_dir=tmp_path, config_path=config))
+    assert plain.post("/api/hotspots.csv", json=too_large).status_code != 400
+
+
 def test_csv_export_takes_its_row_limit_from_the_environment(tmp_path, monkeypatch):
     # A host with little memory lowers the limit without a code change.
     config = build_data(tmp_path)

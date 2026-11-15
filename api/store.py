@@ -46,6 +46,10 @@ from pipeline.harmonize import JUMP_AFTER, JUMP_BEFORE, METHOD_NAMES, RECORD
 RAW_SWITCH = (2012, 2)  # first month the raw series takes from VIIRS S-NPP (it started on 2012-01-20)
 RECORD_FIRST = (2000, 11)  # first full month of the FIRMS archive
 MAX_PERIOD_DAYS = 366  # the longest period the globe shows at once: a year, leap day included
+# With the hotspots of every country a download is sorted before it is cut, and the whole world over the whole
+# record takes more memory than a small host has. Its bounds in square degrees times its days may be this much:
+# the whole world for 46 days, or a box the size of Ukraine's for the whole record.
+MAX_WORLD_DOWNLOAD = 3_000_000
 UNITS = {
     "harmonized": "MODIS-equivalent fire cell-days",
     "raw": "fire cell-days",
@@ -448,6 +452,9 @@ class Store:
         if first >= last:
             raise ApiError(400, "start is after end")
         west, south, east, north = area.bounds
+        size = (east - west) * (north - south) * (last - first).days
+        if getattr(self.cfg, "world", False) and size > MAX_WORLD_DOWNLOAD:
+            raise ApiError(400, "this download is too large: choose a smaller area or a shorter period")
         cur = self.con.cursor()
         cur.execute(
             f"""select {CSV_COLUMNS}
@@ -527,7 +534,7 @@ class Store:
         cur = self.con.cursor()
         (count,) = cur.execute(f"select count(*) {source}", params).fetchone()
         rows = cur.execute(
-            f"""select round(lon, 4), round(lat, 4),
+            f"""select round(lon, 4)::double, round(lat, 4)::double,
                        cast(hour(acq_datetime_utc) * 60 + minute(acq_datetime_utc) as integer) as minute_utc,
                        country
                 {source}
@@ -584,7 +591,7 @@ class Store:
         for _, source, params, count in parts:
             # hash() orders the rows the same way on every call, so the sample is stable and spread evenly in time.
             rows += cur.execute(
-                f"""select round(lon, 4), round(lat, 4),
+                f"""select round(lon, 4)::double, round(lat, 4)::double,
                            cast(date_diff('day', ?::date, cast(acq_datetime_utc as date)) as integer) as day,
                            country, acq_datetime_utc
                     {source}

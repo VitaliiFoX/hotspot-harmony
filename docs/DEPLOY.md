@@ -20,21 +20,38 @@ gh release create data-2026-11-15 hotspot-harmony-data.tar.gz \
 The `Dockerfile` reads that file through its `DATA_URL` build argument. A new record means a new release
 tag and the new link as the default of `DATA_URL`.
 
-Since 2026-11-15 the default is the record of every country (147 MB packed): the harmonized record and the
-report of `make world`, with the hotspots of Argentina and Ukraine, since those of every country are 6 GB.
-The image then runs with `HH_CONFIG=config/world.yaml`, set in the `Dockerfile`.
+Since 2026-11-15 the default is the record of every country (1.7 GB packed): the harmonized record and the
+report of `make world`, and the hotspots of every country in a slim form. The full ones (`data/world/points`)
+are 6 GB and a release file may be 2 GB, so they are written from `data/day_points/` (`make day-points`) with
+the names the API reads: position to four decimals as `DECIMAL`, time, country, `type` 0 and
+`confidence_class` "not low", since that file already holds only the hotspots the filters keep. The image
+runs with `HH_CONFIG=config/world.yaml`, set in the `Dockerfile`.
 
 ```sh
-mkdir -p data/deploy_world/agg && cp -R data/points data/deploy_world/points
-cp data/world/agg/harmonized.parquet data/world/agg/harmonization_report.json data/deploy_world/agg/
-COPYFILE_DISABLE=1 tar -czf hotspot-harmony-world.tar.gz -C data/deploy_world \
-  agg/harmonized.parquet agg/harmonization_report.json points
-gh release create data-world-2026-11-15 hotspot-harmony-world.tar.gz --title "World record for the demo, 2026-11-15"
+mkdir -p data/deploy_world_all/agg
+cp data/world/agg/harmonized.parquet data/world/agg/harmonization_report.json data/deploy_world_all/agg/
+uv run python - <<'PY'
+import duckdb, glob, os
+for src in sorted(glob.glob("data/day_points/sensor=*/year=*/data_0.parquet")):
+    out = src.replace("data/day_points", "data/deploy_world_all/points")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    duckdb.execute(f"""copy (select (lat_e4/10000.0)::decimal(7,4) as lat, (lon_e4/10000.0)::decimal(8,4) as lon,
+        acq_datetime_utc, null::varchar as satellite, 'not low' as confidence_class, null::double as frp,
+        null::varchar as daynight, 0::integer as type, country from read_parquet('{src}') order by acq_datetime_utc)
+        to '{out}' (format parquet, compression zstd, row_group_size 122880)""")
+PY
+COPYFILE_DISABLE=1 tar -cf - -C data/deploy_world_all agg/harmonized.parquet agg/harmonization_report.json points \
+  | gzip -1 > hotspot-harmony-world-points.tar.gz
+gh release create data-world-points-2026-11-15 hotspot-harmony-world-points.tar.gz
 ```
 
-Measured on 2026-11-15 on a laptop, not in the limited container, with `HH_DUCKDB_MEMORY=150MB` and
-`HH_DUCKDB_THREADS=1`: 205 MB idle, 257 MB after the requests of one page (1-degree tiles), 425 MB after
-`/api/cells` at 0.25 degrees for the whole world. To go back to the two countries, build the image with
+Measured on 2026-11-15 on a laptop, not in the limited container, with `HH_DUCKDB_MEMORY=150MB`,
+`HH_DUCKDB_THREADS=1` and `HH_CSV_LIMIT=100000`: 200 MB idle, 209 MB after a day of the whole world, 363 MB
+after a month of it, 428 MB after a download of the whole world for 46 days, 451 MB after a download of
+Ukraine's box for the whole record; `/api/cells` at 0.25 degrees for the whole world took 425 MB on the
+record alone. That is close to the 512 MB of the free instance, so a busy visit may get the container
+restarted. The release `data-world-2026-11-15` (147 MB) is the same record with the hotspots of Argentina
+and Ukraine only. To go back to the two countries, build the image with
 `--build-arg DATA_URL=<the data-2026-11-15 link>` and run it with `HH_CONFIG=config/regions.yaml`.
 
 ## 2. The API on Render
