@@ -372,6 +372,10 @@ export function App() {
         areaError={filters?.area ? error : null}
         period={filters ? { start: filters.start, end: filters.end } : null}
         focus={globeFocus}
+        series={filters?.series}
+        trendError={
+          validation ? Math.max(0, ...Object.values(validation.countries).map((c) => c.checks.harmonized.tile_year)) : 0
+        }
         panel={
           date && firstDay && finalDay ? (
             <DateTimePanel

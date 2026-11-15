@@ -298,9 +298,18 @@ class Store:
             "yearly": yearly,
         }
 
-    def cells(self, start: str | None, end: str | None, series: str | None) -> dict:
-        """Where and when it burns: for each cell over the chosen period (cut to the record), the value per calendar
-        year the period touches, the number of those years with any burning, and the calendar month with the most."""
+    def cells(self, start: str | None, end: str | None, series: str | None, deg: float | None = None) -> dict:
+        """Where and when it burns, and whether it burns more: for each tile over the chosen period (cut to the
+        record), the value per calendar year the period touches, the years with any burning, the calendar month with
+        the most, and the mean yearly value of the second half of its full years against the first.
+
+        A tile is the grid cell itself, or a square of `deg` degrees summing whole cells; `deg` must be a multiple of
+        the grid. With an odd number of full years the middle one is left out of both halves."""
+        cell_deg = self.cfg.cell_deg
+        deg = deg or cell_deg
+        multiple = deg / cell_deg
+        if deg > 10 or multiple < 1 or abs(multiple - round(multiple)) > 1e-9:
+            raise ApiError(400, f"deg must be a multiple of the grid, {cell_deg} degrees, up to 10")
         name = self.pick_series(series)
         record = self.spans[name]
         asked = Span(Span.parse(start) if start else record.first, Span.parse(end) if end else record.last)
@@ -312,38 +321,57 @@ class Store:
                 400, f"the record covers {Span.label(record.first)} to {Span.label(record.last)}; nothing to show"
             )
         years = chosen.last // 12 - chosen.first // 12 + 1
+        touched = range(chosen.first // 12, chosen.last // 12 + 1)
+        full = [y for y in touched if chosen.first <= y * 12 and y * 12 + 11 <= chosen.last]
+        half = len(full) // 2
+        early_years, late_years = (full[:half], full[-half:]) if half else ([], [])
+        tile = f"round(floor(cell_{{axis}} / {deg}) * {deg} + {deg / 2}, 6)"
         rows = self.con.cursor().execute(
-            f"""with t as (select cell_lat, cell_lon, ym, value from {name} where ym between ? and ?),
-                by_year as (select cell_lat, cell_lon, ym // 12 as y, sum(value) as v from t group by all),
-                by_month as (select cell_lat, cell_lon, ym % 12 + 1 as m, sum(value) as v from t group by all),
-                cell as (select cell_lat, cell_lon, sum(v) as total, count(*) filter (where v > 0) as burning
+            f"""with t as (select {tile.format(axis="lat")} as lat, {tile.format(axis="lon")} as lon, ym, value
+                           from {name} where ym between ? and ?),
+                by_year as (select lat, lon, ym // 12 as y, sum(value) as v from t group by all),
+                by_month as (select lat, lon, ym % 12 + 1 as m, sum(value) as v from t group by all),
+                cell as (select lat, lon, sum(v) as total, count(*) filter (where v > 0) as burning,
+                                list(struct_pack(y := y, v := v)) as yearly
                          from by_year group by all),
-                peak as (select cell_lat, cell_lon, m from (
-                           select *, row_number() over (partition by cell_lat, cell_lon order by v desc, m) as k
+                peak as (select lat, lon, m from (
+                           select *, row_number() over (partition by lat, lon order by v desc, m) as k
                            from by_month) where k = 1)
-                select cell_lat, cell_lon, total, burning, m
-                from cell join peak using (cell_lat, cell_lon)
+                select lat, lon, total, burning, m, yearly
+                from cell join peak using (lat, lon)
                 where total > 0
-                order by cell_lat, cell_lon""",
+                order by lat, lon""",
             [chosen.first, chosen.last],
         ).fetchall()
+
+        def mean(by_year: dict[int, float], wanted: list[int]) -> float | None:
+            return round(sum(by_year.get(y, 0.0) for y in wanted) / len(wanted), 3) if wanted else None
+
+        cells = []
+        for lat, lon, total, burning, month, yearly in rows:
+            by_year = {item["y"]: float(item["v"]) for item in yearly}
+            early, late = mean(by_year, early_years), mean(by_year, late_years)
+            cells.append({
+                "lat": float(lat),
+                "lon": float(lon),
+                "per_year": round(float(total) / years, 3),
+                "years_burning": int(burning),
+                "peak_month": int(month),
+                "early": early,
+                "late": late,
+                "trend": round(late / early, 3) if early and late is not None else None,
+            })  # fmt: skip
         return {
             "series": name,
             "unit": self.units[name],
             "start": Span.label(chosen.first),
             "end": Span.label(chosen.last),
             "years": years,
-            "cell_deg": self.cfg.cell_deg,
-            "cells": [
-                {
-                    "lat": float(lat),
-                    "lon": float(lon),
-                    "per_year": round(float(total) / years, 3),
-                    "years_burning": int(burning),
-                    "peak_month": int(month),
-                }
-                for lat, lon, total, burning, month in rows
-            ],
+            "cell_deg": float(deg),
+            "halves": {"early": f"{early_years[0]}-{early_years[-1]}", "late": f"{late_years[0]}-{late_years[-1]}"}
+            if half
+            else None,
+            "cells": cells,
         }
 
     def top_cells(self, geometry: dict, start: str | None, end: str | None, series: str | None, limit: int) -> dict:

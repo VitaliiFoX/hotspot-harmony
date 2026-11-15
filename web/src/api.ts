@@ -151,11 +151,22 @@ export type Cells = {
   end: string;
   years: number;
   cell_deg: number;
-  cells: { lat: number; lon: number; per_year: number; years_burning: number; peak_month: number }[];
+  /** The halves of the period's full years the trend compares, "YYYY-YYYY"; null with fewer than two full years. */
+  halves: { early: string; late: string } | null;
+  cells: {
+    lat: number; lon: number; per_year: number; years_burning: number; peak_month: number;
+    early: number | null; late: number | null; trend: number | null;
+  }[];
 };
 
-export async function fetchCells(start: string, end: string, signal?: AbortSignal): Promise<Cells> {
-  const query = new URLSearchParams({ start, end, series: "harmonized" });
+export async function fetchCells(
+  start: string,
+  end: string,
+  signal?: AbortSignal,
+  options: { deg?: number; series?: SeriesName } = {},
+): Promise<Cells> {
+  const query = new URLSearchParams({ start, end, series: options.series ?? "harmonized" });
+  if (options.deg) query.set("deg", String(options.deg));
   const response = await fetch(`${BASE}/api/cells?${query}`, { signal });
   if (!response.ok) throw await failure(response);
   return response.json();

@@ -254,7 +254,51 @@ function round(value: number): number {
 }
 
 /** One grid cell of /api/cells: where and when it burns over the chosen period. */
-export type BurnCell = { lat: number; lon: number; per_year: number; years_burning: number; peak_month: number };
+export type BurnCell = {
+  lat: number;
+  lon: number;
+  per_year: number;
+  years_burning: number;
+  peak_month: number;
+  /** Mean yearly value of the first and the second half of the period's full years, and the second over the first. */
+  early?: number | null;
+  late?: number | null;
+  trend?: number | null;
+};
+
+/**
+ * The change of a cell in doublings (log2 of the ratio), what the trend map colours: 0 when the change is inside the
+ * method's error (`error`, a share), capped at two doublings either way, null when the first half did not burn.
+ */
+export function trendChange(trend: number | null | undefined, error: number): number | null {
+  if (trend === null || trend === undefined) return null;
+  if (Math.abs(trend - 1) <= error) return 0;
+  return Math.max(-2, Math.min(2, Math.round(Math.log2(trend) * 1000) / 1000));
+}
+
+function yearsLabel(span: string): string {
+  return span.replace("-", "–");
+}
+
+/** What the hover over a cell says on the trend map. */
+export function trendSentence(
+  cell: Pick<BurnCell, "early" | "late" | "trend">,
+  halves: { early: string; late: string },
+  error: number,
+): string {
+  const early = yearsLabel(halves.early);
+  const late = yearsLabel(halves.late);
+  if (cell.trend === null || cell.trend === undefined) {
+    const amount = (cell.late ?? 0) >= 10 ? Math.round(cell.late ?? 0).toString() : (cell.late ?? 0).toFixed(1);
+    return `No burning in ${early}, so no change can be given; about ${amount} a year in ${late}.`;
+  }
+  const percentChange = Math.round((cell.trend - 1) * 100);
+  const signed = percentChange > 0 ? `+${percentChange}%` : percentChange < 0 ? `−${-percentChange}%` : "no change";
+  if (Math.abs(cell.trend - 1) <= error) {
+    return `${late} against ${early}: ${signed}, within the method's error of ±${Math.round(error * 100)}%.`;
+  }
+  return `${late} against ${early}: ${signed} (${cell.trend.toFixed(2)}×).`;
+}
 
 const KM_PER_DEGREE = 111.32;
 
@@ -269,7 +313,7 @@ function density(cell: BurnCell, cellDeg: number): number {
 }
 
 /** The cells as squares of the grid around their centres, carrying what the map colours and the hover reads. */
-export function cellSquares(cells: readonly BurnCell[], cellDeg: number) {
+export function cellSquares(cells: readonly BurnCell[], cellDeg: number, trendError = 0) {
   const half = cellDeg / 2;
   return {
     type: "FeatureCollection" as const,
@@ -277,7 +321,8 @@ export function cellSquares(cells: readonly BurnCell[], cellDeg: number) {
       type: "Feature" as const,
       properties: {
         lat: cell.lat, lon: cell.lon, per_year: cell.per_year, years_burning: cell.years_burning, peak_month: cell.peak_month,
-        density: density(cell, cellDeg),
+        density: density(cell, cellDeg), early: cell.early ?? null, late: cell.late ?? null, trend: cell.trend ?? null,
+        change: trendChange(cell.trend, trendError),
       },
       geometry: {
         type: "Polygon" as const,

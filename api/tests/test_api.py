@@ -590,8 +590,12 @@ def test_cells_tell_where_and_when_it_burns_over_the_chosen_period(client_harmon
     )
     assert body["unit"] == "MODIS-equivalent fire cell-days"
     cells = {(c["lat"], c["lon"]): c for c in body["cells"]}
-    assert cells[(0.5, 0.5)] == {"lat": 0.5, "lon": 0.5, "per_year": 22.625, "years_burning": 2, "peak_month": 8}
-    assert cells[(0.5, 1.5)] == {"lat": 0.5, "lon": 1.5, "per_year": 1.0, "years_burning": 1, "peak_month": 8}
+    # Its full years are 2011 and 2012, neither with burning: halves of zero, so no ratio.
+    assert cells[(0.5, 0.5)] == {
+        "lat": 0.5, "lon": 0.5, "per_year": 22.625, "years_burning": 2, "peak_month": 8,
+        "early": 0.0, "late": 0.0, "trend": None,
+    }  # fmt: skip
+    assert cells[(0.5, 1.5)]["per_year"] == 1.0 and cells[(0.5, 1.5)]["years_burning"] == 1
     assert cells[(5.5, 5.5)]["per_year"] == 125.0
 
 
@@ -628,3 +632,68 @@ def test_top_places_keep_to_the_limit_and_the_regions(client_harmonized):
     assert [(c["lat"], c["lon"]) for c in first] == [(5.5, 5.5)]  # C burns most
     r = client_harmonized.post("/api/cells/top", json={"geometry": box(50, 50, 51, 51)})
     assert r.status_code == 422  # outside every region, like the calendar
+
+
+# A record over four full years, 2010-01 .. 2013-12, for tiles and trends: harmonized and raw fire cell-days.
+TREND = [  # cell, year, month, harmonized, raw
+    (A, 2010, 1, 10.0, 10),
+    (A, 2011, 1, 10.0, 10),
+    (A, 2012, 1, 30.0, 60),  # the raw record doubles from 2012, as when VIIRS takes over
+    (A, 2013, 1, 30.0, 60),
+    (B, 2010, 1, 4.0, 4),
+    (B, 2012, 1, 2.0, 4),
+    (C, 2013, 1, 5.0, 5),  # nothing before: no ratio
+    (C, 2013, 12, 0.0, 0),  # the record runs to 2013-12
+]
+
+
+def client_trend(tmp_path):
+    config = build_data(tmp_path, harmonized=True)
+    rows = ", ".join(f"({lat}, {lon}, 'Testland', {y}, {m}, {h}, {r}, 'modis')" for (lat, lon), y, m, h, r in TREND)
+    duckdb.connect().execute(f"""
+        copy (select * from (values {rows})
+              t(cell_lat, cell_lon, country, year, month, n_harmonized, n_raw, sensor_used))
+        to '{tmp_path}/agg/harmonized.parquet' (format parquet)
+    """)
+    return TestClient(create_app(data_dir=tmp_path, config_path=config))
+
+
+def test_cells_compare_the_second_half_of_the_full_years_with_the_first(tmp_path):
+    # Full years 2010-2013: 2010-2011 against 2012-2013. A: (10 + 10) / 2 = 10 then (30 + 30) / 2 = 30, 3x.
+    # B: (4 + 0) / 2 = 2 then (2 + 0) / 2 = 1, 0.5x. C burned only in 2013: no ratio.
+    body = client_trend(tmp_path).get("/api/cells").json()
+    assert body["halves"] == {"early": "2010-2011", "late": "2012-2013"}
+    cells = {(c["lat"], c["lon"]): c for c in body["cells"]}
+    assert (cells[A]["early"], cells[A]["late"], cells[A]["trend"]) == (10.0, 30.0, 3.0)
+    assert (cells[B]["early"], cells[B]["late"], cells[B]["trend"]) == (2.0, 1.0, 0.5)
+    assert (cells[C]["early"], cells[C]["late"], cells[C]["trend"]) == (0.0, 2.5, None)
+
+
+def test_raw_cells_show_the_trend_the_sensor_switch_fakes(tmp_path):
+    # The same cell in the raw record: (10 + 10) / 2 = 10 then (60 + 60) / 2 = 60, 6x instead of 3x.
+    cells = {(c["lat"], c["lon"]): c for c in client_trend(tmp_path).get("/api/cells?series=raw").json()["cells"]}
+    assert cells[A]["trend"] == 6.0
+
+
+def test_cells_can_be_summed_into_tiles_of_a_multiple_of_the_grid(tmp_path):
+    # 2-degree tiles: A (0.5, 0.5) and B (0.5, 1.5) fall into the tile centred on (1, 1); C (5.5, 5.5) into (5, 5).
+    body = client_trend(tmp_path).get("/api/cells?deg=2").json()
+    assert body["cell_deg"] == 2.0
+    tiles = {(c["lat"], c["lon"]): c for c in body["cells"]}
+    assert set(tiles) == {(1.0, 1.0), (5.0, 5.0)}
+    # A + B per year over the four years: (10 + 4 + 10 + 0 + 30 + 2 + 30 + 0) / 4 = 21.5; Jan has it all.
+    assert (tiles[(1.0, 1.0)]["per_year"], tiles[(1.0, 1.0)]["peak_month"]) == (21.5, 1)
+    assert (tiles[(1.0, 1.0)]["early"], tiles[(1.0, 1.0)]["late"], tiles[(1.0, 1.0)]["trend"]) == (12.0, 31.0, 2.583)
+
+
+def test_tiles_must_be_a_multiple_of_the_grid(tmp_path):
+    client = client_trend(tmp_path)
+    for deg in ("0.3", "1.5", "20"):
+        r = client.get(f"/api/cells?deg={deg}")
+        assert r.status_code == 400 and "multiple" in r.json()["detail"]
+
+
+def test_a_period_without_two_full_years_has_no_halves(client_harmonized):
+    body = client_harmonized.get("/api/cells?start=2013-01&end=2013-12").json()
+    assert body["halves"] is None
+    assert all(c["trend"] is None for c in body["cells"])

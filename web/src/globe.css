@@ -1033,3 +1033,21 @@ html {
 .cell-popup .maplibregl-popup-tip {
   display: none;
 }
+
+/* "How it changed": the trend ramp of the cells (TREND_RAMP in Globe.tsx), less burning blue, more red. */
+.stage {
+  --trend-0: #2166ac;
+  --trend-1: #67a9cf;
+  --trend-2: #f4f1ea;
+  --trend-3: #ef8a62;
+  --trend-4: #b2182b;
+}
+.legend-ramp.is-trend {
+  background: linear-gradient(90deg, var(--trend-0), var(--trend-1) 25%, var(--trend-2) 50%, var(--trend-3) 75%, var(--trend-4));
+}
+.stage-cells {
+  gap: 8px;
+}
+.stage-cells .segmented > button {
+  white-space: nowrap;
+}
