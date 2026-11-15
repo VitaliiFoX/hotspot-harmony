@@ -164,7 +164,10 @@ class Store:
             self.units = {"raw": UNITS["raw_hotspots"]}
         self.month_sensor: dict[str, dict[int, str]] = {}
         for name, (path, query) in sources.items():
-            self.con.execute(f"create table {name} as {query}", [path.as_posix()])
+            # A view, not a table: the file is read at each request. A copy in memory answers a millisecond
+            # sooner and costs about 1 GB for the record of every country.
+            file = "read_parquet('" + path.as_posix().replace("'", "''") + "')"
+            self.con.execute(f"create view {name} as {query.replace('read_parquet(?)', file)}")
             lo, hi = self.con.execute(f"select min(ym), max(ym) from {name}").fetchone()
             if lo is None:
                 self.units.pop(name, None)
@@ -206,6 +209,16 @@ class Store:
         """Number of cells inside the area and their summed value per month index."""
         cur = self.con.cursor()
         west, south, east, north = area.bounds
+        if area.equals(box(west, south, east, north)):
+            # A rectangle holds the cells whose centre is strictly inside its bounds: the same rule as
+            # `contains_xy` below, without listing the cells and joining them back.
+            inside = "cell_lon > ? and cell_lon < ? and cell_lat > ? and cell_lat < ?"
+            bounds = [west, east, south, north]
+            (n,) = cur.execute(
+                f"select count(*) from (select distinct cell_lat, cell_lon from {name} where {inside})", bounds
+            ).fetchone()
+            rows = cur.execute(f"select ym, sum(value) from {name} where {inside} group by ym", bounds).fetchall()
+            return n, {ym: float(v) for ym, v in rows}
         cells = cur.execute(
             f"select distinct cell_lat, cell_lon from {name} "
             "where cell_lon between ? and ? and cell_lat between ? and ?",
@@ -299,13 +312,21 @@ class Store:
             "yearly": yearly,
         }
 
-    def cells(self, start: str | None, end: str | None, series: str | None, deg: float | None = None) -> dict:
+    def cells(
+        self,
+        start: str | None,
+        end: str | None,
+        series: str | None,
+        deg: float | None = None,
+        bounds: tuple[float, float, float, float] | None = None,
+    ) -> dict:
         """Where and when it burns, and whether it burns more: for each tile over the chosen period (cut to the
         record), the value per calendar year the period touches, the years with any burning, the calendar month with
         the most, and the mean yearly value of the second half of its full years against the first.
 
         A tile is the grid cell itself, or a square of `deg` degrees summing whole cells; `deg` must be a multiple of
-        the grid. With an odd number of full years the middle one is left out of both halves."""
+        the grid. With an odd number of full years the middle one is left out of both halves. `bounds` (west, south,
+        east, north) keeps the cells whose centre is within them, edges included."""
         cell_deg = self.cfg.cell_deg
         deg = deg or cell_deg
         multiple = deg / cell_deg
@@ -327,9 +348,13 @@ class Store:
         half = len(full) // 2
         early_years, late_years = (full[:half], full[-half:]) if half else ([], [])
         tile = f"round(floor(cell_{{axis}} / {deg}) * {deg} + {deg / 2}, 6)"
+        within, within_values = "", []
+        if bounds is not None:
+            within = " and cell_lon between ? and ? and cell_lat between ? and ?"
+            within_values = [bounds[0], bounds[2], bounds[1], bounds[3]]
         rows = self.con.cursor().execute(
             f"""with t as (select {tile.format(axis="lat")} as lat, {tile.format(axis="lon")} as lon, ym, value
-                           from {name} where ym between ? and ?),
+                           from {name} where ym between ? and ?{within}),
                 by_year as (select lat, lon, ym // 12 as y, sum(value) as v from t group by all),
                 by_month as (select lat, lon, ym % 12 + 1 as m, sum(value) as v from t group by all),
                 cell as (select lat, lon, sum(v) as total, count(*) filter (where v > 0) as burning,
@@ -342,7 +367,7 @@ class Store:
                 from cell join peak using (lat, lon)
                 where total > 0
                 order by lat, lon""",
-            [chosen.first, chosen.last],
+            [chosen.first, chosen.last, *within_values],
         ).fetchall()
 
         def mean(by_year: dict[int, float], wanted: list[int]) -> float | None:
@@ -379,7 +404,7 @@ class Store:
         """The busiest cells of an area: `cells` kept to those whose centre is inside it, most burning a year first."""
         area = parse_area(geometry)
         self.coverage_warnings(area)
-        answer = self.cells(start, end, series)
+        answer = self.cells(start, end, series, bounds=area.bounds)
         cells = answer["cells"]
         if cells:
             lon = np.array([c["lon"] for c in cells])

@@ -168,6 +168,18 @@ def test_a_drawn_area_counts_the_cells_inside_its_outline_not_inside_its_boundin
     assert months[(2013, 8)] == 60  # and 64
 
 
+def test_a_cell_centred_on_the_side_of_an_area_is_left_out_whatever_the_shape(client):
+    # The west side at lon 0.5 runs through the centre of A (0.5, 0.5); B (0.5, 1.5) is inside.
+    rectangle = box(0.5, 0, 2, 1)  # answered from its bounds alone
+    pentagon = {"type": "Polygon", "coordinates": [[[0.5, 0], [2, 0], [2, 1], [1.25, 1.1], [0.5, 1], [0.5, 0]]]}
+    for area in (rectangle, pentagon):
+        body = client.post("/api/calendar", json={"geometry": area, "start": "2010-01", "end": "2013-12"}).json()
+        months = {(m["year"], m["month"]): m["value"] for m in body["months"]}
+        assert body["cells_used"] == 1
+        assert months[(2011, 8)] == 2  # B alone; with A it would be 22
+        assert months[(2013, 8)] == 4
+
+
 def test_csv_export_of_a_drawn_area_keeps_the_hotspots_inside_its_outline(client):
     r = client.post("/api/hotspots.csv", json={"geometry": DRAWN, "start": "2013-08-01", "end": "2013-08-31"})
     assert r.status_code == 200
