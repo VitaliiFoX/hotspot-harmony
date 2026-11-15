@@ -15,6 +15,10 @@ a row.
   numbers is still in progress.
 - Not done yet:
   - a public demo (README still says "not deployed yet");
+  - critical periods: the challenge asks when burning is usually at its highest in an area, and the
+    app only shows it indirectly, through the seasonal chart;
+  - a calendar by day and by week: the challenge asks for days, weeks and months, and the calendar
+    is by month only (single days exist on the globe);
   - showing in the app how far the numbers can be trusted;
   - the video or slides;
   - the project page.
@@ -61,16 +65,18 @@ JSON for the two countries and no API.
 | 6 | The raw record as a thin line over the harmonized bars on the yearly chart, so the 2012 jump is visible without the switch | 1 h | It answers the challenge at first glance | | [ ] |
 | 7 | Log scale for the calendar by default. The headline figure shows the peak of the last season instead of December | 1 h | Today the calendar looks washed out and the headline figure is a quiet month | | [ ] |
 | 8 | Draw an area on the globe (done as a polygon, sent to the API as its geometry; the `box` filter shows its bounds) | 2-3 h | Every strong competitor has it; the README promises it | vovikLXUS | [x] |
+| 8a | "Peak burning months" card for the chosen area: the fewest months that together hold 60% of a typical year (the sum of the monthly medians in `climatology`), with a table view. Web only: a pure function in `web/src/scale.ts` under test, and the term in `GLOSSARY.md`. Call it burning activity, not risk: we do not measure risk | 1.5 h | The challenge asks for critical periods by name, and the API already returns what the card needs | | [ ] |
 
 **Feature freeze at 14:00.** After that, only fixes and packaging.
 
-### Sunday 14:00-18:00: validity and content (only if 1-8 are done)
+### Sunday 14:00-18:00: validity and content (only if 1-8a are done)
 
 | # | Task | Estimate | Owner | |
 |---|---|---|---|---|
 | 9 | A "MODIS alone" line across 2012, next to the raw and the harmonized record. It explains the 0.66x jump ratio in Argentina, where burning really fell | 1 h | | [ ] |
 | 10 | Hatch sensor gap days in the calendar so that "no data" never reads as zero | 1 h | | [ ] |
 | 11 | Ukraine presets: Chornobyl exclusion zone (April 2020), the southern steppe | 1 h | | [ ] |
+| 11a | Optional, the first row to drop: a calendar of the days of one chosen year for the area, with weeks as sums of the same days. Needs a new API endpoint over `data/points`, because `/api/hotspots/days` counts the whole record, not the area. `harmonized.parquet` is monthly, so this view is in hotspots of one sensor and must say so; comparing years stays on the monthly harmonized calendar. If it is dropped, say in the README that single days are on the globe | 3-4 h | | [ ] |
 | 12 | README: the Status table, "Use of AI tools", full NASA GIBS credit, links to METHOD and VALIDATION | 1 h | | [ ] |
 
 ### Sunday 18:00-21:00: submission
