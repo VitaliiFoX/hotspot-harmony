@@ -116,4 +116,4 @@ def test_a_built_year_is_kept_without_its_zip(tmp_path, zips):
     manifest = build(tmp_path, CFG)
 
     assert manifest["rows"] == {"modis": {"2012": 2}, "viirs_snpp": {"2012": 1}}
-    assert not list((tmp_path / "raw").glob("day_points_*"))  # no extracted CSV left behind
+    assert not list((tmp_path / "raw").glob("unzipped_*"))  # no extracted CSV left behind

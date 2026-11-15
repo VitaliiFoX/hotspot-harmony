@@ -101,6 +101,10 @@ _Avoid_: grid model, neighbourhood model, ML model (the boosted weight is one to
 How the VIIRS era of the harmonized record is computed in one country: detection weights, the context model, or the mean of the two. Chosen per country on held-out years.
 _Avoid_: algorithm, mode, strategy
 
+**Calibration unit**:
+The area one set of detection weights is fitted on: a whole country, or, where that lowers the held-out error per 1-degree tile and month, each 10-degree square of the country with enough overlap of its own, the other squares together. Chosen per country in the world run.
+_Avoid_: region (that is a filter of the app), zone, tile (that is the 1-degree square of the checks)
+
 **Held-out error**:
 How far the harmonized VIIRS of one overlap year misses what MODIS reported, when that year was left out of fitting the method: the sum of the misses over the sum of what MODIS reported (WAPE), per country or 1-degree tile, per year or month. The web app calls it "error on years the method did not see".
 _Avoid_: accuracy, validation score, R²
