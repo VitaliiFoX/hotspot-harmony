@@ -7,7 +7,7 @@ import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
 } from "./area";
 import { type Country, BORDER_SOURCE, countryBoxText, fetchCountries, findCountry, namesCountry, regionOfCountry } from "./countries";
-import { AnomalyTiles } from "./components/AnomalyTiles";
+import { HeadlineCard } from "./components/HeadlineCard";
 import { CalendarHeatmap, CalendarTable } from "./components/CalendarHeatmap";
 import { ChartCard } from "./components/ChartCard";
 import { calendarCsv, downloadBlob, exportName } from "./exports";
@@ -623,14 +623,18 @@ export function App() {
 
         {!noData && calendar && (
           <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
-            <AnomalyTiles
+            <HeadlineCard
               anomaly={calendar.season_peak ?? calendar.anomaly}
               climatology={calendar.climatology}
+              months={calendar.months}
               unit={unit}
               busiest={Boolean(calendar.season_peak)}
               error={headlineError}
               raw={headlineRaw}
               recordEnd={meta?.last_month ?? null}
+              series={filters?.series ?? calendar.series}
+              available={meta?.series ?? []}
+              onSeries={(series) => setFilters((current) => (current ? { ...current, series } : current))}
             />
 
             <InShort lines={inShort} />

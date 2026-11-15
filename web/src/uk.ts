@@ -43,6 +43,8 @@ export const UK: Record<string, string> = {
   "Oct.short": "жовт",
   "Nov.short": "лист",
   "Dec.short": "груд",
+  // A place in a ranking, masculine to agree with the month names: 1-й, 10-й, 22-й.
+  "{place}.ordinal": "{place}-й",
   Mo: "Пн",
   Tu: "Вт",
   We: "Ср",
@@ -159,13 +161,22 @@ export const UK: Record<string, string> = {
   "the {month} median": "від медіани за {month}",
   "{month} {year} against its history": "{month} {year} проти своєї історії",
   "n/a": "н/д",
-  "{unit}; the busiest of the last 12 months": "{unit}; найактивніший з останніх 12 місяців",
-  "{month} median": "Медіана за {month}",
-  "Rank among years": "Місце серед років",
-  "of the {month}s on record burned less": "років цей місяць горів менше",
-  "Without harmonization: {raw}×.": "Без гармонізації: {raw}×.",
-  "The raw record would put {month} {year} at {raw}× a typical {month} instead of {ratio}×, because it sets VIIRS, which sees many more small fires, against a median that is partly MODIS.":
-    "Сирий ряд дав би для місяця {month} {year} {raw}× від типового замість {ratio}×, бо порівнює VIIRS, який бачить значно більше дрібних пожеж, з медіаною, що частково складається з MODIS.",
+  "The busiest of {n} {month}s": "Найактивніший {month} із {n}",
+  "{rank} busiest of {n} {month}s": "{rank} найактивніший {month} із {n}",
+  "{month} {year} is the busiest of the last 12 months of the period": "{month} {year} — найактивніший з останніх 12 місяців періоду",
+  "{month} {year} is the last month of the period": "{month} {year} — останній місяць періоду",
+  "Without harmonization": "Без гармонізації",
+  "The raw record sets VIIRS, which sees many more small fires, against a median that is partly MODIS.":
+    "Сирий ряд порівнює VIIRS, який бачить значно більше дрібних пожеж, з медіаною, що частково складається з MODIS.",
+  "Each dot is one {month}, {first} to {last}": "Кожна точка — {month} одного з років {first}–{last}",
+  "Each dot is one {month}, {first} to {last}; the median is over all {n} years on record":
+    "Кожна точка — {month} одного з років {first}–{last}; медіана — за всі {n} рік ряду|Кожна точка — {month} одного з років {first}–{last}; медіана — за всі {n} роки ряду|Кожна точка — {month} одного з років {first}–{last}; медіана — за всі {n} років ряду",
+  "{month} {year}: {value} {unit}": "{month} {year}: {value} ({unit})",
+  "median {value}": "медіана {value}",
+  "{month} in every year, in {unit}": "{month} кожного року, {unit}",
+  "{month} in every year, in {unit}: {own}; {median}. Use the left and right arrow keys to read the years.":
+    "{month} кожного року, {unit}: {own}; {median}. Читайте роки клавішами зі стрілками ліворуч і праворуч.",
+  Place: "Місце",
   "The record ends with {year}, the last year in the FIRMS country archive, so the latest month here is not the current one.":
     "Ряд закінчується {year} роком, останнім в архіві FIRMS за країнами, тож останній місяць тут не поточний.",
   "A hotspot is a fire the satellite detected: clouds, smoke and the time of the overpass hide some fires, so no hotspot does not prove there was no fire.":

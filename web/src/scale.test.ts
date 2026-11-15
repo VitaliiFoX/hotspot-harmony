@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   PEAK_SHARE, SEQUENTIAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel,
-  monthRange, monthSpans, niceTicks, partsOfYear, peakMonths, position, rawRecordParts, recordSpans, recordTimeline,
-  valuesByYear,
+  monthRange, monthRank, monthSpans, niceTicks, partsOfYear, peakMonths, position, rawRecordParts, recordSpans,
+  recordTimeline, stripLanes, valuesByYear,
 } from "./scale";
 
 describe("position", () => {
@@ -105,6 +105,46 @@ describe("valuesByYear", () => {
       { year: 2013, value: 22, complete: true },
     ];
     expect(valuesByYear(bars, raw)).toEqual([10, null, 22]);
+  });
+});
+
+describe("monthRank", () => {
+  // Julys of five years and one August that must not count: 2021 and 2023 tie at 50.
+  const months = [
+    { year: 2020, month: 7, value: 10 },
+    { year: 2021, month: 7, value: 50 },
+    { year: 2022, month: 7, value: 30 },
+    { year: 2023, month: 7, value: 50 },
+    { year: 2024, month: 7, value: 0 },
+    { year: 2024, month: 8, value: 999 },
+  ];
+  it("is 1 + the years of that calendar month with more", () => {
+    expect(monthRank(months, 2022, 7)).toEqual({ rank: 3, of: 5 });
+    expect(monthRank(months, 2020, 7)).toEqual({ rank: 4, of: 5 });
+    expect(monthRank(months, 2024, 7)).toEqual({ rank: 5, of: 5 });
+  });
+  it("gives years that tie the better place", () => {
+    expect(monthRank(months, 2021, 7)).toEqual({ rank: 1, of: 5 });
+    expect(monthRank(months, 2023, 7)).toEqual({ rank: 1, of: 5 });
+  });
+  it("is null for a month not in the record, and alone a month is 1st of 1", () => {
+    expect(monthRank(months, 2019, 7)).toBeNull();
+    expect(monthRank(months, 2024, 8)).toEqual({ rank: 1, of: 1 });
+  });
+});
+
+describe("stripLanes", () => {
+  it("keeps dots that are far enough apart on the middle lane", () => {
+    expect(stripLanes([0, 10, 20], 10)).toEqual([0, 0, 0]);
+  });
+  it("moves a dot that would cover the last one to the next free lane: 0, 1, -1, 2", () => {
+    expect(stripLanes([0, 2, 4, 6, 30], 10)).toEqual([0, 1, -1, 2, 0]);
+  });
+  it("works in order of position, whatever the order given, and returns lanes in the order given", () => {
+    expect(stripLanes([6, 30, 2, 0, 4], 10)).toEqual([2, 0, 1, 0, -1]);
+  });
+  it("is empty for no dots", () => {
+    expect(stripLanes([], 10)).toEqual([]);
   });
 });
 

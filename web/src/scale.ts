@@ -116,6 +116,45 @@ export function valuesByYear(
   return columns.map((column) => byYear.get(column.year) ?? null);
 }
 
+/**
+ * Where one month stands among the same calendar month of every year given: its place is 1 + the number of years
+ * with a larger value, so years that tie share the better place (two equal busiest years are both 1st). `of` counts
+ * the years of that calendar month, the month itself included. Null when the month is not among them.
+ */
+export function monthRank(
+  months: readonly { year: number; month: number; value: number }[],
+  year: number,
+  month: number,
+): { rank: number; of: number } | null {
+  const same = months.filter((m) => m.month === month);
+  const own = same.find((m) => m.year === year);
+  if (!own) return null;
+  return { rank: 1 + same.filter((m) => m.value > own.value).length, of: same.length };
+}
+
+/**
+ * Lanes for the dots of a strip plot, so dots closer than `gap` on the axis do not cover each other: in order of
+ * position each dot takes the first free lane of 0, 1, -1, 2, -2, ... where the last dot is at least `gap` behind.
+ * Returns one lane per position, in the order given.
+ */
+export function stripLanes(positions: readonly number[], gap: number): number[] {
+  const order = positions.map((x, i) => [x, i] as const).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const lastInLane = new Map<number, number>();
+  const lanes = new Array<number>(positions.length);
+  for (const [x, i] of order) {
+    for (let step = 0; ; step++) {
+      const lane = step % 2 === 1 ? (step + 1) / 2 : step === 0 ? 0 : -step / 2;
+      const last = lastInLane.get(lane);
+      if (last === undefined || x - last >= gap) {
+        lastInLane.set(lane, x);
+        lanes[i] = lane;
+        break;
+      }
+    }
+  }
+  return lanes;
+}
+
 /** SVG path through the points in order; a null starts a new piece, so a gap is never bridged. */
 export function brokenLinePath(points: readonly ([x: number, y: number] | null)[]): string {
   const parts: string[] = [];
