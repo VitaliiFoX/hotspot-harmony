@@ -416,6 +416,12 @@ export const UK: Record<string, string> = {
     "У сирому ряді багато місяців після 2012 року вирізняються тому, що VIIRS замінив MODIS, а не тому, що горіло більше.",
   "No month of this area stands out from its own history by more than the method's error.":
     "Жоден місяць цієї області не відхиляється від своєї історії більше, ніж на похибку методу.",
+  "The {shown} largest of {n}.": "{shown} найбільших із {n}.",
+  "No month of this area stands out from its own history.": "Жоден місяць цієї області не відхиляється від своєї історії.",
+  "Stand out from their own history.": "Відхиляються від своєї історії.",
+  "An area needs at least three corners.": "Області потрібно щонайменше три кути.",
+  "The outline crosses itself. Remove the last corner or start again.": "Контур перетинає сам себе. Приберіть останній кут або почніть спочатку.",
+  "The corners lie on one line, so the area is empty.": "Кути лежать на одній прямій, тож область порожня.",
   "Show this year on the calendar": "Показати цей рік у календарі",
   "{value} {unit} in a month that usually has none": "{value} ({unit}) у місяць, коли зазвичай нічого немає",
   "{ratio}× its median: {value} against {median} {unit}": "{ratio}× від медіани: {value} проти {median} ({unit})",

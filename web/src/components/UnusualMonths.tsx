@@ -5,6 +5,8 @@ import { formatValue } from "../scale";
 
 type Props = {
   unusual: Unusual[];
+  /** How many months stand out in all; the card lists the largest of them. */
+  total: number;
   unit: string;
   /** The record on screen: on the raw one, months after the 2012 switch stand out for the sensor, not the fire. */
   raw: boolean;
@@ -13,7 +15,7 @@ type Props = {
 };
 
 /** The months of the area that stand out from the same month of the other years, beyond the method's error. */
-export function UnusualMonths({ unusual, unit, raw, onShow }: Props) {
+export function UnusualMonths({ unusual, total, unit, raw, onShow }: Props) {
   return (
     <section className="card unusual" id="unusual-months" aria-labelledby="unusual-title">
       <div className="card-head">
@@ -25,11 +27,16 @@ export function UnusualMonths({ unusual, unit, raw, onShow }: Props) {
               { z: UNUSUAL_Z },
             )}
             {raw && ` ${t("On the raw record many months after 2012 stand out because VIIRS replaced MODIS, not because more burned.")}`}
+            {total > unusual.length && ` ${t("The {shown} largest of {n}.", { shown: unusual.length, n: total })}`}
           </p>
         </div>
       </div>
       {unusual.length === 0 ? (
-        <p className="subtitle">{t("No month of this area stands out from its own history by more than the method's error.")}</p>
+        <p className="subtitle">
+          {raw
+            ? t("No month of this area stands out from its own history.")
+            : t("No month of this area stands out from its own history by more than the method's error.")}
+        </p>
       ) : (
         <ul className="unusual-list">
           {unusual.map((m) => (

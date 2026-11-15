@@ -37,7 +37,6 @@ export function parseDateParam(text: string | null): string | null {
   return text;
 }
 
-/** A whole hour 0..23, or null for anything else. */
 /**
  * The time of day from the address, in minutes after 00:00 UTC: "HH:MM", or an older link's whole hour
  * "HH", read as the end of that hour. Null when it is not a time of day.
@@ -232,7 +231,6 @@ export function boxRing([west, south, east, north]: Bbox): [number, number][] {
   return [[west, south], [east, south], [east, north], [west, north], [west, south]];
 }
 
-/** Milliseconds of the middle of an hour of a UTC day, the instant the night side is drawn for. */
 /** The instant shown: the selected day at the selected minute, UTC. */
 export function hourInstant(date: string, time: number): number {
   const [year, month, day] = date.split("-").map(Number);
