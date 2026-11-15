@@ -15,7 +15,7 @@ type Props = {
 /** The months of the area that stand out from the same month of the other years, beyond the method's error. */
 export function UnusualMonths({ unusual, unit, raw, onShow }: Props) {
   return (
-    <section className="card unusual" aria-labelledby="unusual-title">
+    <section className="card unusual" id="unusual-months" aria-labelledby="unusual-title">
       <div className="card-head">
         <div>
           <h2 id="unusual-title">{t("Unusual months")}</h2>

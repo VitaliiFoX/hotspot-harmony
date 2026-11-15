@@ -3,7 +3,6 @@
 import type { MonthValue, YearTotal } from "./api";
 import { monthName, t, tn } from "./i18n";
 import { formatValue, monthSpans } from "./scale";
-import type { verdictKind } from "./trust";
 
 /** A month that stands out from the same calendar month of the other years. */
 export type Unusual = {
@@ -77,43 +76,54 @@ function years(span: readonly YearTotal[]): string {
   return span.length === 1 ? `${span[0].year}` : `${span[0].year}–${span[span.length - 1].year}`;
 }
 
+/** The card a line of "In short" sums up: the `id` of that card on the page. */
+export type SummaryTarget = "peak-months" | "burning-per-year" | "unusual-months";
+
+/** One line of "In short": its key figure or fact first, the plain explanation after, and the card it sums up. */
+export type SummaryLine = { figure: string; text: string; target: SummaryTarget };
+
 /**
- * A few sentences about the area, each from figures the page shows: its peak months, its busiest full year against
- * the median year, the change between the halves of its full years (within `yearError` it is said to be so), the
- * season's peak against its history, and how many months stand out. What cannot be said is left out.
+ * A few lines about the area, each from figures the page shows: its peak months, its busiest full year against the
+ * median year, the change between the halves of its full years (within `yearError` it is said to be so), and how many
+ * months stand out. The season's peak against its history is the headline right above the card, so it is not
+ * repeated. What cannot be said is left out.
  */
 export function summaryLines(input: {
   peak: { months: number[]; held: number } | null;
   yearly: readonly YearTotal[];
   unit: string;
-  headline: { year: number; month: number; ratio: number | null; kind: ReturnType<typeof verdictKind> } | null;
   unusual: readonly Unusual[];
   yearError: number | null;
-}): string[] {
-  const lines: string[] = [];
-  const { peak, unit, headline, unusual, yearError } = input;
+}): SummaryLine[] {
+  const lines: SummaryLine[] = [];
+  const { peak, unit, unusual, yearError } = input;
   if (peak && peak.months.length) {
-    lines.push(
-      tn(
+    lines.push({
+      figure: monthSpans(peak.months),
+      text: tn(
         peak.months.length,
-        "Burning peaks in {months}: this month holds {share}% of a typical year.",
-        "Burning peaks in {months}: these {n} months hold {share}% of a typical year.",
-        { months: monthSpans(peak.months), share: Math.round(peak.held * 100) },
+        "Peak month: it holds {share}% of a typical year.",
+        "Peak months: these {n} hold {share}% of a typical year.",
+        { share: Math.round(peak.held * 100) },
       ),
-    );
+      target: "peak-months",
+    });
   }
   const full = input.yearly.filter((y) => y.complete);
   if (full.length) {
     const busiest = full.reduce((best, y) => (y.value > best.value ? y : best));
     const typical = median(full.map((y) => y.value));
-    const values = { year: busiest.year, value: formatValue(busiest.value), unit };
-    lines.push(
-      typical > 0
-        ? t("The busiest full year was {year}, with {value} {unit}, {ratio}× the median year.", {
-            ...values, ratio: (busiest.value / typical).toFixed(2),
-          })
-        : t("The busiest full year was {year}, with {value} {unit}.", values),
-    );
+    const values = { value: formatValue(busiest.value), unit };
+    lines.push({
+      figure: `${busiest.year}`,
+      text:
+        typical > 0
+          ? t("Busiest full year: {value} {unit}, {ratio}× the median year.", {
+              ...values, ratio: (busiest.value / typical).toFixed(2),
+            })
+          : t("Busiest full year: {value} {unit}.", values),
+      target: "burning-per-year",
+    });
   }
   const half = Math.floor(full.length / 2);
   if (half >= 1) {
@@ -124,33 +134,17 @@ export function summaryLines(input: {
       const ratio = mean(late) / mean(early);
       const change = Math.round(Math.abs(ratio - 1) * 100);
       const within = yearError !== null && Math.abs(ratio - 1) <= yearError;
-      const values = { late: years(late), early: years(early), change, error: Math.round((yearError ?? 0) * 100) };
-      lines.push(
-        change === 0
-          ? t("Burning in {late} was about the same as in {early}.", values)
-          : ratio >= 1
-            ? within
-              ? t("Burning in {late} was {change}% higher than in {early}, within the method's error of ±{error}%.", values)
-              : t("Burning in {late} was {change}% higher than in {early}.", values)
-            : within
-              ? t("Burning in {late} was {change}% lower than in {early}, within the method's error of ±{error}%.", values)
-              : t("Burning in {late} was {change}% lower than in {early}.", values),
-      );
+      const values = { late: years(late), early: years(early), error: Math.round((yearError ?? 0) * 100) };
+      lines.push({
+        // A true minus sign (U+2212), not a hyphen.
+        figure: change === 0 ? t("About the same") : `${ratio >= 1 ? "+" : "−"}${change}%`,
+        text:
+          within && change !== 0
+            ? t("Burning in {late} against {early}, within the method's error of ±{error}%.", values)
+            : t("Burning in {late} against {early}.", values),
+        target: "burning-per-year",
+      });
     }
-  }
-  if (headline) {
-    const values = {
-      month: monthName(headline.month), year: headline.year, ratio: headline.ratio === null ? "" : headline.ratio.toFixed(2),
-    };
-    lines.push(
-      headline.kind === "none"
-        ? t("{month} {year}, the busiest of the last 12 months, burned in a month that is usually quiet.", values)
-        : headline.kind === "within"
-          ? t("{month} {year}, the busiest of the last 12 months, is within the method's error of a typical {month} ({ratio}×).", values)
-          : headline.kind === "same"
-            ? t("{month} {year}, the busiest of the last 12 months, burned as much as a typical {month}.", values)
-            : t("{month} {year}, the busiest of the last 12 months, burned {ratio}× a typical {month}.", values),
-    );
   }
   if (unusual.length) {
     const top = unusual[0];
@@ -158,16 +152,22 @@ export function summaryLines(input: {
       first: `${monthName(top.month)} ${top.year}`,
       how: top.ratio === null ? t("in a month that usually has none") : t("{ratio}× its median", { ratio: top.ratio.toFixed(2) }),
     };
-    lines.push(
-      tn(
+    lines.push({
+      figure: tn(unusual.length, "{n} month", "{n} months"),
+      text: tn(
         unusual.length,
-        "{n} month stands out from its own history: {first}, {how}.",
-        "{n} months stand out from their own history; the largest departure was {first}, {how}.",
+        "Stands out from its own history: {first}, {how}.",
+        "Stand out from their own history; the largest departure was {first}, {how}.",
         values,
       ),
-    );
+      target: "unusual-months",
+    });
   } else {
-    lines.push(t("No month stands out from its own history by more than the method's error."));
+    lines.push({
+      figure: tn(0, "{n} month", "{n} months"),
+      text: t("Stand out from their own history by more than the method's error."),
+      target: "unusual-months",
+    });
   }
   return lines;
 }
