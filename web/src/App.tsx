@@ -16,9 +16,11 @@ import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
 import {
-  DEFAULT_TIME, type MapView, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, parseViewParam, timeLabel,
+  DEFAULT_TIME, type MapView, clampDate, countHotspots, defaultDate, moveToMonth, parseDateParam, parseTimeParam, parseViewParam, timeLabel,
 } from "./globe";
-import { type Span, type View, makeSpan, monthSpan, parseView, periodAround, spanDays } from "./period";
+import {
+  type Quick, type Span, type View, makeSpan, monthSpan, parseView, periodAround, seasonDays, spanDays, spanMonths,
+} from "./period";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
@@ -35,7 +37,7 @@ import { LANGUAGES, type Lang, formatCount, language, t, tn } from "./i18n";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
 import { monthError, sameMonthRatio } from "./trust";
-import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths } from "./scale";
+import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths, seasonSpan } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
 function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } {
@@ -270,6 +272,31 @@ export function App() {
   function pickPeriod(next: Span) {
     setPeriodSpan(next);
     setDate(next.end);
+  }
+
+  // The area's fire season around the day on screen, as days: the heaviest run of its peak months in that year.
+  const season = useMemo((): Span | null => {
+    if (!calendar || !date || !firstDay || !finalDay || !meta?.first_month || !meta.last_month) return null;
+    const months = seasonSpan(calendar.climatology, date.slice(0, 7), meta.first_month, meta.last_month);
+    return months ? seasonDays(months, firstDay, finalDay) : null;
+  }, [calendar, date, firstDay, finalDay, meta]);
+
+  /** The quick buttons of the date panel: one click for the last 7 days, the month or the fire season, not two dates. */
+  function pickQuick(quick: Quick) {
+    if (!date || !firstDay || !finalDay) return;
+    if (quick === "month") return changeSpanView("month");
+    const next = quick === "week" ? periodAround(date, firstDay, finalDay) : season;
+    if (!next) return;
+    pickPeriod(next);
+    setSpanView("period");
+  }
+
+  /** A month clicked in the burning calendar: the globe shows all of its hotspots, and the page goes up to it. */
+  function showMonthOnGlobe(month: string) {
+    if (!date || !firstDay || !finalDay) return;
+    setDate(moveToMonth(date, month, firstDay, finalDay));
+    setSpanView("month");
+    document.querySelector(".stage")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   // Only the flat map is written, so a link to the globe stays what it was.
@@ -599,6 +626,8 @@ export function App() {
               onView={changeSpanView}
               onPeriod={pickPeriod}
               onCursor={setCursor}
+              season={season}
+              onQuick={pickQuick}
               firstDay={firstDay}
               lastDay={finalDay}
               monthDays={monthDays}
@@ -757,6 +786,8 @@ export function App() {
                   dark={dark}
                   highlightYear={year}
                   onHighlightYear={setHighlightYear}
+                  shownMonths={date ? spanMonths(date, span) : []}
+                  onShowMonth={date ? showMonthOnGlobe : undefined}
                 />
               }
               table={<CalendarTable months={calendar.months} unit={unit} />}

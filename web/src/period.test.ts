@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countHotspots, hourFilters } from "./globe";
 import {
-  MAX_PERIOD_DAYS, addDays, cursorLabel, inSpan, makeSpan, monthSpan, parseView, periodAround, spanDays, spanLabel,
-} from "./period";
+  MAX_PERIOD_DAYS, addDays, cursorLabel, inSpan, makeSpan, monthSpan, parseView, periodAround, spanDays, spanLabel, seasonDays, spanMonths } from "./period";
 
 const FIRST = "2000-11-01";
 const LAST = "2025-12-31";
@@ -69,5 +68,25 @@ describe("hotspots over a span", () => {
   });
   it("filters the map the same way", () => {
     expect(hourFilters(1, 1).inHour).toEqual(["all", [">", ["get", "minute"], 0], ["<=", ["get", "minute"], 1]]);
+  });
+});
+
+describe("seasonDays", () => {
+  it("runs from the first day of the season's first month to the last day of its last", () => {
+    expect(seasonDays({ start: "2020-07", end: "2020-10" }, "2000-11-01", "2025-12-31")).toEqual({ start: "2020-07-01", end: "2020-10-31" });
+    expect(seasonDays({ start: "2019-12", end: "2020-02" }, "2000-11-01", "2025-12-31")).toEqual({ start: "2019-12-01", end: "2020-02-29" });
+  });
+  it("is cut to the record", () => {
+    expect(seasonDays({ start: "2025-12", end: "2025-12" }, "2000-11-01", "2025-12-20")).toEqual({ start: "2025-12-01", end: "2025-12-20" });
+  });
+});
+
+describe("spanMonths", () => {
+  it("is the month of the day on screen", () => {
+    expect(spanMonths("2020-08-20", null)).toEqual(["2020-08"]);
+  });
+  it("is every month a month or a period touches, across the new year too", () => {
+    expect(spanMonths("2020-08-20", { start: "2020-08-01", end: "2020-08-31" })).toEqual(["2020-08"]);
+    expect(spanMonths("2021-01-03", { start: "2020-12-28", end: "2021-01-03" })).toEqual(["2020-12", "2021-01"]);
   });
 });

@@ -866,6 +866,20 @@ fieldset > legend {
   outline: 2px solid var(--ink);
   outline-offset: 0;
 }
+/* The month the map at the top is on: a ring set off from the cell, in ink, so the blue ramp stays the only hue. */
+.calendar-cell.is-shown {
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink);
+}
+.calendar-cell.is-pickable {
+  cursor: pointer;
+}
+.calendar-note {
+  margin: 8px 0 0 50px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
 .scale-legend {
   display: flex;
   flex-wrap: wrap;
@@ -1156,7 +1170,8 @@ tbody th {
   .calendar-grid {
     grid-template-columns: 40px repeat(12, minmax(0, 1fr));
   }
-  .scale-legend {
+  .scale-legend,
+  .calendar-note {
     margin-left: 42px;
   }
 }
