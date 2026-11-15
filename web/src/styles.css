@@ -888,3 +888,12 @@ td.text-cell {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+
+/* Where in this area it burns most: a short table with a button per row. */
+.top-places th[scope="row"] {
+  font-variant-numeric: tabular-nums;
+}
+.top-places td .ghost {
+  padding: 4px 10px;
+  font-size: 12px;
+}

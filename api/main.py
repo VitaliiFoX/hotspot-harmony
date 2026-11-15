@@ -8,6 +8,7 @@
     GET  /api/hotspots/day   the hotspots of one UTC day, all regions together, earliest first
     GET  /api/validation     how far the harmonized record can be trusted: held-out error and two baselines
     GET  /api/cells          where and when it burns: per grid cell, burning per year and the peak month
+    POST /api/cells/top      the busiest cells inside an area, with their peak month
 
 Run locally:  make api   (needs `make data` first)
 Settings: HH_DATA_DIR (default ./data), HH_CONFIG (default config/regions.yaml),
@@ -36,6 +37,14 @@ class CalendarRequest(BaseModel):
     start: str | None = Field(None, pattern=MONTH, description="first month, YYYY-MM; default: start of the record")
     end: str | None = Field(None, pattern=MONTH, description="last month, YYYY-MM; default: end of the record")
     series: Literal["raw", "harmonized"] | None = Field(None, description="default: harmonized when available")
+
+
+class TopCellsRequest(BaseModel):
+    geometry: dict = Field(description="GeoJSON Polygon or MultiPolygon, longitude first")
+    start: str | None = Field(None, pattern=MONTH, description="first month, YYYY-MM; default: start of the record")
+    end: str | None = Field(None, pattern=MONTH, description="last month, YYYY-MM; default: end of the record")
+    series: Literal["raw", "harmonized"] | None = Field(None, description="default: harmonized when available")
+    limit: int = Field(5, ge=1, le=50, description="how many cells, busiest first")
 
 
 class HotspotsRequest(BaseModel):
@@ -108,6 +117,10 @@ def create_app(
         series: Literal["raw", "harmonized"] | None = None,
     ) -> dict:
         return store.cells(start, end, series)
+
+    @app.post("/api/cells/top")
+    def top_cells(body: TopCellsRequest) -> dict:
+        return store.top_cells(body.geometry, body.start, body.end, body.series, body.limit)
 
     @app.get("/api/validation")
     def validation() -> dict:

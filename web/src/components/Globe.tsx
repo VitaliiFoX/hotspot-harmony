@@ -33,6 +33,8 @@ type Props = {
   areaError: string | null;
   /** The period of the filters, "YYYY-MM": "Where it burns" colours the cells over it. */
   period: { start: string; end: string } | null;
+  /** A cell to fly to in "Where it burns"; `n` changes with every request, so the same cell can be asked twice. */
+  focus?: { lat: number; lon: number; n: number } | null;
   /** The date and time panel, floated in the stage's top right corner. */
   panel: ReactNode;
 };
@@ -412,7 +414,7 @@ function CalendarIcon() {
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
 export function Globe({
-  regions, date, time, day, counts, focusRegion, dark, onPickRegion, area, onDrawArea, areaError, period, panel,
+  regions, date, time, day, counts, focusRegion, dark, onPickRegion, area, onDrawArea, areaError, period, focus = null, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -726,6 +728,15 @@ export function Globe({
       });
     return () => controller.abort();
   }, [ready, showCells, period?.start, period?.end]);
+
+  // "Show on the globe" from the list of busiest cells: switch to where it burns and fly there.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!focus || !ready || !map) return;
+    setShowCells(true);
+    // Zoom 7: the cell and its neighbours, so it reads against the cells around it.
+    map.flyTo({ center: [focus.lon, focus.lat], zoom: 7, duration: reducedMotion() ? 0 : 1600 });
+  }, [focus?.n, ready]);
 
   useEffect(() => {
     if (ready) paintArea();

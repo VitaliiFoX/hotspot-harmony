@@ -323,3 +323,10 @@ export function cellSentence(cell: BurnCell, years: number, unit: string, cellDe
   const verb = cell.years_burning === 1 ? "Burned" : "Burns";
   return `${verb} in ${cell.years_burning} of ${years} years, about ${amount} ${unit} a year (${perArea} per 100 km²), most in ${MONTH_NAMES[cell.peak_month - 1]}.`;
 }
+
+/** A cell centre as people read it: "48.13° N, 37.63° E". */
+export function latLonLabel(lat: number, lon: number): string {
+  const part = (value: number, positive: string, negative: string) =>
+    `${(Math.round(Math.abs(value) * 100) / 100).toFixed(2)}° ${value >= 0 ? positive : negative}`;
+  return `${part(lat, "N", "S")}, ${part(lon, "E", "W")}`;
+}

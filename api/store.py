@@ -346,6 +346,20 @@ class Store:
             ],
         }
 
+    def top_cells(self, geometry: dict, start: str | None, end: str | None, series: str | None, limit: int) -> dict:
+        """The busiest cells of an area: `cells` kept to those whose centre is inside it, most burning a year first."""
+        area = parse_area(geometry)
+        self.coverage_warnings(area)
+        answer = self.cells(start, end, series)
+        cells = answer["cells"]
+        if cells:
+            lon = np.array([c["lon"] for c in cells])
+            lat = np.array([c["lat"] for c in cells])
+            inside = shapely.contains_xy(area, lon, lat)
+            cells = [c for c, keep in zip(cells, inside, strict=True) if keep]
+        cells.sort(key=lambda c: (-c["per_year"], c["lat"], c["lon"]))
+        return {**answer, "cells": cells[:limit]}
+
     def hotspots_csv(self, geometry: dict, start: str, end: str) -> tuple[str, bool]:
         """CSV text of the hotspots inside the area between two dates (inclusive), and whether it was cut short."""
         if not self.has_points:
