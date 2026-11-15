@@ -49,6 +49,7 @@ on which satellite was flying.
 | Example areas | done; links in the filters card open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
 | Hotspots of every country for the globe's day view | file built, not served yet; `make day-points` reads the 48 FIRMS global zips (9.4 GB) one at a time into `data/day_points/`: 277 million hotspots of 234 countries, 2000-11 to 2025-12, in 1.14 GB (MODIS before 2012-02, VIIRS S-NPP after, filters applied). For Ukraine and Argentina it holds exactly the hotspots of `data/points/`. On 1,459 of its 9,131 days it holds more than the API's day limit of 50,000 (the busiest, 2023-09-23, 148,702). The API's day view does not read it yet |
+| Every country harmonized and checked | pipeline done, not served yet; `make world` fits the table by fire power per country (by 10-degree squares where held-out years favour them) and checks 128 countries, with 99.8% of the world's fire cell-days, on years the method did not see: [docs/VALIDATION_WORLD.md](docs/VALIDATION_WORLD.md) (generated). The API and the web app still serve Ukraine and Argentina |
 | Public demo | not deployed yet |
 
 ## How far to trust it
@@ -56,7 +57,7 @@ on which satellite was flying.
 Every year of 2012-2021, the years the method is fitted on, was left out in turn: the method was fitted on
 the other years, and its harmonized VIIRS for the left-out year was compared with what MODIS reported.
 The error is the sum of the misses over the sum of what MODIS reported (WAPE). From
-[docs/VALIDATION.md](docs/VALIDATION.md), written by `make validate NESTED=1` on 2026-11-14 21:50 UTC,
+[docs/VALIDATION.md](docs/VALIDATION.md), written by `make validate NESTED=1` on 2026-11-15 15:19 UTC,
 where the method itself was also chosen again for every left-out year:
 
 | | Ukraine | Argentina |
@@ -72,6 +73,21 @@ saw in 2012-2016, not something the harmonization did. Where the method loses: p
 one scaling factor for the whole country does better (3.5%), and that factor was fitted on all years,
 the scored one included. The method, the options that were tried and left out, and why, are in
 [docs/METHOD.md](docs/METHOD.md) and [ADR 0001](docs/adr/0001-harmonize-to-modis-equivalent-fire-cell-days.md).
+
+### Every country
+
+`make world` runs the method for every country of the FIRMS archive, with the plain table by fire power
+and, where held-out years favour it, one calibration per 10-degree square instead of one per country
+(45 countries, Russia, Canada, India and Australia among them). From
+[docs/VALIDATION_WORLD.md](docs/VALIDATION_WORLD.md), written by `pipeline.world`:
+
+- 128 countries, with 99.8% of the world's fire cell-days, are checked on held-out years. The other 107,
+  mostly islands and small states, have too little MODIS/VIIRS overlap and borrow a calibration; they are not checked.
+- Error per country and month: under 10% in 54 countries that hold 93.0% of the fire cell-days
+  (Democratic Republic of the Congo 3.8%, Brazil 3.5%, Australia 3.7%, Russia 4.8%); the median country is at 11.5%.
+- The sensor jump of the whole world, mean yearly total 2012-2016 over 2007-2011: 2.58x in the raw record, 0.94x harmonized.
+
+The app does not serve this record yet: its trust block and its "Where it burns" layer are built for two countries.
 
 ## Limitations
 
@@ -102,14 +118,15 @@ make borders               # rebuild web/public/countries.geojson from Natural E
 
 To add a country, add one entry to [`config/regions.yaml`](config/regions.yaml) and run `make data`.
 
-To process the whole world, use [`config/world.yaml`](config/world.yaml):
+To harmonize every country, into `data/world/`:
 
 ```bash
-make data CONFIG=config/world.yaml   # every country, from one FIRMS zip per sensor and year
-make api CONFIG=config/world.yaml    # serve it; the region list then holds a single "World" entry
+make world   # 9.4 GB of FIRMS zips, read one at a time; needs about 25 GB of disk and 24 GB of memory
 ```
 
-This downloads about 10 GB of zips and extracts about 50 GB of CSV files into `data/raw/`.
+It took 4 minutes to normalize, 2 to aggregate and 7 to harmonize and check on an 18-core laptop, after the
+downloads. `make data CONFIG=config/world.yaml` does the same through 50 GB of extracted CSV and needs far more
+memory; `make api CONFIG=config/world.yaml` serves a world record with a single "World" region.
 
 ## Layout
 

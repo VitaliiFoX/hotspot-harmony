@@ -14,6 +14,7 @@ Usage:  uv run python -m pipeline.aggregate [--config config/world.yaml]
 
 import argparse
 import math
+import shutil
 from pathlib import Path
 
 import duckdb
@@ -64,7 +65,14 @@ def aggregate(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg: Conf
 KM_PER_DEG = 111.32
 
 
-def build_cell_days(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg: Config, cell_km: float = 1.0) -> int:
+def build_cell_days(
+    con: duckdb.DuckDBPyConnection,
+    points: Path,
+    out: Path,
+    cfg: Config,
+    cell_km: float = 1.0,
+    countries: list[str] | None = None,
+) -> int:
     """Fire cell-days: one row per sensor stream x local solar day x ~1 km equal-area cell.
 
     Counting burning cells instead of raw detections removes most of the pixel-size difference between
@@ -76,6 +84,7 @@ def build_cell_days(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg
     ncols = round(360 / q)
     drop = ", ".join(f"'{c}'" for c in cfg.drop_confidence) or "''"
     keep = ", ".join(str(t) for t in cfg.keep_types)
+    only = "" if countries is None else " and country in (" + ", ".join(f"'{c}'" for c in countries) + ")"
     out.parent.mkdir(parents=True, exist_ok=True)
     con.execute(f"""
         copy (
@@ -85,7 +94,7 @@ def build_cell_days(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg
                        cast(floor(lat / {d}) as integer) as gy,
                        cast(floor(lon * cos(radians((floor(lat / {d}) + 0.5) * {d})) / {d}) as integer) as gx
                 from read_parquet('{points.as_posix()}/**/*.parquet', hive_partitioning = true)
-                where confidence_class not in ({drop}) and type in ({keep})
+                where confidence_class not in ({drop}) and type in ({keep}){only}
             ),
             s as (
                 select sensor as stream, * from p
@@ -112,6 +121,46 @@ def build_cell_days(con: duckdb.DuckDBPyConnection, points: Path, out: Path, cfg
     return con.execute(f"select count(*) from read_parquet('{out.as_posix()}')").fetchall()[0][0]
 
 
+def country_batches(sizes: list[tuple[str, int]], share: float = 0.06) -> list[list[str]]:
+    """Countries in alphabetical order, cut into runs of at most `share` of all hotspots (a bigger country alone).
+
+    Alphabetical runs keep the joined file sorted by country, which pipeline.harmonize relies on to read one
+    country without scanning the others.
+    """
+    limit = share * sum(n for _, n in sizes)
+    batches: list[list[str]] = [[]]
+    total = 0
+    for country, n in sorted(sizes):
+        if batches[-1] and total + n > limit:
+            batches.append([])
+            total = 0
+        batches[-1].append(country)
+        total += n
+    return batches
+
+
+def build_cell_days_in_batches(
+    con: duckdb.DuckDBPyConnection, points: Path, out: Path, cell_month: Path, cfg: Config
+) -> int:
+    """World mode: the whole world at once spills more than the disk holds, so a few countries at a time."""
+    sizes = con.execute(
+        f"select country, sum(n_hotspots) from read_parquet('{cell_month.as_posix()}') group by 1"
+    ).fetchall()
+    parts = out.parent / "cell_day_parts"
+    shutil.rmtree(parts, ignore_errors=True)
+    parts.mkdir(parents=True)
+    batches = country_batches(sizes)
+    for i, batch in enumerate(batches):
+        n = build_cell_days(con, points, parts / f"{i:03d}.parquet", cfg, countries=batch)
+        print(f"aggregate: batch {i + 1}/{len(batches)}  {batch[0]} .. {batch[-1]}  {n:>12,} fire cell-days")
+    files = ", ".join(f"'{(parts / f'{i:03d}.parquet').as_posix()}'" for i in range(len(batches)))
+    # the files in batch order: preserve_insertion_order (on by default) keeps the countries sorted
+    con.execute(f"copy (select * from read_parquet([{files}])) to '{out.as_posix()}' "
+                "(format parquet, compression zstd)")
+    shutil.rmtree(parts)
+    return con.execute(f"select count(*) from read_parquet('{out.as_posix()}')").fetchall()[0][0]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -133,7 +182,10 @@ def main() -> None:
     for country, sensor, y0, y1, n in summary:
         print(f"  {country:<14} {sensor:<13} {y0}-{y1}  {n:>10,} hotspots")
     cell_day = args.data / "agg" / "cell_day.parquet"
-    rows = build_cell_days(con, args.data / "points", cell_day, cfg)
+    if cfg.world:
+        rows = build_cell_days_in_batches(con, args.data / "points", cell_day, out, cfg)
+    else:
+        rows = build_cell_days(con, args.data / "points", cell_day, cfg)
     print(f"aggregate: {rows:,} fire cell-days (1 km cell x local day x sensor stream) -> {cell_day}")
 
 

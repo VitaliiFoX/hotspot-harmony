@@ -99,8 +99,8 @@ RECORD = [
 ]
 
 
-def load_cell_days(con: duckdb.DuckDBPyConnection, cell_day: Path, country: str) -> pd.DataFrame:
-    """Cell-days of one country, with `matched`: did MODIS report fire within +-1 cell that local day?"""
+def cell_day_tables(con: duckdb.DuckDBPyConnection, cell_day: Path, country: str) -> None:
+    """Temp tables of one country: `cd`, its cell-days, and `share`, what each VIIRS cell-day explains of MODIS."""
     con.execute(
         f"create or replace temp table cd as select * from read_parquet('{cell_day.as_posix()}') where country = ?",
         [country],
@@ -125,15 +125,28 @@ def load_cell_days(con: duckdb.DuckDBPyConnection, cell_day: Path, country: str)
         from (select *, count(*) over (partition by stream, local_date, mx, my) as n_explaining from pairs)
         group by all
     """)
-    df = con.execute("""
-        select cd.*,
+
+
+def fetch_cell_days(con: duckdb.DuckDBPyConnection, where: str = "true", columns: str = "cd.*") -> pd.DataFrame:
+    """Cell-days of the country in `cell_day_tables`, with `matched`: did MODIS report fire within +-1 cell
+    that local day? `where` (SQL on `cd`) takes a part of the country and `columns` only some columns, so a
+    large country fits in memory."""
+    df = con.execute(f"""
+        select {columns},
                (share.share is not null)::integer as matched,
                coalesce(share.share, 0.0) as share
         from cd left join share using (stream, local_date, gx, gy)
+        where {where}
         -- a fixed row order: the boosted model samples rows, so an arbitrary order would change it run to run
         order by stream, local_date, gx, gy
     """).df()
     return prepare(df)
+
+
+def load_cell_days(con: duckdb.DuckDBPyConnection, cell_day: Path, country: str) -> pd.DataFrame:
+    """Cell-days of one country, with `matched`: did MODIS report fire within +-1 cell that local day?"""
+    cell_day_tables(con, cell_day, country)
+    return fetch_cell_days(con)
 
 
 def load_context(con: duckdb.DuckDBPyConnection, stream: str, cell_deg: float = 0.25) -> pd.DataFrame:
@@ -378,18 +391,24 @@ def fit_n20(df: pd.DataFrame, w: pd.Series) -> tuple[float | None, list[str]]:
 
 
 def calibrate(
-    frames: list[pd.DataFrame], method: str = "auto", contexts: list[pd.DataFrame] | None = None
+    frames: list[pd.DataFrame],
+    method: str = "auto",
+    contexts: list[pd.DataFrame] | None = None,
+    gaps: dict[str, pd.DatetimeIndex] | None = None,
 ) -> dict | None:
     """Fit every parameter on the given cell-days. None when there is too little overlap to trust it.
 
-    `contexts` are the S-NPP context tables of the same countries, in the same order.
+    `contexts` are the S-NPP context tables of the same countries, in the same order. `gaps` are sensor gap
+    days found elsewhere (stream -> days): for a part of a country, the gap days of the whole country.
     """
     # gaps are found per country: a sensor outage is the same day everywhere, but "MODIS is busy" is not
-    gaps = {
-        stream: pd.DatetimeIndex(sorted(set().union(*(gap_days(f, stream) for f in frames))))
-        for stream in ("viirs_snpp", "viirs_noaa20")
-    }
-    frames = [f.assign(snpp_gap=f.local_date.isin(gap_days(f, "viirs_snpp"))) for f in frames]
+    snpp_gaps = [gap_days(f, "viirs_snpp") if gaps is None else gaps["viirs_snpp"] for f in frames]
+    if gaps is None:
+        gaps = {
+            stream: pd.DatetimeIndex(sorted(set().union(*(gap_days(f, stream) for f in frames))))
+            for stream in ("viirs_snpp", "viirs_noaa20")
+        }
+    frames = [f.assign(snpp_gap=f.local_date.isin(g)) for f, g in zip(frames, snpp_gaps, strict=True)]
     df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
     fit = df.local_date.between(*FIT) & ~df.snpp_gap
     viirs, modis = df[fit & (df.stream == "viirs_snpp")], df[fit & (df.stream == "modis")]
@@ -398,8 +417,8 @@ def calibrate(
     context = None
     if contexts:
         kept = [
-            c[c.local_date.between(*FIT) & ~c.local_date.isin(gap_days(f, "viirs_snpp"))]
-            for c, f in zip(contexts, frames, strict=True)
+            c[c.local_date.between(*FIT) & ~c.local_date.isin(g)]
+            for c, g in zip(contexts, snpp_gaps, strict=True)
         ]
         context = pd.concat(kept, ignore_index=True) if len(kept) > 1 else kept[0]
     errors = {}
@@ -421,8 +440,10 @@ def calibrate(
     return par
 
 
-def apply(df: pd.DataFrame, par: dict) -> pd.DataFrame:
-    """Add `weight`, `in_series` (belongs to the harmonized record) and `in_raw` (belongs to the raw record)."""
+def apply(df: pd.DataFrame, par: dict, n20_gaps: pd.DatetimeIndex | None = None) -> pd.DataFrame:
+    """Add `weight`, `in_series` (belongs to the harmonized record) and `in_raw` (belongs to the raw record).
+
+    `n20_gaps`: NOAA-20 gap days found elsewhere, for a part of a country the gap days of the whole country."""
     df = df.copy()
     s, d = df.stream, df.local_date
     df["weight"] = np.nan
@@ -432,7 +453,7 @@ def apply(df: pd.DataFrame, par: dict) -> pd.DataFrame:
     df.loc[s == "modis_terra", "weight"] = df.m[s == "modis_terra"].map(par["terra"]).fillna(1.0)
     df.loc[s == "modis", "weight"] = 1.0
     # a day NOAA-20 did not really observe is taken from MODIS instead of being read as a quiet day
-    n20_gap = d.isin(gap_days(df, "viirs_noaa20"))
+    n20_gap = d.isin(gap_days(df, "viirs_noaa20") if n20_gaps is None else n20_gaps)
     df["in_series"] = (
         ((s == "modis_terra") & (d < AQUA_START))
         | ((s == "modis") & (d >= AQUA_START) & ((d < VIIRS_FROM) | n20_gap))
