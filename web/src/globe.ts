@@ -2,7 +2,7 @@
 
 import type { FilterSpecification } from "maplibre-gl";
 import type { Bbox, DayHotspot, Region } from "./api";
-import { dayInWords, formatCount, monthName, monthTitle, t, tn } from "./i18n";
+import { dayInWords, formatCount, formatDecimal, monthName, monthTitle, t, tn } from "./i18n";
 
 
 /** The date the globe opens on when the record covers it: a busy day in the southern burning season. */
@@ -137,10 +137,11 @@ export type HourCounts = RegionCounts & { regions: RegionCounts[] };
 
 /**
  * Hotspots from 00:00 through `time` (minutes after 00:00 UTC, inclusive), in the hour up to it, and in the
- * whole day, overall and per region.
+ * whole day, overall and per region. Over a period the third field of a hotspot is its day of the period instead
+ * of its minute: `time` is then a day and `window` 1, so "in the hour" reads "on that day".
  */
-export function countHotspots(hotspots: DayHotspot[], time: number, regionCount: number): HourCounts {
-  const start = time - 59;
+export function countHotspots(hotspots: DayHotspot[], time: number, regionCount: number, window = 60): HourCounts {
+  const start = time - (window - 1);
   const end = time + 1;
   const regions: RegionCounts[] = Array.from({ length: regionCount }, () => ({ throughHour: 0, inHour: 0, day: 0 }));
   const total: RegionCounts = { throughHour: 0, inHour: 0, day: 0 };
@@ -162,11 +163,11 @@ export function dotStyle(value: number, monthMax: number): { size: number; opaci
   return { size: 4 + 4 * share, opacity: 0.35 + 0.65 * share };
 }
 
-/** Map filters: every hotspot up to the end of the hour, and those detected within the hour. */
-export function hourFilters(time: number): { through: FilterSpecification; inHour: FilterSpecification } {
+/** Map filters: every hotspot up to the end of the hour, and those detected within the hour (or on that day of a period). */
+export function hourFilters(time: number, window = 60): { through: FilterSpecification; inHour: FilterSpecification } {
   return {
     through: ["<=", ["get", "minute"], time],
-    inHour: ["all", [">", ["get", "minute"], time - 60], ["<=", ["get", "minute"], time]],
+    inHour: ["all", [">", ["get", "minute"], time - window], ["<=", ["get", "minute"], time]],
   };
 }
 
@@ -304,7 +305,7 @@ export function trendSentence(
   const early = yearsLabel(halves.early);
   const late = yearsLabel(halves.late);
   if (cell.trend === null || cell.trend === undefined) {
-    const amount = (cell.late ?? 0) >= 10 ? Math.round(cell.late ?? 0).toString() : (cell.late ?? 0).toFixed(1);
+    const amount = (cell.late ?? 0) >= 10 ? formatCount(Math.round(cell.late ?? 0)) : formatDecimal(cell.late ?? 0, 1);
     return t("No burning in {early}, so no change can be given; about {amount} a year in {late}.", { early, amount, late });
   }
   const percentChange = Math.round((cell.trend - 1) * 100);
@@ -314,7 +315,7 @@ export function trendSentence(
       late, early, signed, error: Math.round(error * 100),
     });
   }
-  return t("{late} against {early}: {signed} ({ratio}×).", { late, early, signed, ratio: cell.trend.toFixed(2) });
+  return t("{late} against {early}: {signed} ({ratio}×).", { late, early, signed, ratio: formatDecimal(cell.trend, 2) });
 }
 
 /** The cells that burn most a year, most first: what the globe's table lists in "Where it burns". */
@@ -368,8 +369,8 @@ export function cellSquares(cells: readonly BurnCell[], cellDeg: number, trendEr
 /** A colour step as the legend prints it: whole numbers from 10, one decimal below, two below 0.1. */
 export function stopLabel(value: number): string {
   if (value >= 10) return String(Math.round(value));
-  if (value >= 0.1) return value.toFixed(1);
-  return value.toFixed(2);
+  if (value >= 0.1) return formatDecimal(value, 1);
+  return formatDecimal(value, 2);
 }
 
 function quantile(sorted: number[], q: number): number {
@@ -393,7 +394,7 @@ export function cellStops(values: readonly number[]): [number, number, number, n
 
 /** What the hover over a cell says: how often, how much (also per 100 km2) and when it burns. */
 export function cellSentence(cell: BurnCell, years: number, unit: string, cellDeg: number): string {
-  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : cell.per_year.toFixed(1);
+  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : formatDecimal(cell.per_year, 1);
   const perArea = stopLabel((cell.per_year / cellAreaKm2(cell.lat, cellDeg)) * 100);
   return tn(
     cell.years_burning,
@@ -406,7 +407,7 @@ export function cellSentence(cell: BurnCell, years: number, unit: string, cellDe
 /** A cell centre as people read it: "48.13° N, 37.63° E". */
 export function latLonLabel(lat: number, lon: number): string {
   const part = (value: number, positive: string, negative: string) =>
-    `${(Math.round(Math.abs(value) * 100) / 100).toFixed(2)}° ${value >= 0 ? positive : negative}`;
+    `${formatDecimal(Math.round(Math.abs(value) * 100) / 100, 2)}° ${value >= 0 ? positive : negative}`;
   return `${part(lat, t("N"), t("S"))}, ${part(lon, t("E"), t("W"))}`;
 }
 

@@ -133,7 +133,8 @@ generates.
 What it gives: 128 countries with 99.8% of the fire cell-days are checked on held-out years. The
 error per country and month is under 10% in 54 of them, which hold 93.0% of the fire cell-days;
 the median country is at 11.5%, because most countries are small and a small count is noisy. The
-sensor jump of the whole world goes from 2.58x in the raw record to 0.94x in the harmonized one.
+sensor jump of the whole world goes from 2.58x in the raw record to 0.94x in the harmonized one. Two runs
+of `pipeline.world` on the same cell-days give byte-identical files.
 
 Two caveats. The choice between the country and its squares was made once on all years, so for the
 45 countries on squares the error has seen its held-out year in that one step; the error of the

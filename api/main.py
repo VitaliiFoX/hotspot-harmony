@@ -110,6 +110,13 @@ def create_app(
     def hotspot_day(date: Annotated[str, Query(pattern=DAY, description="YYYY-MM-DD (UTC)")]) -> dict:
         return store.hotspot_day(date, day_limit)
 
+    @app.get("/api/hotspots/period")
+    def hotspot_period(
+        start: Annotated[str, Query(pattern=DAY, description="first day, YYYY-MM-DD (UTC)")],
+        end: Annotated[str, Query(pattern=DAY, description="last day, YYYY-MM-DD (UTC), inclusive")],
+    ) -> dict:
+        return store.hotspot_period(start, end, day_limit)
+
     @app.get("/api/cells")
     def cells(
         start: Annotated[str | None, Query(pattern=MONTH, description="first month, YYYY-MM")] = None,
