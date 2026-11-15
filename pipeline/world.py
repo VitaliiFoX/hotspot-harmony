@@ -19,7 +19,8 @@ so the figures quoted in the README stay those of the pilot run.
 A country with too little MODIS/VIIRS overlap of its own borrows a pooled calibration, fitted on the smallest
 countries that do have one, taken in order of size until POOL_CELLDAYS cell-days; it is not validated.
 
-Input:  <data>/agg/cell_day.parquet (pipeline.aggregate --config config/world.yaml --data <data>), sorted by country
+Input:  <data>/agg/cell_day.parquet, sorted by country, and cell_month.parquet (pipeline.aggregate --config
+        config/world.yaml --data <data>)
 Output: <data>/agg/harmonized.parquet, calibration.json, harmonization_report.json; docs/VALIDATION_WORLD.md
 
 Usage:  uv run python -m pipeline.world --data data/world [--pilot data]
@@ -277,12 +278,22 @@ def run(data: Path, pilot: Path, pilots: list[str], cell_deg: float, docs: Path,
             entries[c] = pilot_report["countries"][c]
             calib[c] = pilot_calib[c]
 
+    # Local solar days run ahead of UTC in the east, so the archive's last UTC evening falls into a month of its
+    # own there. A month after the archive's last UTC month would read as a nearly empty month: it is dropped.
+    (last,) = con.execute(
+        f"select max(year * 12 + month) from read_parquet('{(agg / 'cell_month.parquet').as_posix()}')"
+    ).fetchone()
     con.execute(f"""
         copy (select * from read_parquet('{parts.as_posix()}/*.parquet')
+              where year * 12 + month <= {last}
               order by country, year, month, cell_id)
         to '{(agg / "harmonized.parquet").as_posix()}' (format parquet, compression zstd)
     """)
     shutil.rmtree(parts)
+    yearly = con.execute(f"""
+        select year as y, sum(n_raw) as raw, sum(n_harmonized) as harmonized
+        from read_parquet('{(agg / "harmonized.parquet").as_posix()}') group by year order by year
+    """).df().set_index("y")  # fmt: skip
     (agg / "calibration.json").write_text(json.dumps(calib, indent=2))
     report = {
         "generated_at_utc": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -297,6 +308,7 @@ def run(data: Path, pilot: Path, pilots: list[str], cell_deg: float, docs: Path,
             "pilot_countries": pilots,
             "pilot_report_generated_at_utc": pilot_report["generated_at_utc"],
             "pooled_from": pool,
+            "sensor_jump": jump_of(yearly),  # every country together
         },
         "countries": entries,
     }
@@ -335,11 +347,14 @@ def write_world_markdown(report: dict, sizes: pd.DataFrame, out: Path) -> None:
         f"- Error per country and month: median {month.median():.1%}, a quarter of the countries under "
         f"{month.quantile(0.25):.1%}, three quarters under {month.quantile(0.75):.1%}. Countries under 10%: "
         f"{int((month < 0.10).sum())}, with {share(month.index[month < 0.10]):.1%} of the fire cell-days.",
+        f"- Sensor jump of the world, mean yearly total {hz.JUMP_AFTER[0]}-{hz.JUMP_AFTER[1]} over "
+        f"{hz.JUMP_BEFORE[0]}-{hz.JUMP_BEFORE[1]}: raw record {w['sensor_jump']['raw']['jump_ratio']:.2f}x, "
+        f"harmonized record {w['sensor_jump']['harmonized']['jump_ratio']:.2f}x.",
         f"- {len(split)} countries are calibrated by {w['square_deg']}-degree squares instead of whole, because "
-        f"that lowered their error per 1-degree tile and month by more than {w['unit_margin']:.1%} without raising "
-        "the error per country and month. That choice was made once on all years, so for those countries the error "
-        'shown has seen its held-out year in that one step; the column "Whole country" is the error of one '
-        "calibration for the country, which involves no choice.",
+        f"that lowered their error per 1-degree tile and month by more than {w['unit_margin'] * 100:.1f} points "
+        "without raising the error per country and month. That choice was made once on all years, so for those "
+        'countries the error shown has seen its held-out year in that one step; the column "Whole country" is the '
+        "error of one calibration for the country, which involves no choice.",
         "",
         "| Country | Fire cell-days | Calibrated by | Per year | Per month | 1-degree tile x month "
         "| Whole country: tile x month | One factor, per month | Sensor jump raw | Sensor jump harmonized |",
