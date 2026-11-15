@@ -92,3 +92,27 @@ export function columnPath(x: number, baseline: number, width: number, height: n
     "Z",
   ].join(" ");
 }
+
+/** The value a second record has in each column's year, or null where it has none: a line drawn over columns. */
+export function valuesByYear(
+  columns: readonly { year: number }[],
+  line: readonly { year: number; value: number }[],
+): (number | null)[] {
+  const byYear = new Map(line.map((item) => [item.year, item.value]));
+  return columns.map((column) => byYear.get(column.year) ?? null);
+}
+
+/** SVG path through the points in order; a null starts a new piece, so a gap is never bridged. */
+export function brokenLinePath(points: readonly ([x: number, y: number] | null)[]): string {
+  const parts: string[] = [];
+  let drawing = false;
+  for (const point of points) {
+    if (!point) {
+      drawing = false;
+      continue;
+    }
+    parts.push(`${drawing ? "L" : "M"}${point[0]},${point[1]}`);
+    drawing = true;
+  }
+  return parts.join(" ");
+}

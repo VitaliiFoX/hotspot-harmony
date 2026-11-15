@@ -32,7 +32,7 @@ on which satellite was flying.
 | Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
 | API (FastAPI): calendar, anomaly, CSV export, daily hotspots, validation | done; serves the raw and the harmonized series in fire cell-days, daily hotspot counts and coordinates, and the held-out error with its two baselines from `harmonization_report.json` |
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
-| Web app: 3D satellite globe, date/hour picker, filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done; a region can be picked on the globe, a box typed in degrees; downloads: calendar data as CSV, every chart as PNG |
+| Web app: 3D satellite globe, date/hour picker, filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done; a region can be picked on the globe, a box typed in degrees; the yearly chart draws the raw record as a line over the harmonized columns, so the 2012 sensor jump shows without switching; downloads: calendar data as CSV, every chart as PNG |
 | Area of interest drawn on the globe | done; "Draw an area" places the corners of a polygon by click, and the calendar, the charts and both CSV downloads then count what is inside its outline; the area travels in the link (`&area=lon,lat;...`). Only inside the regions that have data |
 
 ## Run it
