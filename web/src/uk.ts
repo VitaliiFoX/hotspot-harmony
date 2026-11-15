@@ -425,7 +425,7 @@ export const UK: Record<string, string> = {
   "in a month that usually has none": "у місяць, коли зазвичай нічого немає",
   "{ratio}× its median": "{ratio}× від медіани",
   "Stand out from their own history; the largest departure was {first}, {how}.":
-    "Вирізняється зі своєї історії: {first}, {how}.|Вирізняються зі своєї історії; найбільше відхилення — {first}, {how}.|Вирізняються зі своєї історії; найбільше відхилення — {first}, {how}.",
+    "Вирізняється на тлі власної історії: {first}, {how}.|Вирізняються на тлі власної історії; найбільше відхилення — {first}, {how}.|Вирізняються на тлі власної історії; найбільше відхилення — {first}, {how}.",
   "Stand out from their own history by more than the method's error.":
     "Відхиляються від своєї історії більше, ніж на похибку методу.",
   "all year": "увесь рік",
