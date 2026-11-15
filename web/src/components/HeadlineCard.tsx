@@ -53,7 +53,9 @@ export function HeadlineCard({
             : t("{month} {year} burned less than a typical {month}", values);
   const heroNote =
     anomaly.ratio === null
-      ? t("the {month} median is zero, so there is no ratio", values)
+      ? anomaly.value > 0
+        ? t("in a month whose median is zero, so there is no ratio to give", values)
+        : t("no burning, and the {month} median is zero too: as usual", values)
       : error?.share != null
         ? kind === "within"
           ? t("the {month} median; the harmonized record can be off by about {error} in a month like this, so this is not unusual", values)
@@ -92,7 +94,7 @@ export function HeadlineCard({
         </div>
         <div className="headline-figures">
           <div className={kind === "within" ? "headline-ratio is-within" : "headline-ratio"}>
-            <span className="hero">{anomaly.ratio === null ? t("n/a") : `${formatDecimal(anomaly.ratio, 2)}×`}</span>
+            <span className="hero">{anomaly.ratio === null ? (anomaly.value > 0 ? t("Unusual") : "0") : `${formatDecimal(anomaly.ratio, 2)}×`}</span>
             <span className="headline-note">{heroNote}</span>
           </div>
           {raw && anomaly.ratio !== null && (
