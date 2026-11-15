@@ -9,17 +9,21 @@ a row.
 
 ## Where we are
 
-- Merged to `main`: pipeline, harmonization with five methods chosen per country, validation, API,
-  the dashboard, the globe with the daily hotspot explorer, and CSV/PNG downloads (#1-#17, #19).
-- Open: #18, the review fixes for #9 and #12. Its CI is green. The validation run that writes its
-  numbers is still in progress.
+Updated on Sunday 2026-11-15 at 09:50 Kyiv time.
+
+- Merged to `main`: pipeline, harmonization with five methods chosen per country, validation (#18, the
+  method chosen again for every held-out year), API, the dashboard, the globe with the daily hotspot
+  explorer, CSV/PNG downloads, a drawn area of interest (#25, #26), "How far to trust this" (#27), the
+  raw record over the harmonized years (#28), peak burning months (#29), the season's peak in the
+  headline and the log scale (#30), the sensor behind each year (#31), sensor gap days on the globe
+  (#32), example areas for Ukraine (#33), and the README for submission (#34).
+- Rows 1 and 5-12 are done.
 - Not done yet:
-  - a public demo (README still says "not deployed yet");
-  - critical periods: the challenge asks when burning is usually at its highest in an area, and the
-    app only shows it indirectly, through the seasonal chart;
+  - a public demo, rows 2-4 (README still says "not deployed yet"). The host must get the
+    `harmonization_report.json` of `make validate NESTED=1`, or the trust block shows other figures than
+    `docs/VALIDATION.md`;
   - a calendar by day and by week: the challenge asks for days, weeks and months, and the calendar
-    is by month only (single days exist on the globe);
-  - showing in the app how far the numbers can be trusted;
+    is by month only (single days are on the globe; row 11a, optional);
   - the video or slides;
   - the project page.
 
@@ -39,7 +43,7 @@ Presentation, each 1-5).
   competitor scan.
 - [ ] **Submit for Judging on the team's Project tab, by 21:00 at the latest.** That leaves three
   hours of margin before the hard stop.
-- [ ] **#18 merged.** The validation figures we quote must come from the run where the method choice
+- [x] **#18 merged.** The validation figures we quote must come from the run where the method choice
   never saw the held-out year (`make validate NESTED=1`).
 - [ ] **README true at submission:** the demo link, the Status table and the reference numbers.
 
@@ -49,7 +53,7 @@ Presentation, each 1-5).
 
 | # | Task | Done when | Owner | |
 |---|---|---|---|---|
-| 1 | Finish #18: regenerate `docs/VALIDATION.md` and the reference values in `CLAUDE.md`, then merge | #18 is in `main` and the numbers in the docs match `data/agg/harmonization_report.json` | | [ ] |
+| 1 | Finish #18: regenerate `docs/VALIDATION.md` and the reference values in `CLAUDE.md`, then merge | #18 is in `main` and the numbers in the docs match `data/agg/harmonization_report.json` | VitaliiFoX | [x] |
 | 2 | Deploy the API as a Docker image with its data (about 110 MB: `data/points` plus the files the API reads from `data/agg`). Proposed host: Fly.io, which does not sleep like a free Render instance | `/api/health` answers on a public URL within a second | | [ ] |
 | 3 | Deploy the web app on GitHub Pages, built with `VITE_API_URL` pointing at the API | the link opens in a private window; the calendar and the globe both work | | [ ] |
 | 4 | Put the demo link in the README | — | | [ ] |
