@@ -2,7 +2,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "../globe.css";
 import {
   type GeoJSONSource, type LayerSpecification, type LngLatBoundsLike, type MapMouseEvent, type SkySpecification, type StyleSpecification, MapLibreMap,
-  Marker, NavigationControl, Popup, setWorkerUrl,
+  NavigationControl, Popup, setWorkerUrl,
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -811,15 +811,6 @@ export function Globe({
         geometry: { type: "LineString", coordinates: boxRing(region.bbox) },
       })),
     });
-    const markers = regions.map((region) => {
-      const label = document.createElement("div");
-      label.className = "globe-region-label";
-      label.textContent = t(region.name);
-      return new Marker({ element: label, anchor: "bottom-left", opacityWhenCovered: "0" })
-        .setLngLat([region.bbox[0], region.bbox[3]])
-        .addTo(map);
-    });
-    return () => markers.forEach((marker) => marker.remove());
   }, [ready, regions]);
 
   useEffect(() => {

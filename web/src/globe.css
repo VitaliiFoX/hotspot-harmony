@@ -19,8 +19,6 @@
   --readout-bg: rgba(4, 8, 18, 0.34);
   --readout-border: rgba(255, 255, 255, 0.14);
   --stage-scrim: rgba(3, 5, 11, 0.55);
-  --label-bg: rgba(3, 5, 11, 0.45);
-  --label-ink: rgba(255, 255, 255, 0.9);
   --head-shadow: 0 1px 12px rgba(0, 0, 0, 0.6);
   --focus: #fff;
   --sheen: rgba(255, 255, 255, 0.22);
@@ -69,8 +67,6 @@
     --readout-bg: rgba(255, 255, 255, 0.6);
     --readout-border: rgba(11, 11, 11, 0.08);
     --stage-scrim: rgba(255, 255, 255, 0.7);
-    --label-bg: rgba(255, 255, 255, 0.85);
-    --label-ink: #0b0b0b;
     --head-shadow: none;
     --focus: #0b0b0b;
     --sheen: rgba(255, 255, 255, 0.7);
@@ -99,8 +95,6 @@
   --readout-bg: rgba(255, 255, 255, 0.6);
   --readout-border: rgba(11, 11, 11, 0.08);
   --stage-scrim: rgba(255, 255, 255, 0.7);
-  --label-bg: rgba(255, 255, 255, 0.85);
-  --label-ink: #0b0b0b;
   --head-shadow: none;
   --focus: #0b0b0b;
   --sheen: rgba(255, 255, 255, 0.7);
@@ -148,19 +142,6 @@
 .stage .maplibregl-ctrl-group button {
   width: 44px;
   height: 44px;
-}
-
-.globe-region-label {
-  padding: 2px 6px;
-  margin-bottom: 2px;
-  border-radius: 6px;
-  background: var(--label-bg);
-  color: var(--label-ink);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  pointer-events: none;
-  white-space: nowrap;
 }
 
 .stage-head {
@@ -769,9 +750,6 @@ html {
   background: var(--glass-solid);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-}
-.stage.is-street .globe-region-label {
-  display: none;
 }
 
 .stage-legend a {
