@@ -449,7 +449,13 @@ export function Globe({
   // What the cells show (how much, or how it changed) and their size: 1-degree tiles by default, the scale the
   // method's error was measured on; 0.25-degree cells on request, finer than that.
   const [cellView, setCellView] = useState<"amount" | "change">("amount");
-  const [tileDeg, setTileDeg] = useState<1 | 0.25>(1);
+  // "How much" opens on the grid's own cells; "How it changed" on 1-degree tiles, the scale its error threshold was
+  // measured on. Either can be switched by hand afterwards.
+  const [tileDeg, setTileDeg] = useState<1 | 0.25>(0.25);
+  const showCellView = (view: "amount" | "change") => {
+    setCellView(view);
+    setTileDeg(view === "change" ? 1 : 0.25);
+  };
   const cellViewRef = useRef(cellView);
   cellViewRef.current = cellView;
   const [cellsError, setCellsError] = useState<string | null>(null);
@@ -885,12 +891,12 @@ export function Globe({
       </div>
 
       {showCells && !drawing && (
-        <div className="stage-draw stage-cells" role="group" aria-label="What the cells show">
+        <div className={area ? "stage-draw stage-cells is-raised" : "stage-draw stage-cells"} role="group" aria-label="What the cells show">
           <div className="segmented">
-            <button type="button" aria-pressed={cellView === "amount"} onClick={() => setCellView("amount")}>
+            <button type="button" aria-pressed={cellView === "amount"} onClick={() => showCellView("amount")}>
               How much
             </button>
-            <button type="button" aria-pressed={cellView === "change"} onClick={() => setCellView("change")}>
+            <button type="button" aria-pressed={cellView === "change"} onClick={() => showCellView("change")}>
               How it changed
             </button>
           </div>
