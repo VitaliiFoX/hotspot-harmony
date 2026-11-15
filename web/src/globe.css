@@ -36,6 +36,11 @@
     radial-gradient(1px 1px at 300px 40px, rgba(200, 220, 255, 0.55), transparent 60%),
     radial-gradient(1.5px 1.5px at 400px 260px, rgba(255, 255, 255, 0.5), transparent 60%);
   --stars-size: 320px 300px, 320px 300px, 320px 300px, 320px 300px, 460px 340px, 460px 340px;
+  /* Light theme: a daytime sky, darker near the globe and paler outwards, so the dark disc does not
+     sit on near-white; the bottom fades into the page so the stage has no hard edge. */
+  --day-sky:
+    linear-gradient(to bottom, transparent 78%, var(--page)),
+    radial-gradient(circle at 50% 50%, #8fb1da 0, #a9c4e5 22%, #c8daf0 48%, #e3ecf7 80%);
 
   position: relative;
   isolation: isolate;
@@ -73,13 +78,13 @@
     --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%230b0b0b' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
     --option-bg: #fff;
     --option-ink: #0b0b0b;
-    --stars: radial-gradient(120% 90% at 50% 45%, #f7fbff, rgba(247, 251, 255, 0) 70%);
+    --stars: var(--day-sky);
     --stars-size: 100% 100%;
     color-scheme: light;
   }
 }
 :root[data-theme="light"] .stage {
-  --space: #dce8f5;
+  --space: #b9d0ea;
   --stage-ink: #0b0b0b;
   --stage-ink-2: rgba(11, 11, 11, 0.68);
   --glass: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.55) 42%, rgba(255, 255, 255, 0.7));
@@ -103,7 +108,7 @@
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%230b0b0b' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
   --option-bg: #fff;
   --option-ink: #0b0b0b;
-  --stars: radial-gradient(120% 90% at 50% 45%, #f7fbff, rgba(247, 251, 255, 0) 70%);
+  --stars: var(--day-sky);
   --stars-size: 100% 100%;
   color-scheme: light;
 }

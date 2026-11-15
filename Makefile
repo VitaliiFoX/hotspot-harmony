@@ -1,4 +1,4 @@
-.PHONY: data ingest normalize aggregate harmonize validate json api web test lint borders
+.PHONY: data ingest normalize aggregate harmonize validate day-points json api web test lint borders
 
 # Limit to one country with: make data COUNTRY=Ukraine
 # Whole world with: make data CONFIG=config/world.yaml (and make api CONFIG=config/world.yaml)
@@ -23,6 +23,12 @@ harmonize:
 # NESTED=1 also repeats the choice of method for every held-out year: the figures to quote, about 25 minutes
 validate:
 	uv run python -m pipeline.validate $(CONFIG_ARG) $(if $(NESTED),--nested-choice)
+
+# Hotspots of every country for the globe's day view, in data/day_points/: the FIRMS global zips (about 10 GB,
+# kept zipped) are read one at a time into about 1 GB of Parquet. Leaves data/points/ and data/agg/ alone.
+day-points:
+	uv run python -m pipeline.ingest --config config/world.yaml --zips-only
+	uv run python -m pipeline.day_points --config config/world.yaml
 
 # Export downloaded CSV files as JSON, e.g.: make json COUNTRY=Ukraine YEAR=2024 FORMAT=geojson
 json:

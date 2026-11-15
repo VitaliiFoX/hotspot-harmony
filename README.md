@@ -47,6 +47,7 @@ on which satellite was flying.
 | Where in the area it burns most | done; a card lists the five busiest grid cells of the chosen area with their month, and "Show on the globe" flies there |
 | Example areas | done; links under the filters open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
+| Hotspots of every country for the globe's day view | file built, not served yet; `make day-points` reads the 48 FIRMS global zips (9.4 GB) one at a time into `data/day_points/`: 277 million hotspots of 234 countries, 2000-11 to 2025-12, in 1.14 GB (MODIS before 2012-02, VIIRS S-NPP after, filters applied). For Ukraine and Argentina it holds exactly the hotspots of `data/points/`. On 1,459 of its 9,131 days it holds more than the API's day limit of 50,000 (the busiest, 2023-09-23, 148,702). The API's day view does not read it yet |
 | Public demo | not deployed yet |
 
 ## How far to trust it
@@ -87,6 +88,7 @@ Requires [uv](https://docs.astral.sh/uv/) and `make`.
 ```bash
 make data                  # download, normalize, aggregate, harmonize, validate every country in config/regions.yaml
 make data COUNTRY=Ukraine  # one country only
+make day-points            # hotspots of every country for the globe's day view (about 10 GB of zips, kept zipped)
 make api                   # serve the API on http://localhost:8000 (endpoints listed at /docs)
 make web                   # serve the web app on http://localhost:5173 (needs `make api` running, and Node 24)
 make test                  # pytest and the web tests (run `npm install` in web/ once)
