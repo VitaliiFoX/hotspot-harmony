@@ -299,6 +299,19 @@ export function trendSentence(
   return t("{late} against {early}: {signed} ({ratio}×).", { late, early, signed, ratio: cell.trend.toFixed(2) });
 }
 
+/** The cells that burn most a year, most first: what the globe's table lists in "Where it burns". */
+export function busiestCells<T extends Pick<BurnCell, "per_year" | "lat" | "lon">>(cells: readonly T[], limit = 25): T[] {
+  return [...cells].sort((a, b) => b.per_year - a.per_year || b.lat - a.lat || a.lon - b.lon).slice(0, limit);
+}
+
+/** The change of a cell as the table writes it: "+40%", "−12%", "within the error" or a dash when it did not burn before. */
+export function changeLabel(trend: number | null | undefined, error: number): string {
+  if (trend === null || trend === undefined) return "–";
+  if (Math.abs(trend - 1) <= error) return t("within the error");
+  const percentChange = Math.round((trend - 1) * 100);
+  return percentChange > 0 ? `+${percentChange}%` : percentChange < 0 ? `−${-percentChange}%` : t("no change");
+}
+
 const KM_PER_DEGREE = 111.32;
 
 /** Area of a grid cell, km2: a degree of longitude shrinks with the cosine of the latitude. */

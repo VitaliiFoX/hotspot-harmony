@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  DEFAULT_TIME, MERCATOR_LIMIT, cellAreaKm2, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  DEFAULT_TIME, MERCATOR_LIMIT, busiestCells, cellAreaKm2, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
   trendSentence, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
@@ -303,5 +303,21 @@ describe("trendSentence", () => {
     expect(trendSentence({ early: 0, late: 2.5, trend: null }, halves, 0.14)).toBe(
       "No burning in 2001–2012, so no change can be given; about 2.5 a year in 2014–2025.",
     );
+  });
+});
+
+describe("the globe's table of cells", () => {
+  const cell = (lat: number, lon: number, per_year: number) => ({ lat, lon, per_year });
+  it("lists the cells that burn most a year first, as many as asked for", () => {
+    const cells = [cell(1, 1, 5), cell(2, 2, 50), cell(3, 3, 20), cell(4, 4, 50)];
+    expect(busiestCells(cells, 3).map((c) => c.lat)).toEqual([4, 2, 3]);
+    expect(busiestCells(cells)).toHaveLength(4);
+  });
+  it("writes a change as a signed share, within the error as such, and a dash where nothing burned before", () => {
+    expect(changeLabel(1.4, 0.14)).toBe("+40%");
+    expect(changeLabel(0.5, 0.14)).toBe("−50%");
+    expect(changeLabel(1.1, 0.14)).toBe("within the error");
+    expect(changeLabel(null, 0.14)).toBe("–");
+    expect(changeLabel(1.004, 0)).toBe("no change");
   });
 });
