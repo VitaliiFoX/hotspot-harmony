@@ -106,10 +106,6 @@ export type DayHotspots = {
 };
 
 export type Polygon = { type: "Polygon"; coordinates: number[][][] };
-/** A country's border: one polygon per mainland, island or exclave. */
-export type MultiPolygon = { type: "MultiPolygon"; coordinates: number[][][][] };
-/** What the API takes as an area of interest. */
-export type AreaGeometry = Polygon | MultiPolygon;
 
 const BASE: string = import.meta.env.VITE_API_URL ?? "";
 
@@ -178,7 +174,7 @@ export async function fetchCells(
 
 /** POST /api/cells/top: the busiest cells inside an area, most burning a year first. */
 export async function fetchTopCells(
-  body: { geometry: AreaGeometry; start: string; end: string; limit?: number },
+  body: { geometry: Polygon; start: string; end: string; limit?: number },
   signal?: AbortSignal,
 ): Promise<Cells> {
   const response = await post("/api/cells/top", { ...body, series: "harmonized" }, signal);
@@ -205,7 +201,7 @@ export async function fetchDayHotspots(date: string, signal?: AbortSignal): Prom
 }
 
 export async function fetchCalendar(
-  body: { geometry: AreaGeometry; start: string; end: string; series: SeriesName },
+  body: { geometry: Polygon; start: string; end: string; series: SeriesName },
   signal?: AbortSignal,
 ): Promise<Calendar> {
   const response = await post("/api/calendar", body, signal);
@@ -214,7 +210,7 @@ export async function fetchCalendar(
 }
 
 export async function fetchHotspotsCsv(body: {
-  geometry: AreaGeometry;
+  geometry: Polygon;
   start: string;
   end: string;
 }): Promise<{ blob: Blob; truncated: boolean }> {

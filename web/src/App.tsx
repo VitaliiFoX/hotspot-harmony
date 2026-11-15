@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  type AreaGeometry, type Bbox, type Calendar, type Cells, type DayHotspots, type Meta, type MonthDays, type SeriesName, type Validation,
+  type Bbox, type Calendar, type Cells, type DayHotspots, type Meta, type MonthDays, type Polygon, type SeriesName, type Validation,
   boxPolygon, fetchCalendar, fetchDayHotspots, fetchHotspotsCsv, fetchMeta, fetchMonthDays, fetchTopCells, fetchValidation,
 } from "./api";
 import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
 } from "./area";
-import { type Country, countryBoxText, fetchCountries, findCountry, namesCountry, regionOfCountry } from "./countries";
 import { AnomalyTiles } from "./components/AnomalyTiles";
 import { CalendarHeatmap, CalendarTable } from "./components/CalendarHeatmap";
 import { ChartCard } from "./components/ChartCard";
@@ -57,8 +56,6 @@ export function App() {
   // How far the harmonized record can be trusted; null until the API answers, or when it has no report.
   const [validation, setValidation] = useState<Validation | null>(null);
   const [filters, setFilters] = useState<FilterState | null>(null);
-  // The borders a country is picked by on the globe; null until they arrive, empty when they cannot be loaded.
-  const [countries, setCountries] = useState<Country[] | null>(null);
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   // The same view in the record not on screen, from the look-ahead: the raw line over the harmonized years.
   const [otherCalendar, setOtherCalendar] = useState<Calendar | null>(null);
@@ -96,11 +93,6 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // Without the borders the page still works by region and box; only picking a country is off.
-    fetchCountries().then(setCountries).catch(() => setCountries([]));
-  }, []);
-
-  useEffect(() => {
     fetchMeta()
       .then((loaded) => {
         setMeta(loaded);
@@ -122,8 +114,6 @@ export function App() {
           region: linked.name,
           box: (drawn ? boundsText(drawn) : box.length === 4 ? box : linked.bbox.map(String)) as FilterState["box"],
           area: drawn,
-          // A country picked on the globe comes as &country=Name; a drawn area wins over it.
-          country: drawn ? null : query.get("country"),
           start: query.get("start") ?? loaded.first_month,
           end: query.get("end") ?? loaded.last_month,
           series: series && loaded.series.includes(series) ? series : loaded.default_series,
@@ -147,29 +137,8 @@ export function App() {
     query.set("series", filters.series);
     if (filters.area) query.set("area", formatAreaParam(filters.area));
     else query.delete("area");
-    if (filters.country) query.set("country", filters.country);
-    else query.delete("country");
     writeAddress(query);
   }, [filters]);
-
-  // The country behind the filters, and the region whose record holds it; without one there is nothing to show yet.
-  const picked = useMemo(() => findCountry(countries ?? [], filters?.country ?? null), [countries, filters?.country]);
-  const pickedRegion = useMemo(() => (picked && meta ? regionOfCountry(meta.regions, picked) : null), [picked, meta]);
-  const noData = Boolean(picked && meta && !pickedRegion);
-
-  // A link can carry a country alone (&country=Name), or one the borders do not have. Once the borders are here,
-  // the first gets the bounds and the region of its country, the second falls back to the box the link carries.
-  useEffect(() => {
-    if (!countries || !filters?.country) return;
-    setFilters((current) => {
-      if (!current?.country) return current;
-      if (!picked) return { ...current, country: null };
-      const box = countryBoxText(picked);
-      const region = pickedRegion?.name ?? current.region;
-      const same = current.country === picked.name && current.region === region && current.box.join() === box.join();
-      return same ? current : { ...current, country: picked.name, region, box };
-    });
-  }, [countries, filters?.country, picked, pickedRegion]);
 
   useEffect(() => {
     if (!date) return;
@@ -213,20 +182,14 @@ export function App() {
   // Changing the hour only filters the day already loaded.
   const counts = useMemo(() => (day ? countHotspots(day.hotspots, time, day.regions.length) : null), [day, time]);
 
-  /** Take the country double-clicked on the globe as the area of interest, or go back to the region's box. */
-  function pickCountry(name: string | null) {
-    if (!meta) return;
-    const country = findCountry(countries ?? [], name);
-    setFilters((current) => {
-      if (!current) return current;
-      if (!country) {
-        const region = meta.regions.find((r) => r.name === current.region);
-        return region ? { ...current, box: region.bbox.map(String) as FilterState["box"], area: null, country: null } : current;
-      }
-      // A country with no record keeps the region of the filters, so "back" has somewhere to go.
-      const region = regionOfCountry(meta.regions, country)?.name ?? current.region;
-      return { ...current, region, box: countryBoxText(country), area: null, country: country.name };
-    });
+  function pickRegion(name: string) {
+    const region = meta?.regions.find((r) => r.name === name);
+    if (!region) return;
+    const box = region.bbox.map(String) as FilterState["box"];
+    // A click on the globe inside the region already chosen must not wipe an area drawn there.
+    setFilters((current) =>
+      !current || (current.area && current.region === name) ? current : { ...current, region: name, box, area: null },
+    );
   }
 
   /** Take an area drawn on the globe as the area of interest, or go back to the region's box. */
@@ -236,31 +199,24 @@ export function App() {
       if (!current) return current;
       if (!corners) {
         const region = meta.regions.find((r) => r.name === current.region);
-        return region ? { ...current, box: region.bbox.map(String) as FilterState["box"], area: null, country: null } : current;
+        return region ? { ...current, box: region.bbox.map(String) as FilterState["box"], area: null } : current;
       }
       const drawn = corners.map(roundCorner);
       const region = regionOfArea(meta.regions, drawn)?.name ?? current.region;
-      return { ...current, region, box: boundsText(drawn) as FilterState["box"], area: drawn, country: null };
+      return { ...current, region, box: boundsText(drawn) as FilterState["box"], area: drawn };
     });
   }
 
-  // The area of interest behind every request and export: the drawn corners, the border of the picked country,
-  // or else the typed box. Null while there is nothing to ask for: before the filters and the borders arrive, and
-  // for a country no record is loaded for.
-  const area = useMemo((): { bbox: Bbox; geometry: AreaGeometry; wkt: string } | { problem: string } | null => {
+  // The area of interest behind every request and export: the drawn corners, or else the typed box.
+  const area = useMemo((): { bbox: Bbox; geometry: Polygon; wkt: string } | { problem: string } | null => {
     if (!filters) return null;
     if (filters.area) {
       return { bbox: cornersBounds(filters.area), geometry: cornersPolygon(filters.area), wkt: cornersWkt(filters.area) };
     }
-    if (filters.country) {
-      if (!countries || !picked) return null; // the borders are on their way, or the name is being dropped
-      // The border is not repeated as well-known text: it has thousands of points (see calendarCsv).
-      return pickedRegion ? { bbox: picked.bbox, geometry: picked.geometry, wkt: "" } : null;
-    }
     const read = readBox(filters.box);
     if ("problem" in read) return read;
     return { bbox: read.bbox, geometry: boxPolygon(read.bbox), wkt: cornersWkt(boxCorners(read.bbox)) };
-  }, [filters, countries, picked, pickedRegion]);
+  }, [filters]);
   const problem = area && "problem" in area ? area.problem : null;
 
   // Ask the API as little and as early as possible: a view seen before comes from the cache, only a box
@@ -375,13 +331,8 @@ export function App() {
       : undefined;
   // The trust block reads the country figure only when the area is the region's whole box, as checked.
   const regionBox = meta?.regions.find((r) => r.name === filters?.region)?.bbox;
-  // A country picked by its border is the whole country too, when the region is that country and not the world.
   const wholeRegion = Boolean(
-    filters && !filters.area && (
-      picked
-        ? pickedRegion && namesCountry(pickedRegion.name, picked)
-        : regionBox && filters.box.every((text, i) => Number(text) === regionBox[i])
-    ),
+    filters && !filters.area && regionBox && filters.box.every((text, i) => Number(text) === regionBox[i]),
   );
   const trusted = validation && filters ? validation.countries[filters.region] : undefined;
   // The headline month, its sensor, and what the method's error and the raw record say about it.
@@ -432,7 +383,7 @@ export function App() {
   const fileParts = filters && calendar ? [filters.region, filters.start, filters.end, calendar.series] : [];
   function saveCalendarCsv() {
     if (!calendar || !filters || !area || "problem" in area) return;
-    const csv = calendarCsv(calendar, { region: filters.region, country: picked?.name, box: area.bbox, wkt: area.wkt });
+    const csv = calendarCsv(calendar, { region: filters.region, box: area.bbox, wkt: area.wkt });
     downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
   }
 
@@ -447,13 +398,10 @@ export function App() {
         counts={counts}
         focusRegion={filters?.region ?? null}
         dark={dark}
-        countries={countries ?? []}
-        country={picked}
-        countryHasData={!noData}
-        onPickCountry={pickCountry}
+        onPickRegion={pickRegion}
         area={filters?.area ?? null}
         onDrawArea={drawArea}
-        areaError={filters?.area || picked ? error : null}
+        areaError={filters?.area ? error : null}
         period={filters ? { start: filters.start, end: filters.end } : null}
         focus={globeFocus}
         series={filters?.series}
@@ -483,7 +431,6 @@ export function App() {
         <header className="top">
           <div>
             <p className="subtitle">Burning activity calendar from satellite fire hotspots, 2000 to 2025</p>
-            {picked && <h2 className="place">{picked.name}</h2>}
           </div>
           <label className="theme">
             <span>Theme</span>
@@ -503,7 +450,6 @@ export function App() {
             onDownload={download}
             downloading={downloading}
             problem={problem}
-            hasData={!noData}
           />
         )}
 
@@ -522,42 +468,23 @@ export function App() {
           </nav>
         )}
 
-        {noData && picked && meta && filters && (
-          <section className="card no-data" role="status">
-            <h2>{`No record for ${picked.name} yet`}</h2>
-            <p>
-              {`This build holds the hotspots of ${meta.regions.map((r) => r.name).join(" and ")}. Once the record of ${picked.name} is loaded, its burning activity calendar, peak months, yearly totals and unusual months appear here, counted inside its border.`}
-            </p>
-            <p>
-              To load it, add the country to <code>config/regions.yaml</code> and run <code>make data</code>; nothing on
-              this page has to change.
-            </p>
-            <button type="button" onClick={() => pickCountry(null)}>{`Back to ${filters.region}`}</button>
-          </section>
-        )}
-
-        {!noData && error && (
+        {error && (
           <p className="notice notice-error" role="alert">
             {error}
           </p>
         )}
         {exportNote && <p className="notice">{exportNote}</p>}
-        {!noData && picked && calendar && (
-          <p className="notice">
-            {`Counted inside the border of ${picked.name}: a grid cell belongs to the country when its centre is inside the border, so a cell on the border counts in full or not at all. Border: Natural Earth, simplified to about 2 km.`}
-          </p>
-        )}
-        {!noData && calendar?.warnings.map((warning) => (
+        {calendar?.warnings.map((warning) => (
           <p className="notice" key={warning}>
             {warning}
           </p>
         ))}
-        {!noData && calendar?.series === "raw" && meta && (
+        {calendar?.series === "raw" && meta && (
           <p className="notice">
             {`Raw record: MODIS before ${monthLabel(meta.raw_sensor_switch)}, VIIRS S-NPP from then on, counted as ${calendar.unit} with no correction. VIIRS sees many small fires that MODIS misses, so the values jump at that month and cannot be compared across it.`}
           </p>
         )}
-        {!noData && calendar?.series === "harmonized" && meta?.harmonized_record && (
+        {calendar?.series === "harmonized" && meta?.harmonized_record && (
           <p className="notice">
             {`Harmonized record, in ${calendar.unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so ${meta.harmonized_record[0].from.slice(0, 4)} and ${meta.last_month?.slice(0, 4)} can be compared. ${meta.harmonized_record.map((part) => `${part.label}: ${part.to ? `${monthLabel(part.from)} to ${monthLabel(part.to)}` : `from ${monthLabel(part.from)}`}`).join("; ")}.`}
             {trusted && (
@@ -569,9 +496,9 @@ export function App() {
           </p>
         )}
 
-        {!noData && !calendar && !error && <p className="notice">Loading the record...</p>}
+        {!calendar && !error && <p className="notice">Loading the record...</p>}
 
-        {!noData && calendar && (
+        {calendar && (
           <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
             <AnomalyTiles
               anomaly={calendar.season_peak ?? calendar.anomaly}

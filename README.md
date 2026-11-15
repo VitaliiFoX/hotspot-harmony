@@ -35,9 +35,8 @@ on which satellite was flying.
 | Fire cell-days on a 1 km grid, local solar day | done |
 | Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
 | API (FastAPI): calendar, anomaly, CSV export, daily hotspots, validation | done; serves the raw and the harmonized series in fire cell-days, daily hotspot counts and coordinates with the days a sensor was down, and the held-out error with its two baselines from `harmonization_report.json` |
-| Web app: 3D satellite globe, date and time picker, filters, calendar, charts, downloads | done; a region can be chosen in the filters or a box typed in degrees; the calendar opens on the log scale; downloads: calendar data as CSV, every chart as PNG |
+| Web app: 3D satellite globe, date and time picker, filters, calendar, charts, downloads | done; a region can be picked on the globe or a box typed in degrees; the calendar opens on the log scale; downloads: calendar data as CSV, every chart as PNG |
 | Area of interest drawn on the globe | done; "Draw an area" places the corners of a polygon by click, and the calendar, the charts and both CSV downloads then count what is inside its outline; the area travels in the link (`&area=lon,lat;...`). Only inside the regions that have data |
-| Country picked on the globe | done for the countries with data (Argentina, Ukraine); a double-click or a double tap on a country outlines its border, and the calendar, the charts and the downloads then count what is inside it; the country travels in the link (`&country=Name`). Any other country of the world can be picked too and shows a "No record yet" card until its data are loaded: one entry in `config/regions.yaml`, then `make data` |
 | Headline: the season's peak against its history | done; the busiest of the last 12 months of the period, against the same month in every year of the record |
 | Unusual months and the area in words | done; a card lists the months that stand out from the same month of the other years (robust z of 3.5 or more and beyond the method's error), largest first, each showing its year on the calendar; "In short" says the peak months, the busiest year, the change between the halves of the period, the season's verdict and what stands out, from those figures only |
 | Peak burning months (critical periods) | done; a card under the calendar names the fewest months that hold 60% of a typical year of the area, with each month's share, a table view and arrow-key reading |
@@ -93,7 +92,6 @@ make api                   # serve the API on http://localhost:8000 (endpoints l
 make web                   # serve the web app on http://localhost:5173 (needs `make api` running, and Node 24)
 make test                  # pytest and the web tests (run `npm install` in web/ once)
 make lint                  # ruff + English-only check
-make borders               # rebuild web/public/countries.geojson from Natural Earth (only when the borders change)
 ```
 
 `make data` needs no account or key. It downloads public yearly CSV files from FIRMS
@@ -170,9 +168,6 @@ The globe in the web app shows:
   System (ESDIS).
 - Borders, place labels and the street map: [OpenFreeMap](https://openfreemap.org/),
   [OpenMapTiles](https://openmaptiles.org/), data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
-- Borders a country is picked and counted by: [Natural Earth](https://www.naturalearthdata.com/) 1:10m
-  Admin 0 - Countries (public domain), simplified to about 2 km by `make borders` into
-  `web/public/countries.geojson`.
 
 The same credits are in the globe's legend.
 
