@@ -504,6 +504,19 @@ svg {
   stroke: var(--surface);
   stroke-width: 2;
 }
+/* A second record over the columns (the raw record on the yearly chart): neutral ink, so the blue stays "burning". */
+.overlay-line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.overlay-dot {
+  fill: var(--ink);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
 .crosshair,
 .marker {
   stroke: var(--axis);

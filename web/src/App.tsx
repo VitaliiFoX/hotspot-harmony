@@ -50,6 +50,8 @@ export function App() {
   const [validation, setValidation] = useState<Validation | null>(null);
   const [filters, setFilters] = useState<FilterState | null>(null);
   const [calendar, setCalendar] = useState<Calendar | null>(null);
+  // The same view in the record not on screen, from the look-ahead: the raw line over the harmonized years.
+  const [otherCalendar, setOtherCalendar] = useState<Calendar | null>(null);
   const [date, setDate] = useState<string | null>(null);
   // Time of day on the globe, in minutes after 00:00 UTC.
   const [time, setTime] = useState<number>(() => {
@@ -220,9 +222,14 @@ export function App() {
       setHighlightYear((year) => (year && result.yearly.some((y) => y.year === year) ? year : result.anomaly.year));
       const other = otherSeries(filters.series, meta?.series ?? []);
       const ahead = other && { ...body, series: other };
-      if (ahead && !cache.current.get(ahead)) {
+      const known = ahead ? cache.current.get(ahead) : undefined;
+      setOtherCalendar(known ?? null);
+      if (ahead && !known) {
         fetchCalendar(ahead, controller.signal)
-          .then((result) => cache.current.set(ahead, result))
+          .then((result) => {
+            cache.current.set(ahead, result);
+            if (!controller.signal.aborted) setOtherCalendar(result);
+          })
           .catch(() => undefined); // a failed look-ahead costs nothing: the switch will ask again
       }
     };
@@ -287,6 +294,11 @@ export function App() {
         ? { year: Number(viirsTakesOver.from.slice(0, 4)), label: "VIIRS NOAA-20 takes over" }
         : undefined;
   const year = highlightYear ?? calendar?.anomaly.year ?? 0;
+  // Over the harmonized columns, the raw record as a line: its jump in 2012 is what the harmonization removes.
+  const rawLine =
+    calendar?.series === "harmonized" && otherCalendar?.series === "raw"
+      ? { yearly: otherCalendar.yearly, label: "Raw record", unit: otherCalendar.unit, columns: "Harmonized record" }
+      : undefined;
   // The trust block reads the country figure only when the area is the region's whole box, as checked.
   const regionBox = meta?.regions.find((r) => r.name === filters?.region)?.bbox;
   const wholeRegion = Boolean(
@@ -448,11 +460,15 @@ export function App() {
               />
               <ChartCard
                 title="Burning per year"
-                subtitle={`Yearly ${unit} within the selected period`}
-                chart={
-                  <YearlyChart yearly={calendar.yearly} unit={unit} sensorSwitch={sensorSwitch} />
+                subtitle={
+                  rawLine && meta
+                    ? `Yearly ${unit} within the selected period. The line is the raw record: MODIS before ${monthLabel(meta.raw_sensor_switch)}, VIIRS S-NPP from then on, in ${rawLine.unit} with no correction`
+                    : `Yearly ${unit} within the selected period`
                 }
-                table={<YearlyTable yearly={calendar.yearly} unit={unit} />}
+                chart={
+                  <YearlyChart yearly={calendar.yearly} unit={unit} sensorSwitch={sensorSwitch} line={rawLine} />
+                }
+                table={<YearlyTable yearly={calendar.yearly} unit={unit} line={rawLine} />}
                 pngName={exportName(["burning-per-year", ...fileParts], "png")}
               />
             </div>

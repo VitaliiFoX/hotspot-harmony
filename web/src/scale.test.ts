@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  SEQUENTIAL, ZERO_FILL, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel, niceTicks, position,
+  SEQUENTIAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel, niceTicks,
+  position, valuesByYear,
 } from "./scale";
 
 describe("position", () => {
@@ -79,5 +80,41 @@ describe("columnPath", () => {
   });
   it("shrinks the radius for a column shorter than it", () => {
     expect(columnPath(0, 100, 20, 2)).toBe("M0,100 L0,100 Q0,98 2,98 L18,98 Q20,98 20,100 L20,100 Z");
+  });
+});
+
+describe("valuesByYear", () => {
+  const bars = [
+    { year: 2011, value: 10, complete: true },
+    { year: 2012, value: 12, complete: true },
+    { year: 2013, value: 11, complete: false },
+  ];
+  it("puts the line's value under each column's year", () => {
+    const raw = [
+      { year: 2011, value: 10, complete: true },
+      { year: 2012, value: 25, complete: true },
+      { year: 2013, value: 22, complete: false },
+    ];
+    expect(valuesByYear(bars, raw)).toEqual([10, 25, 22]);
+  });
+  it("leaves a gap where the line has no such year, and ignores years with no column", () => {
+    const raw = [
+      { year: 2010, value: 9, complete: true },
+      { year: 2011, value: 10, complete: true },
+      { year: 2013, value: 22, complete: true },
+    ];
+    expect(valuesByYear(bars, raw)).toEqual([10, null, 22]);
+  });
+});
+
+describe("brokenLinePath", () => {
+  it("joins the points in order", () => {
+    expect(brokenLinePath([[0, 10], [20, 5], [40, 8]])).toBe("M0,10 L20,5 L40,8");
+  });
+  it("starts again after a gap, so a missing year is not bridged", () => {
+    expect(brokenLinePath([[0, 10], null, [40, 8], [60, 2]])).toBe("M0,10 M40,8 L60,2");
+  });
+  it("is empty without points", () => {
+    expect(brokenLinePath([null, null])).toBe("");
   });
 });
