@@ -14,6 +14,7 @@ import os
 import sys
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 from pathlib import Path
 
 import requests
@@ -90,7 +91,7 @@ def extract_countries(zip_path: Path, archive: str, year: int, raw: Path, force:
     return written
 
 
-def fetch_world(archive: str, year: int, raw: Path, force: bool) -> tuple[str, str, int]:
+def fetch_world(archive: str, year: int, raw: Path, force: bool, extract: bool = True) -> tuple[str, str, int]:
     name = f"{archive}_{year}_all_countries.zip"
     dest = raw / "zips" / name
     status = "cached"
@@ -98,6 +99,8 @@ def fetch_world(archive: str, year: int, raw: Path, force: bool) -> tuple[str, s
         status = download(WORLD_ZIP_URL.format(archive=archive, year=year), dest)
         if status != "downloaded":
             return name, status, 0
+    if not extract:
+        return name, status, dest.stat().st_size
     try:
         written = extract_countries(dest, archive, year, raw, force)
     except zipfile.BadZipFile as e:
@@ -114,6 +117,11 @@ def main() -> int:
     ap.add_argument("--data", type=Path, default=DEFAULT_DATA)
     ap.add_argument("--country", action="append", help="limit to this country (repeatable); default: all in config")
     ap.add_argument("--force", action="store_true", help="download again even if the file exists")
+    ap.add_argument(
+        "--zips-only",
+        action="store_true",
+        help="world mode: keep the global zips without extracting them (enough for pipeline.day_points)",
+    )
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -121,7 +129,7 @@ def main() -> int:
     if cfg.world:
         if args.country:
             print("note: --country is ignored in world mode; the global zips hold every country")
-        task, jobs = fetch_world, world_jobs(cfg, dt.date.today().year)
+        task, jobs = partial(fetch_world, extract=not args.zips_only), world_jobs(cfg, dt.date.today().year)
     else:
         task, jobs = fetch, archive_jobs(cfg, cfg.region_names(args.country), dt.date.today().year)
     total = failed = 0

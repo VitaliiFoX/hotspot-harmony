@@ -29,16 +29,11 @@ end"""
 CSV_TYPES = "{'acq_time': 'VARCHAR', 'confidence': 'VARCHAR', 'satellite': 'VARCHAR', 'version': 'VARCHAR'}"
 
 
-def normalize_sensor(con: duckdb.DuckDBPyConnection, files: list[Path], sensor_id: str, points: Path) -> int:
-    """Write the CSV files of one sensor as points/sensor=<id>/year=<yyyy>/*.parquet. Returns the row count."""
-    out = points / f"sensor={sensor_id}"
-    if out.exists():
-        shutil.rmtree(out)  # no stale partitions from an earlier run
-    points.mkdir(parents=True, exist_ok=True)
+def point_rows(files: list[Path], sensor_id: str) -> str:
+    """SQL that reads the CSV files of one sensor as rows of the point schema, partition columns included."""
     file_list = ", ".join(f"'{f.as_posix()}'" for f in files)
     hhmm = "lpad(acq_time, 4, '0')"
-    con.execute(f"""
-        copy (
+    return f"""
             select latitude as lat,
                    longitude as lon,
                    cast(acq_date as timestamp)
@@ -60,7 +55,17 @@ def normalize_sensor(con: duckdb.DuckDBPyConnection, files: list[Path], sensor_i
                    regexp_extract(filename, '_[0-9]{{4}}_(.+)\\.csv$', 1) as country,
                    '{sensor_id}' as sensor,
                    year(acq_date) as year
-            from read_csv([{file_list}], union_by_name = true, filename = true, types = {CSV_TYPES})
+            from read_csv([{file_list}], union_by_name = true, filename = true, types = {CSV_TYPES})"""
+
+
+def normalize_sensor(con: duckdb.DuckDBPyConnection, files: list[Path], sensor_id: str, points: Path) -> int:
+    """Write the CSV files of one sensor as points/sensor=<id>/year=<yyyy>/*.parquet. Returns the row count."""
+    out = points / f"sensor={sensor_id}"
+    if out.exists():
+        shutil.rmtree(out)  # no stale partitions from an earlier run
+    points.mkdir(parents=True, exist_ok=True)
+    con.execute(f"""
+        copy ({point_rows(files, sensor_id)}
         ) to '{points.as_posix()}'
           (format parquet, partition_by (sensor, year), overwrite_or_ignore true, compression zstd)
     """)
