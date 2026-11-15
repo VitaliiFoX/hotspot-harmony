@@ -136,8 +136,20 @@ h2 {
 }
 .top-options {
   display: flex;
+  align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
+}
+/* Share: an icon and a word that turns into "Link copied" for a moment after a click. */
+.share,
+.stage-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.share {
+  min-height: 40px;
 }
 
 input,

@@ -464,6 +464,9 @@ export const UK: Record<string, string> = {
   "See what is missing": "Подивитися, чого бракує",
   "Let the country go": "Прибрати країну",
   "Hotspots on {date}": "Гарячі точки {date}",
+  "Link copied": "Посилання скопійовано",
+  "Copy the address from the browser bar": "Скопіюйте адресу з рядка браузера",
+  "Share this view": "Поділитися",
   "within the error": "у межах похибки",
   "Where it burns most, {start} to {end}, {record}: {unit} a year, {deg}° cells":
     "Де горить найбільше, {start} – {end}, {record}: {unit} за рік, клітинки {deg}°",

@@ -22,6 +22,7 @@ import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./component
 import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { InShort } from "./components/InShort";
+import { ShareButton } from "./components/ShareButton";
 import { TopPlaces } from "./components/TopPlaces";
 import { UnusualMonths } from "./components/UnusualMonths";
 import { summaryLines, unusualMonths } from "./insights";
@@ -551,6 +552,7 @@ export function App() {
             {picked && <h2 className="place">{t(picked.name)}</h2>}
           </div>
           <div className="top-options">
+            <ShareButton className="ghost share" />
             <label className="theme">
               <span>{t("Language")}</span>
               <select value={language()} onChange={(event) => switchLanguage(event.target.value as Lang)}>

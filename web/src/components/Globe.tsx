@@ -6,6 +6,7 @@ import {
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { ShareButton } from "./ShareButton";
 import { formatCount, monthTitle, numberLocale, t } from "../i18n";
 import { formatValue } from "../scale";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
@@ -1046,6 +1047,7 @@ export function Globe({
           <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={toggleTable}>
             {showTable ? (view === "flat" ? t("Show map") : t("Show globe")) : t("Show table")}
           </button>
+          <ShareButton className="stage-toggle stage-share" />
         </div>
       </div>
 
