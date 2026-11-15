@@ -324,6 +324,15 @@ function monthOf(index: number): string {
   return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
 }
 
+/** The width in pixels a month needs on an axis for its three letters; under it the labels would touch. */
+export const MONTH_TICK_ROOM = 30;
+
+/** The label of a month on an axis: "Aug" where each month has `room` pixels for it, else its first letter, "A". */
+export function monthTick(month: number, room: number): string {
+  const short = monthShort(month);
+  return room >= MONTH_TICK_ROOM ? short : short.charAt(0).toUpperCase();
+}
+
 /** "2000-11", "2002-06" -> "Nov 2000 – Jun 2002": the dates of a part of the record on the timeline. */
 export function monthRange(from: string, to: string): string {
   const short = (yyyyMm: string) => `${monthShort(Number(yyyyMm.slice(5, 7)))} ${yyyyMm.slice(0, 4)}`;

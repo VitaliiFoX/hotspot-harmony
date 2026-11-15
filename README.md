@@ -73,7 +73,9 @@ FIRMS CSV archives
 | [`CLAUDE.md`](CLAUDE.md) | rules for coding agents, reference numbers, FIRMS facts that are easy to get wrong |
 | [`data/README.md`](data/README.md) | every generated file, which step writes it, and what is in it |
 
-Pure logic is kept out of React components and tested: each `web/src/<name>.ts` has a `<name>.test.ts` beside it.
+Pure logic is kept out of React components and tested: each `web/src/<name>.ts` that holds logic has a
+`<name>.test.ts` beside it. Three files hold none and have no test of their own: `api.ts` (the calls to the API),
+`hooks.ts` (two React hooks) and `uk.ts` (the Ukrainian texts, which `i18n.test.ts` checks against the page).
 
 ## Why
 
@@ -108,6 +110,7 @@ on which satellite was flying.
 | Globe or flat map | done; a switch on the map lays the same world flat (Web Mercator) with every layer, the drawn area and the tiles kept; the choice travels in the link (`&view=flat`) |
 | Example areas | done; links in the filters card open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
 | Link to a view | done; the address bar stays clean and the view survives a reload; "Share this view" copies a link that opens the same filters, area, day on the globe, theme and language |
+| Page layout, phones and tablets | done; the page opens with a bar over the map that stays at the top of the window all the way down: the name of the project, the map and the sections of the report (Overview, Calendar, Season, By year, Places, Trust) with the one on screen marked, the record switch, the language and the theme; the report opens with the name of the place and its period. Under 900 px the map comes first and the date panel folds into one bar under it; charts shorten their month labels, the busiest cells turn into blocks and the unusual months into a row to swipe. The period is two lists (month, year), the same in every browser |
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
 | Hotspots of every country for the globe's day view | file built, not served yet; `make day-points` reads the 48 FIRMS global zips (9.4 GB) one at a time into `data/day_points/`: 277 million hotspots of 234 countries, 2000-11 to 2025-12, in 1.14 GB (MODIS before 2012-02, VIIRS S-NPP after, filters applied). For Ukraine and Argentina it holds exactly the hotspots of `data/points/`. On 1,459 of its 9,131 days it holds more than the API's day limit of 50,000 (the busiest, 2023-09-23, 148,702). The API's day view does not read it yet |
 | Every country harmonized and checked | pipeline done, not served yet; `make world` fits the table by fire power per country (by 10-degree squares where held-out years favour them) and checks 128 countries, with 99.8% of the world's fire cell-days, on years the method did not see: [docs/VALIDATION_WORLD.md](docs/VALIDATION_WORLD.md) (generated). The API and the web app still serve Ukraine and Argentina |
@@ -277,7 +280,9 @@ The same credits are in the globe's legend.
   fixed in follow-up pull requests.
 - **Competitor scan.** The assistant read the public repositories of other entries to this challenge
   (their README files and code) and summarised their methods, validation and demos, so that we could
-  see where this project stands. Ideas only: no code was copied.
+  see where this project stands. It also looked at the public demo page of one entry before reworking
+  the layout of our page (a bar with the sections, numbered sections, the phone layout). Ideas only: no
+  code, text or assets were copied.
 - **Inside the product, no language model runs.** The harmonization fits its own small models to the
   FIRMS data (a table by fire power, and gradient boosting from scikit-learn where it beats the table on
   held-out years); anomalies and peak burning months are plain statistics.

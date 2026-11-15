@@ -73,6 +73,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
 const SVG_PAINT = [
   "fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "stroke-linecap", "stroke-linejoin",
   "opacity", "filter", "font-family", "font-size", "font-weight", "font-variant-numeric", "text-anchor",
+  "stop-color", "stop-opacity",
 ];
 
 /** A chart card as a PNG at twice the screen resolution, without its buttons, on the card's own background. */

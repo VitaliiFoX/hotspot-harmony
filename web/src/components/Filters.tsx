@@ -3,6 +3,7 @@ import { t } from "../i18n";
 import type { Meta, SeriesName } from "../api";
 import type { Corner } from "../area";
 import type { Country, Place } from "../countries";
+import { MonthField } from "./MonthField";
 import { RegionSearch } from "./RegionSearch";
 
 export type FilterState = {
@@ -67,28 +68,6 @@ export function Filters({
   const fixed = drawn || value.country !== null;
   return (
     <form className="filters" onSubmit={(event) => event.preventDefault()}>
-      <label>
-        <span>{t("Period, from")}</span>
-        <input
-          type="month"
-          value={value.start}
-          min={meta.first_month ?? undefined}
-          max={value.end}
-          pattern="\d{4}-\d{2}"
-          onChange={(event) => event.target.value && onChange({ ...value, start: event.target.value })}
-        />
-      </label>
-      <label>
-        <span>{t("to")}</span>
-        <input
-          type="month"
-          value={value.end}
-          min={value.start}
-          max={meta.last_month ?? undefined}
-          pattern="\d{4}-\d{2}"
-          onChange={(event) => event.target.value && onChange({ ...value, end: event.target.value })}
-        />
-      </label>
       <RegionSearch
         regions={meta.regions}
         countries={onPickCountry ? countries : []}
@@ -125,6 +104,20 @@ export function Filters({
           )}
         </div>
       </fieldset>
+      <MonthField
+        label={t("Period, from")}
+        value={value.start}
+        min={meta.first_month ?? value.start}
+        max={value.end}
+        onChange={(start) => onChange({ ...value, start })}
+      />
+      <MonthField
+        label={t("to")}
+        value={value.end}
+        min={value.start}
+        max={meta.last_month ?? value.end}
+        onChange={(end) => onChange({ ...value, end })}
+      />
       <div className="filters-actions">
         <fieldset className="filters-record">
           <legend>{t("Record")}</legend>

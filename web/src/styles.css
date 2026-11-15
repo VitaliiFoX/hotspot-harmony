@@ -15,6 +15,10 @@
   --accent-soft: #86b6ef;
   --wash: rgba(11, 11, 11, 0.05);
   --danger: #d03b3b;
+  --ember: #c2410c;
+  --heat-0: #c9265b;
+  --heat-1: #dd5a0a;
+  --heat-2: #dc7a04;
   --tooltip-bg: rgba(20, 22, 28, 0.86);
   --tooltip-solid: #14161c;
   --tooltip-ink: #ffffff;
@@ -40,6 +44,10 @@
     --accent-soft: #184f95;
     --wash: rgba(255, 255, 255, 0.07);
     --danger: #e66767;
+    --ember: #ff8a3d;
+    --heat-0: #f9506b;
+    --heat-1: #fe8915;
+    --heat-2: #ffc233;
     --tooltip-bg: rgba(236, 240, 248, 0.92);
     --tooltip-solid: #eceff8;
     --tooltip-ink: #0a1020;
@@ -62,6 +70,10 @@
   --accent-soft: #184f95;
   --wash: rgba(255, 255, 255, 0.07);
   --danger: #e66767;
+  --ember: #ff8a3d;
+  --heat-0: #f9506b;
+  --heat-1: #fe8915;
+  --heat-2: #ffc233;
   --tooltip-bg: rgba(236, 240, 248, 0.92);
   --tooltip-solid: #eceff8;
   --tooltip-ink: #0a1020;
@@ -71,12 +83,19 @@
 * {
   box-sizing: border-box;
 }
+/* Every jump inside the page lands under the bar that stays at the top of the window. */
+html {
+  scroll-padding-top: 64px;
+}
 body {
   margin: 0;
   background: var(--page);
   color: var(--ink);
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 h1,
 h2,
@@ -102,20 +121,218 @@ h2 {
 .page {
   max-width: 1240px;
   margin: 0 auto;
-  padding: 28px 20px 48px;
+  padding: 20px 20px 48px;
   display: grid;
   gap: 16px;
 }
 .page > *,
-.content > * {
+.content > *,
+.section > *,
+.overview > * {
   min-width: 0;
 }
-/* The country picked on the globe, over everything the page says about it. */
-.place {
-  margin-top: 2px;
-  font-size: 26px;
+
+/* The head of the page, over the map: it stays at the top of the window all the way down. The name of the
+   project, where the reader is (the map or a section of the report), the switch between the two records, the
+   language and the theme. --bar-height is what the map's stage leaves free for it. */
+:root {
+  --bar-height: 56px;
+}
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  border-bottom: 1px solid transparent;
+  background: var(--page);
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .bar {
+    background: color-mix(in srgb, var(--page) 80%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
+    backdrop-filter: blur(16px) saturate(170%);
+  }
+}
+.bar.is-stuck {
+  border-bottom-color: var(--border);
+}
+.bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1240px;
+  min-height: 56px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+.bar-brand {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+  margin-right: 4px;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.bar-brand > h1 {
+  font-size: 15px;
   font-weight: 650;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
+}
+/* The mark: one hotspot, the dot of the map's legend. */
+.bar-mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ember);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ember) 26%, transparent);
+}
+/* The row of links scrolls sideways where it does not fit; its end fades, so it reads as a row that goes on. */
+.bar-links {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 24px 4px 4px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.bar-links::-webkit-scrollbar {
+  display: none;
+}
+.bar-links a {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.bar-links a:hover {
+  background: var(--wash);
+  color: var(--ink);
+}
+.bar-links a[aria-current="true"] {
+  background: var(--ink);
+  color: var(--page);
+  font-weight: 600;
+}
+.bar-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+.bar-lang > button {
+  min-width: 34px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+button.bar-theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 12px;
+  background: var(--wash);
+  color: var(--ink-2);
+}
+button.bar-theme:hover:not(:disabled) {
+  color: var(--ink);
+}
+@media (max-width: 1040px) {
+  .bar .bar-record {
+    display: none;
+  }
+}
+/* A phone: two rows. The name with the language and the theme, then the links. Only the links stay at the top of
+   the window: the bar sticks one row higher than the window, so its first row scrolls away with the page. */
+@media (max-width: 720px) {
+  :root {
+    --bar-height: 92px;
+  }
+  .bar {
+    top: -48px;
+  }
+  .bar-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand tools"
+      "links links";
+    gap: 0 8px;
+    min-height: 0;
+    padding: 0 12px;
+  }
+  .bar-brand {
+    grid-area: brand;
+    height: 48px;
+  }
+  .bar-brand > h1 {
+    font-size: 17px;
+  }
+  .bar-tools {
+    grid-area: tools;
+  }
+  .bar-links {
+    grid-area: links;
+    margin: 0 -12px;
+    padding: 4px 24px 6px 8px;
+  }
+  .bar-links a {
+    height: 34px;
+  }
+}
+
+/* The head of the report: what it is, the place it is about, and how the view is cut. */
+.report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  padding: 8px 2px 4px;
+}
+.eyebrow {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.place {
+  margin-top: 4px;
+  font-size: clamp(28px, 2.2vw + 20px, 44px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+}
+.report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 0;
+  list-style: none;
+}
+.report-meta li {
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
 }
 /* A picked country no record is loaded for: what will be here, and how to load it. */
 .no-data {
@@ -127,19 +344,6 @@ h2 {
   max-width: 70ch;
   color: var(--ink-2);
 }
-.top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-.top-options {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-}
 /* Share: an icon and a word that turns into "Link copied" for a moment after a click. */
 .share,
 .stage-share {
@@ -150,6 +354,46 @@ h2 {
 }
 .share {
   min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+/* A section of the report: a number and a name over a rule, then its cards. */
+.section {
+  display: grid;
+  gap: 16px;
+}
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.section-label > span {
+  color: var(--ember);
+}
+.section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--grid);
+}
+/* The verdict and the area in short, side by side where there is room. */
+.overview {
+  display: grid;
+  gap: 16px;
+}
+@media (min-width: 1100px) {
+  .overview {
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    align-items: start;
+  }
 }
 
 input,
@@ -239,14 +483,12 @@ legend {
   color: var(--ink-2);
   font-size: 12px;
 }
-label.inline,
-.theme {
+label.inline {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-label.inline > span,
-.theme > span {
+label.inline > span {
   margin: 0;
 }
 /* A grid of one column: the legend on its row, the fields under it. As a grid row the legend sets the width of
@@ -355,6 +597,17 @@ fieldset > legend {
 .filters-download:hover:not(:disabled) {
   border-color: var(--ink-2);
   color: var(--ink);
+}
+/* A month of a year as two lists: the same in every browser, in the language of the page. */
+.month-field-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.month-field-lists {
+  display: flex;
+  gap: 6px;
 }
 /* The region as a search: a button that names the place, and under it a field over the list of what it finds. */
 .region-search {
@@ -642,10 +895,13 @@ fieldset > legend {
    a strip of those years. Its lines stay short enough to read (about 75 characters). */
 .headline {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
+/* One column that may shrink: the strip draws to the width it is given, so it must never hold the card wide. */
 .headline-card {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 .headline-top {
@@ -728,7 +984,7 @@ fieldset > legend {
   stroke-width: 1;
 }
 .strip-dot.is-own {
-  fill: var(--accent);
+  fill: var(--heat-1);
   fill-opacity: 1;
   stroke-width: 2;
 }
@@ -945,11 +1201,24 @@ svg {
 .line-muted {
   stroke: var(--muted);
 }
+/* The marks that say "how much burning" are warm, as the calendar and the map are: one gradient per chart
+   (HeatGradient.tsx) from coral at the baseline to amber at the top of the tallest mark. The plain orange under
+   it is what a mark shows if the gradient is missing. Blue is left to links and the focus ring. */
+.heat-stop-0 {
+  stop-color: var(--heat-0);
+}
+.heat-stop-1 {
+  stop-color: var(--heat-1);
+}
+.heat-stop-2 {
+  stop-color: var(--heat-2);
+}
 .line-accent {
-  stroke: var(--accent);
+  stroke: var(--heat-1);
+  stroke-width: 2.5;
 }
 .end-dot {
-  fill: var(--accent);
+  fill: var(--heat-1);
   stroke: var(--surface);
   stroke-width: 2;
 }
@@ -979,10 +1248,11 @@ svg {
   font-size: 12px;
 }
 .column {
-  fill: var(--accent);
+  fill: var(--heat-1);
 }
+/* A year the record does not cover in full: the same gradient, fainter. */
 .column.is-partial {
-  fill: var(--accent-soft);
+  fill-opacity: 0.45;
 }
 .column.is-active {
   filter: brightness(1.15);
@@ -1020,10 +1290,21 @@ svg {
   background: var(--muted);
   opacity: 0.3;
 }
+/* The keys of the warm marks: the gradient in small, upright for a column and flat for a line. */
+.heat-key {
+  background: linear-gradient(to top, var(--heat-0), var(--heat-1) 50%, var(--heat-2));
+}
+.heat-key.is-partial {
+  opacity: 0.45;
+}
+.heat-line-key {
+  height: 3px;
+  background: linear-gradient(90deg, var(--heat-0), var(--heat-1) 50%, var(--heat-2));
+}
 
 .tooltip {
   position: fixed;
-  z-index: 10;
+  z-index: 40;
   padding: 8px 10px;
   background: var(--tooltip-bg);
   -webkit-backdrop-filter: blur(12px);
@@ -1096,7 +1377,9 @@ tbody th {
 }
 
 .credit {
-  padding-top: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--grid);
   color: var(--muted);
   font-size: 12px;
 }
@@ -1381,8 +1664,10 @@ td.text-cell {
 /* The cards "In short" links to: a little air above when scrolled to, and no ring when focused by a click. */
 #peak-months,
 #burning-per-year,
-#unusual-months {
-  scroll-margin-top: 16px;
+#unusual-months,
+#burning-calendar,
+.section {
+  scroll-margin-top: 8px;
 }
 .card[tabindex="-1"]:focus:not(:focus-visible) {
   outline: none;
@@ -1425,7 +1710,7 @@ td.text-cell {
 }
 .unusual-list .is-above strong::before {
   content: "▲ ";
-  color: var(--accent);
+  color: var(--ember);
 }
 .unusual-list .is-below strong::before {
   content: "▼ ";
@@ -1437,4 +1722,186 @@ td.text-cell {
 }
 .unusual-z {
   color: var(--muted);
+}
+
+/* The months over the calendar: three letters where a column has room for them, one on a phone. */
+.calendar-month-letter {
+  display: none;
+}
+.strip-head > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* Phones. Less air around the cards, fields that fill the row, and lists that would run long turned sideways. */
+@media (max-width: 560px) {
+  :root {
+    --radius-card: 16px;
+  }
+  .page {
+    gap: 12px;
+    padding: 12px 12px 40px;
+  }
+  .content,
+  .section,
+  .overview,
+  .pair {
+    gap: 12px;
+  }
+  .card,
+  .tile {
+    padding: 16px;
+  }
+  .card-head {
+    margin-bottom: 12px;
+  }
+  .section-label {
+    margin-top: 12px;
+  }
+  .report-head {
+    padding-top: 4px;
+  }
+  .hero {
+    font-size: 48px;
+  }
+  .headline-raw {
+    padding-left: 14px;
+  }
+  .filters > .month-field {
+    flex: 1 1 100%;
+  }
+  .month-field-lists > select {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .calendar-plate {
+    padding: 10px 8px 10px 0;
+  }
+  .calendar-grid {
+    grid-template-columns: 38px repeat(12, minmax(0, 1fr));
+  }
+  .calendar-year {
+    padding-right: 6px;
+  }
+  .calendar-cell,
+  .calendar-year {
+    height: 20px;
+  }
+  .calendar-month-short {
+    display: none;
+  }
+  .calendar-month-letter {
+    display: inline;
+  }
+  .scale-legend,
+  .calendar-note {
+    margin-left: 8px;
+  }
+  .scale-ramp {
+    flex: 1 1 120px;
+    width: auto;
+    margin-left: 0;
+  }
+  .card-downloads {
+    justify-content: flex-start;
+    gap: 4px;
+  }
+  .card-downloads > button {
+    padding: 0 10px;
+  }
+  /* Unusual months side by side, one swipe each: eight of them stacked would fill three screens. */
+  .unusual-list {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: min(82%, 300px);
+    margin: 0 -16px;
+    padding: 2px 16px 6px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: 16px;
+    scrollbar-width: none;
+  }
+  .unusual-list::-webkit-scrollbar {
+    display: none;
+  }
+  .unusual-list > li {
+    display: grid;
+    scroll-snap-align: start;
+  }
+  .unusual-list .ghost {
+    align-content: start;
+  }
+  th,
+  td {
+    padding: 6px 8px;
+  }
+}
+
+/* On a phone the busiest cells are blocks, not a table wider than the screen: the place and its button on one line,
+   the figures under them, each with the name of its column. The trust table keeps its columns and lets their
+   words wrap, so it fits with no sideways scroll. */
+@media (max-width: 640px) {
+  .top-places table,
+  .top-places tbody {
+    display: block;
+  }
+  .top-places thead {
+    display: none;
+  }
+  .top-places caption {
+    display: block;
+  }
+  .top-places .table-wrap {
+    max-height: none;
+    overflow: visible;
+  }
+  .top-places tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--grid);
+  }
+  .top-places tbody th,
+  .top-places td {
+    display: block;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    white-space: normal;
+  }
+  .top-places tbody th {
+    font-weight: 600;
+  }
+  .top-places td {
+    grid-column: 1;
+    color: var(--ink-2);
+    font-size: 12px;
+  }
+  .top-places td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--muted);
+  }
+  .top-places td.top-places-go {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .top-places td .ghost {
+    border-color: var(--border);
+    color: var(--ink);
+  }
+  .trust-table th,
+  .trust-table td {
+    padding: 6px 4px;
+    font-size: 12px;
+    white-space: normal;
+  }
+  .trust-table thead th {
+    vertical-align: bottom;
+  }
+  .trust-jump-figures {
+    gap: 12px 24px;
+  }
 }
