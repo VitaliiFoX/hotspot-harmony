@@ -6,7 +6,7 @@ import {
 import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
 } from "./area";
-import { type Country, countryBoxText, fetchCountries, findCountry, namesCountry, regionOfCountry } from "./countries";
+import { type Country, BORDER_SOURCE, countryBoxText, fetchCountries, findCountry, namesCountry, regionOfCountry } from "./countries";
 import { AnomalyTiles } from "./components/AnomalyTiles";
 import { CalendarHeatmap, CalendarTable } from "./components/CalendarHeatmap";
 import { ChartCard } from "./components/ChartCard";
@@ -106,6 +106,26 @@ export function App() {
   const [exportNote, setExportNote] = useState<string | null>(null);
   const cache = useRef(new CalendarCache());
   const lastView = useRef<FilterState | null>(null);
+  const countriesRef = useRef<Country[] | null>(null);
+  const countriesPromise = useRef<Promise<Country[]> | null>(null);
+
+  function ensureCountries(): Promise<Country[]> {
+    if (countriesRef.current !== null) return Promise.resolve(countriesRef.current);
+    if (!countriesPromise.current) {
+      countriesPromise.current = fetchCountries()
+        .then((loaded) => {
+          countriesRef.current = loaded;
+          setCountries(loaded);
+          return loaded;
+        })
+        .catch(() => {
+          countriesPromise.current = null;
+          setCountries([]);
+          return [];
+        });
+    }
+    return countriesPromise.current;
+  }
 
   useEffect(() => {
     // A missing report (404) only hides the trust block: the calendar works without it.
@@ -113,9 +133,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // Without the borders the page still works by region and box; only picking a country is off.
-    fetchCountries().then(setCountries).catch(() => setCountries([]));
-  }, []);
+    if (filters?.country && countriesRef.current === null) void ensureCountries();
+  }, [filters?.country]);
 
   useEffect(() => {
     fetchMeta()
@@ -233,7 +252,7 @@ export function App() {
   /** Take the country double-clicked on the globe as the area of interest, or go back to the region's box. */
   function pickCountry(name: string | null) {
     if (!meta) return;
-    const country = findCountry(countries ?? [], name);
+    const country = findCountry(countriesRef.current ?? countries ?? [], name);
     setFilters((current) => {
       if (!current) return current;
       if (!country) {
@@ -264,7 +283,7 @@ export function App() {
   // The area of interest behind every request and export: the drawn corners, the border of the picked country,
   // or else the typed box. Null while there is nothing to ask for: before the filters and the borders arrive, and
   // for a country no record is loaded for.
-  const area = useMemo((): { bbox: Bbox; geometry: AreaGeometry; wkt: string } | { problem: string } | null => {
+  const area = useMemo((): { bbox: Bbox; geometry: AreaGeometry; wkt: string; key?: string } | { problem: string } | null => {
     if (!filters) return null;
     if (filters.area) {
       return { bbox: cornersBounds(filters.area), geometry: cornersPolygon(filters.area), wkt: cornersWkt(filters.area) };
@@ -272,7 +291,7 @@ export function App() {
     if (filters.country) {
       if (!countries || !picked) return null; // the borders are on their way, or the name is being dropped
       // The border is not repeated as well-known text: it has thousands of points (see calendarCsv).
-      return pickedRegion ? { bbox: picked.bbox, geometry: picked.geometry, wkt: "" } : null;
+      return pickedRegion ? { bbox: picked.bbox, geometry: picked.geometry, wkt: "", key: `country:${picked.name}` } : null;
     }
     const read = readBox(filters.box);
     if ("problem" in read) return read;
@@ -285,6 +304,7 @@ export function App() {
   useEffect(() => {
     if (!filters || !area || "problem" in area) return;
     const body: CalendarBody = { geometry: area.geometry, start: filters.start, end: filters.end, series: filters.series };
+    const areaKey = area.key;
     const delay = delayFor(lastView.current, filters);
     lastView.current = filters;
     const controller = new AbortController();
@@ -294,18 +314,18 @@ export function App() {
       setHighlightYear((year) => (year && result.yearly.some((y) => y.year === year) ? year : (result.season_peak ?? result.anomaly).year));
       const other = otherSeries(filters.series, meta?.series ?? []);
       const ahead = other && { ...body, series: other };
-      const known = ahead ? cache.current.get(ahead) : undefined;
+      const known = ahead ? cache.current.get(ahead, areaKey) : undefined;
       setOtherCalendar(known ?? null);
       if (ahead && !known) {
         fetchCalendar(ahead, controller.signal)
           .then((result) => {
-            cache.current.set(ahead, result);
+            cache.current.set(ahead, result, areaKey);
             if (!controller.signal.aborted) setOtherCalendar(result);
           })
           .catch(() => undefined); // a failed look-ahead costs nothing: the switch will ask again
       }
     };
-    const cached = cache.current.get(body);
+    const cached = cache.current.get(body, areaKey);
     if (cached) {
       setLoading(false);
       show(cached);
@@ -315,7 +335,7 @@ export function App() {
       setLoading(true);
       fetchCalendar(body, controller.signal)
         .then((result) => {
-          cache.current.set(body, result);
+          cache.current.set(body, result, areaKey);
           show(result);
         })
         .catch((reason: Error) => {
@@ -451,7 +471,13 @@ export function App() {
   const fileParts = filters && calendar ? [filters.region, filters.start, filters.end, calendar.series] : [];
   function saveCalendarCsv() {
     if (!calendar || !filters || !area || "problem" in area) return;
-    const csv = calendarCsv(calendar, { region: filters.region, country: picked?.name, box: area.bbox, wkt: area.wkt });
+    const csv = calendarCsv(calendar, {
+      region: filters.region,
+      country: picked?.name,
+      areaSource: picked ? (picked.source ?? BORDER_SOURCE) : null,
+      box: area.bbox,
+      wkt: area.wkt,
+    });
     downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
   }
 
@@ -467,6 +493,7 @@ export function App() {
         focusRegion={filters?.region ?? null}
         dark={dark}
         countries={countries ?? []}
+        onEnsureCountries={ensureCountries}
         country={picked}
         countryHasData={!noData}
         onPickCountry={pickCountry}
@@ -536,6 +563,7 @@ export function App() {
             problem={problem}
             hasData={!noData}
             countries={countries ?? []}
+            onEnsureCountries={() => void ensureCountries()}
             onPickCountry={pickCountry}
           />
         )}

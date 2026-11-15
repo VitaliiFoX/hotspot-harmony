@@ -31,6 +31,8 @@ type Props = {
   hasData?: boolean;
   /** The borders of every country, for the region search; empty until they arrive. */
   countries?: Country[];
+  /** Load country borders on demand when the region search opens. */
+  onEnsureCountries?: () => void;
   /** Take a country found by the region search as the area of interest, by its border. */
   onPickCountry?: (name: string) => void;
 };
@@ -39,7 +41,7 @@ const BOX_LABELS = ["West", "South", "East", "North"] as const;
 
 /** One row of controls that scope everything below it. */
 export function Filters({
-  meta, value, onChange, onDownload, downloading, problem, hasData = true, countries = [], onPickCountry,
+  meta, value, onChange, onDownload, downloading, problem, hasData = true, countries = [], onEnsureCountries, onPickCountry,
 }: Props) {
   function pickRegion(name: string) {
     const region = meta.regions.find((r) => r.name === name);
@@ -89,6 +91,7 @@ export function Filters({
         countries={onPickCountry ? countries : []}
         current={value.country ?? value.region}
         onPick={pickPlace}
+        onOpen={onEnsureCountries}
       />
       <fieldset>
         <legend>

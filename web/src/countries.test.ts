@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Region } from "./api";
 import {
-  DOUBLE_TAP_MS, DOUBLE_TAP_PX, countryAt, countryBoxText, findCountry, insideCountry, isDoubleTap, namesCountry, readCountries,
-  searchPlaces,
-  regionOfCountry,
+  BORDER_SOURCE, DOUBLE_TAP_MS, DOUBLE_TAP_PX, countryAt, countryBoxText, findCountry, insideCountry, isDoubleTap,
+  namesCountry, readCountries, regionOfCountry, resolveTap, searchPlaces,
 } from "./countries";
 
 // Two made-up countries on a small map:
@@ -121,6 +120,41 @@ describe("isDoubleTap", () => {
   it("refuses a second tap somewhere else", () => {
     // 3-4-5 triangle scaled by 7: 21 across and 28 down are 35 px away.
     expect(isDoubleTap(first, { time: 1100, x: 121, y: 128 })).toBe(false);
+  });
+
+  it("keeps the border edition source from the collection or falls back to the pinned default", () => {
+    expect(ringland.source).toBe(BORDER_SOURCE);
+    const tagged = readCountries({
+      source: "Natural Earth 10m _ukr v5.1.2",
+      features: [{ properties: { name: "Holia", iso: "HOL", view: [4, 4, 6, 6] }, geometry: { type: "MultiPolygon", coordinates: [[square(4, 4, 6, 6)]] } }],
+    });
+    expect(tagged[0].source).toBe("Natural Earth 10m _ukr v5.1.2");
+  });
+});
+
+describe("resolveTap", () => {
+  it("picks a cell on the first tap in 'Where it burns', then promotes a double tap to the country", () => {
+    const first = resolveTap(null, { time: 1000, x: 100, y: 100, hasCell: true, hasArea: false });
+    expect(first.kind).toBe("pick-cell");
+    // The first tap set the cell as the area, so hasArea is now true on the second tap.
+    const second = resolveTap(first.nextTap, { time: 1200, x: 102, y: 101, hasCell: true, hasArea: true });
+    expect(second.kind).toBe("pick-country");
+    expect(second.nextTap).toBeNull();
+  });
+
+  it("ignores a double tap when a drawn area is already set", () => {
+    const first = resolveTap(null, { time: 1000, x: 100, y: 100, hasCell: false, hasArea: true });
+    expect(first.kind).toBe("wait");
+    const second = resolveTap(first.nextTap, { time: 1200, x: 102, y: 101, hasCell: false, hasArea: true });
+    expect(second.kind).toBe("wait");
+    expect(second.nextTap).toBeNull();
+  });
+
+  it("still picks a country on a double tap in 'Where it burns' even if an earlier cell was already selected", () => {
+    const first = resolveTap(null, { time: 1000, x: 100, y: 100, hasCell: true, hasArea: true });
+    expect(first.kind).toBe("pick-cell");
+    const second = resolveTap(first.nextTap, { time: 1200, x: 101, y: 100, hasCell: true, hasArea: true });
+    expect(second.kind).toBe("pick-country");
   });
 });
 
