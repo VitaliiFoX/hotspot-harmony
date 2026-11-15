@@ -42,6 +42,7 @@ on which satellite was flying.
 | The sensor jump on the yearly chart | done; the raw record is a line over the harmonized columns, and a strip names the sensor behind each year |
 | Sensor gap days on the globe | done; days a sensor was down are hatched in the date panel and called missing data, not a quiet day |
 | Where it burns on the globe | done; a switch colours every grid cell by harmonized fire cell-days a year per 100 km² over the chosen period; a cell says how many years it burned in and in which month most, and a click makes it the area of interest |
+| Where in the area it burns most | done; a card lists the five busiest grid cells of the chosen area with their month, and "Show on the globe" flies there |
 | Example areas | done; links under the filters open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
 | Public demo | not deployed yet |

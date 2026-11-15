@@ -607,3 +607,24 @@ def test_cells_keep_to_the_record_and_the_period(client_harmonized):
 def test_cells_reject_a_period_outside_the_record(client_harmonized):
     r = client_harmonized.get("/api/cells?start=2020-01&end=2020-12")
     assert r.status_code == 400 and "record covers" in r.json()["detail"]
+
+
+def test_top_places_are_the_busiest_cells_inside_the_area(client_harmonized):
+    # The test area covers A (22.625 a year over 2010-2013) and B (1.0); C (125.0) lies outside it.
+    r = client_harmonized.post("/api/cells/top", json={"geometry": AREA, "start": "2010-01", "end": "2013-12"})
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["start"], body["end"], body["years"], body["unit"]) == (
+        "2010-08", "2013-08", 4, "MODIS-equivalent fire cell-days",
+    )
+    assert [(c["lat"], c["lon"], c["per_year"], c["peak_month"]) for c in body["cells"]] == [
+        (0.5, 0.5, 22.625, 8), (0.5, 1.5, 1.0, 8),
+    ]
+
+
+def test_top_places_keep_to_the_limit_and_the_regions(client_harmonized):
+    whole = box(0, 0, 10, 10)
+    first = client_harmonized.post("/api/cells/top", json={"geometry": whole, "limit": 1}).json()["cells"]
+    assert [(c["lat"], c["lon"]) for c in first] == [(5.5, 5.5)]  # C burns most
+    r = client_harmonized.post("/api/cells/top", json={"geometry": box(50, 50, 51, 51)})
+    assert r.status_code == 422  # outside every region, like the calendar

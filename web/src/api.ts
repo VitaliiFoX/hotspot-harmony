@@ -161,6 +161,16 @@ export async function fetchCells(start: string, end: string, signal?: AbortSigna
   return response.json();
 }
 
+/** POST /api/cells/top: the busiest cells inside an area, most burning a year first. */
+export async function fetchTopCells(
+  body: { geometry: Polygon; start: string; end: string; limit?: number },
+  signal?: AbortSignal,
+): Promise<Cells> {
+  const response = await post("/api/cells/top", { ...body, series: "harmonized" }, signal);
+  if (!response.ok) throw await failure(response);
+  return response.json();
+}
+
 export async function fetchValidation(): Promise<Validation> {
   const response = await fetch(`${BASE}/api/validation`);
   if (!response.ok) throw await failure(response);

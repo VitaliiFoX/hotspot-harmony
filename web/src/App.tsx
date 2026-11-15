@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  type Bbox, type Calendar, type DayHotspots, type Meta, type MonthDays, type Polygon, type SeriesName, type Validation, boxPolygon,
-  fetchCalendar, fetchDayHotspots, fetchHotspotsCsv, fetchMeta, fetchMonthDays, fetchValidation,
+  type Bbox, type Calendar, type Cells, type DayHotspots, type Meta, type MonthDays, type Polygon, type SeriesName, type Validation,
+  boxPolygon, fetchCalendar, fetchDayHotspots, fetchHotspotsCsv, fetchMeta, fetchMonthDays, fetchTopCells, fetchValidation,
 } from "./api";
 import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
@@ -17,6 +17,7 @@ import { GlobeBoundary } from "./components/GlobeBoundary";
 import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
+import { TopPlaces } from "./components/TopPlaces";
 import { TrustBlock } from "./components/TrustBlock";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
@@ -55,6 +56,9 @@ export function App() {
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   // The same view in the record not on screen, from the look-ahead: the raw line over the harmonized years.
   const [otherCalendar, setOtherCalendar] = useState<Calendar | null>(null);
+  // The busiest grid cells of the area, and the one the globe should fly to ("Show on the globe").
+  const [topCells, setTopCells] = useState<Cells | null>(null);
+  const [globeFocus, setGlobeFocus] = useState<{ lat: number; lon: number; n: number } | null>(null);
   const [date, setDate] = useState<string | null>(null);
   // Time of day on the globe, in minutes after 00:00 UTC.
   const [time, setTime] = useState<number>(() => {
@@ -263,6 +267,25 @@ export function App() {
     };
   }, [filters, area, meta]);
 
+  // Where in the area it burns most, harmonized record over the same period. Fetched with the view; its failure only
+  // hides the card.
+  useEffect(() => {
+    if (!filters || !area || "problem" in area || !meta?.series.includes("harmonized")) {
+      setTopCells(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchTopCells({ geometry: area.geometry, start: filters.start, end: filters.end }, controller.signal)
+      .then(setTopCells)
+      .catch(() => setTopCells(null));
+    return () => controller.abort();
+  }, [area, filters?.start, filters?.end, meta]);
+
+  function showOnGlobe(cell: { lat: number; lon: number }) {
+    setGlobeFocus((current) => ({ ...cell, n: (current?.n ?? 0) + 1 }));
+    document.querySelector(".stage")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function download() {
     if (!filters || !area || "problem" in area) return;
     setDownloading(true);
@@ -348,6 +371,7 @@ export function App() {
         onDrawArea={drawArea}
         areaError={filters?.area ? error : null}
         period={filters ? { start: filters.start, end: filters.end } : null}
+        focus={globeFocus}
         panel={
           date && firstDay && finalDay ? (
             <DateTimePanel
@@ -499,6 +523,8 @@ export function App() {
               }
               pngName={exportName(["peak-burning-months", ...fileParts], "png")}
             />
+
+            {topCells && <TopPlaces top={topCells} onShow={showOnGlobe} />}
 
             <div className="pair">
               <ChartCard

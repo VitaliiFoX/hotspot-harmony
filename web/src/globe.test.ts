@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  MERCATOR_LIMIT, cellAreaKm2, cellSentence, cellSquares, cellStops, countHotspots, dayKey, stopLabel, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
+  MERCATOR_LIMIT, cellAreaKm2, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
@@ -258,5 +258,12 @@ describe("cellSentence", () => {
     expect(cellSentence(cell, 4, "fire cell-days", 1)).toBe(
       "Burned in 1 of 4 years, about 1.0 fire cell-days a year (0.01 per 100 km²), most in March.",
     );
+  });
+});
+
+describe("latLonLabel", () => {
+  it("names a cell centre with hemispheres, two decimals", () => {
+    expect(latLonLabel(48.125, 37.625)).toBe("48.13° N, 37.63° E");
+    expect(latLonLabel(-27.125, -65.375)).toBe("27.13° S, 65.38° W");
   });
 });
