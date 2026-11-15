@@ -1,4 +1,4 @@
-import { monthName, monthTitle, ordinal, t, tn } from "../i18n";
+import { formatDecimal, monthName, monthTitle, ordinal, t, tn } from "../i18n";
 import { type KeyboardEvent, type PointerEvent, useState } from "react";
 import type { Anomaly, Climatology, MonthValue, SeriesName } from "../api";
 import { useElementWidth } from "../hooks";
@@ -92,13 +92,13 @@ export function HeadlineCard({
         </div>
         <div className="headline-figures">
           <div className={kind === "within" ? "headline-ratio is-within" : "headline-ratio"}>
-            <span className="hero">{anomaly.ratio === null ? t("n/a") : `${anomaly.ratio.toFixed(2)}×`}</span>
+            <span className="hero">{anomaly.ratio === null ? t("n/a") : `${formatDecimal(anomaly.ratio, 2)}×`}</span>
             <span className="headline-note">{heroNote}</span>
           </div>
           {raw && anomaly.ratio !== null && (
             <div className="headline-raw">
               <span className="headline-raw-label">{t("Without harmonization")}</span>
-              <span className="headline-raw-value">{raw.ratio.toFixed(2)}×</span>
+              <span className="headline-raw-value">{formatDecimal(raw.ratio, 2)}×</span>
               <span className="headline-note">
                 {t("The raw record sets VIIRS, which sees many more small fires, against a median that is partly MODIS.")}
               </span>

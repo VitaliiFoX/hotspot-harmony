@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { dayInWords, formatCount, monthOfYear, monthShort, monthTitle, ordinal, parseLang, setLanguage, t, tn } from "./i18n";
+import { dayInWords, formatCount, formatDecimal, monthOfYear, monthShort, monthTitle, ordinal, parseLang, setLanguage, t, tn } from "./i18n";
 import { UK } from "./uk";
 
 // The page's source as text, through Vite: every file that can ask for a text, the tests and uk.ts aside.
@@ -69,6 +69,13 @@ describe("the page language", () => {
     expect(monthOfYear(2, 2012)).toBe("February 2012");
     expect(dayInWords("2025-08-20")).toBe("20 August 2025");
     expect(formatCount(1284)).toBe("1,284");
+    expect(formatDecimal(0.9312, 2)).toBe("0.93");
+    expect(formatDecimal(2, 2)).toBe("2.00");
+  });
+  it("writes decimals with a comma in Ukrainian", () => {
+    setLanguage("uk");
+    expect(formatDecimal(0.9312, 2)).toBe("0,93");
+    expect(formatDecimal(6.62, 1)).toBe("6,6");
   });
   it("speaks Ukrainian when set, with the plural form the count asks for", () => {
     setLanguage("uk");

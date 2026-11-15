@@ -1,4 +1,4 @@
-import { t } from "../i18n";
+import { formatDecimal, t } from "../i18n";
 import type { Validation } from "../api";
 import {
   CHECKS, CHECK_LABELS, SCALES, SCALE_LABELS, change, expectedError, percent, reportTime, scalesWhereFactorWins,
@@ -112,14 +112,14 @@ export function TrustBlock({ validation, region, wholeRegion }: Props) {
               <dt>{t("Raw record")}</dt>
               <dd>
                 <strong>{change(country.sensor_jump.raw)}</strong>
-                {` (${country.sensor_jump.raw.toFixed(2)}×)`}
+                {` (${formatDecimal(country.sensor_jump.raw, 2)}×)`}
               </dd>
             </div>
             <div>
               <dt>{t("Harmonized record")}</dt>
               <dd>
                 <strong>{change(country.sensor_jump.harmonized)}</strong>
-                {` (${country.sensor_jump.harmonized.toFixed(2)}×)`}
+                {` (${formatDecimal(country.sensor_jump.harmonized, 2)}×)`}
               </dd>
             </div>
           </dl>

@@ -73,6 +73,11 @@ export function formatCount(value: number): string {
   return value.toLocaleString(numberLocale());
 }
 
+/** A number with a fixed count of decimals in the page's language: 0.93 in English, 0,93 in Ukrainian. */
+export function formatDecimal(value: number, digits: number): string {
+  return value.toLocaleString(numberLocale(), { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
 const MONTHS_EN = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
