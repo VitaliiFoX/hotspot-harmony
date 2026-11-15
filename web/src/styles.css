@@ -993,17 +993,88 @@ td.text-cell {
   font-size: 12px;
 }
 
-/* In short: the area in a few sentences from the page's own figures. */
+/* In short: the area in a few lines from the page's own figures, the figure first, each line a link to its card. */
 .in-short h2 {
   margin-bottom: 8px;
 }
+/* One column of figures for all lines (subgrid), the explanation kept under about 75 characters. */
 .in-short ul {
   display: grid;
-  gap: 6px;
+  grid-template-columns: max-content minmax(0, 75ch) auto;
+  justify-content: start;
   margin: 0;
-  padding-left: 18px;
+  padding: 0;
+  list-style: none;
   color: var(--ink);
   font-size: 14px;
+}
+.in-short li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+.in-short li + li {
+  border-top: 1px solid var(--grid);
+}
+.in-short a {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  column-gap: 16px;
+  align-items: baseline;
+  padding: 8px 6px;
+  border-radius: var(--radius-chip);
+  color: inherit;
+  text-decoration: none;
+}
+.in-short-go {
+  color: var(--muted);
+}
+.in-short a:hover .in-short-go {
+  color: var(--accent);
+}
+.in-short-figure {
+  font-size: 17px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.in-short-text {
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.in-short a:hover {
+  background: var(--wash);
+}
+.in-short a:hover .in-short-text {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--axis);
+  text-underline-offset: 3px;
+}
+/* The cards "In short" links to: a little air above when scrolled to, and no ring when focused by a click. */
+#peak-months,
+#burning-per-year,
+#unusual-months {
+  scroll-margin-top: 16px;
+}
+.card[tabindex="-1"]:focus:not(:focus-visible) {
+  outline: none;
+}
+@media (max-width: 600px) {
+  .in-short ul {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .in-short a {
+    row-gap: 2px;
+  }
+  .in-short-text {
+    grid-column: 1;
+  }
+  .in-short-go {
+    grid-column: 2;
+    grid-row: 1;
+  }
 }
 
 /* Unusual months: each a button that shows its year on the calendar. */

@@ -412,32 +412,22 @@ export const UK: Record<string, string> = {
   "Burns in {n} of {years} years, about {amount} {unit} a year ({perArea} per 100 km²), most in {month}.":
     "Горить у {n} з {years} років, близько {amount} ({unit}) за рік ({perArea} на 100 км²), найбільше — {month}.|Горить у {n} з {years} років, близько {amount} ({unit}) за рік ({perArea} на 100 км²), найбільше — {month}.|Горить у {n} з {years} років, близько {amount} ({unit}) за рік ({perArea} на 100 км²), найбільше — {month}.",
 
-  "The busiest full year was {year}, with {value} {unit}, {ratio}× the median year.":
-    "Найактивніший повний рік — {year}: {value} ({unit}), {ratio}× від медіанного року.",
-  "The busiest full year was {year}, with {value} {unit}.": "Найактивніший повний рік — {year}: {value} ({unit}).",
-  "Burning in {late} was about the same as in {early}.": "Горіння у {late} було приблизно таким, як у {early}.",
-  "Burning in {late} was {change}% higher than in {early}, within the method's error of ±{error}%.":
-    "Горіння у {late} було на {change}% вищим, ніж у {early}, у межах похибки методу ±{error}%.",
-  "Burning in {late} was {change}% higher than in {early}.": "Горіння у {late} було на {change}% вищим, ніж у {early}.",
-  "Burning in {late} was {change}% lower than in {early}, within the method's error of ±{error}%.":
-    "Горіння у {late} було на {change}% нижчим, ніж у {early}, у межах похибки методу ±{error}%.",
-  "Burning in {late} was {change}% lower than in {early}.": "Горіння у {late} було на {change}% нижчим, ніж у {early}.",
-  "{month} {year}, the busiest of the last 12 months, burned in a month that is usually quiet.":
-    "{month} {year}, найактивніший з останніх 12 місяців: горіло в місяць, який зазвичай спокійний.",
-  "{month} {year}, the busiest of the last 12 months, is within the method's error of a typical {month} ({ratio}×).":
-    "{month} {year}, найактивніший з останніх 12 місяців: у межах похибки методу від типового місяця ({ratio}×).",
-  "{month} {year}, the busiest of the last 12 months, burned as much as a typical {month}.":
-    "{month} {year}, найактивніший з останніх 12 місяців: горіло стільки ж, скільки в типовий {month}.",
-  "{month} {year}, the busiest of the last 12 months, burned {ratio}× a typical {month}.":
-    "{month} {year}, найактивніший з останніх 12 місяців: горіло {ratio}× від типового місяця.",
+  "Peak months: these {n} hold {share}% of a typical year.":
+    "Піковий місяць: він дає {share}% типового року.|Пікові місяці: ці {n} дають {share}% типового року.|Пікові місяці: ці {n} дають {share}% типового року.",
+  "Busiest full year: {value} {unit}, {ratio}× the median year.":
+    "Найактивніший повний рік: {value} ({unit}), {ratio}× від медіанного року.",
+  "Busiest full year: {value} {unit}.": "Найактивніший повний рік: {value} ({unit}).",
+  "About the same": "Приблизно так само",
+  "Burning in {late} against {early}, within the method's error of ±{error}%.":
+    "Горіння у {late} проти {early}, у межах похибки методу ±{error}%.",
+  "Burning in {late} against {early}.": "Горіння у {late} проти {early}.",
+  "{n} months": "{n} місяць|{n} місяці|{n} місяців",
   "in a month that usually has none": "у місяць, коли зазвичай нічого немає",
   "{ratio}× its median": "{ratio}× від медіани",
-  "No month stands out from its own history by more than the method's error.":
-    "Жоден місяць не відхиляється від своєї історії більше, ніж на похибку методу.",
-  "Burning peaks in {months}: these {n} months hold {share}% of a typical year.":
-    "Пік горіння — {months}: цей місяць дає {share}% типового року.|Пік горіння — {months}: ці {n} місяці дають {share}% типового року.|Пік горіння — {months}: ці {n} місяців дають {share}% типового року.",
-  "{n} months stand out from their own history; the largest departure was {first}, {how}.":
-    "{n} місяць вирізняється зі своєї історії: {first}, {how}.|{n} місяці вирізняються зі своєї історії; найбільше відхилення — {first}, {how}.|{n} місяців вирізняються зі своєї історії; найбільше відхилення — {first}, {how}.",
+  "Stand out from their own history; the largest departure was {first}, {how}.":
+    "Вирізняється зі своєї історії: {first}, {how}.|Вирізняються зі своєї історії; найбільше відхилення — {first}, {how}.|Вирізняються зі своєї історії; найбільше відхилення — {first}, {how}.",
+  "Stand out from their own history by more than the method's error.":
+    "Відхиляються від своєї історії більше, ніж на похибку методу.",
   "all year": "увесь рік",
   "{list} and {last}": "{list} і {last}",
   "an unknown time": "невідомий час",

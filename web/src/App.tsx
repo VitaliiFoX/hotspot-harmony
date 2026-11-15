@@ -28,7 +28,7 @@ import { type ThemeChoice, useDarkMode } from "./hooks";
 import { LANGUAGES, type Lang, formatCount, language, t, tn } from "./i18n";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
-import { monthError, sameMonthRatio, verdictKind } from "./trust";
+import { monthError, sameMonthRatio } from "./trust";
 import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
@@ -454,9 +454,6 @@ export function App() {
         })(),
         yearly: calendar.yearly,
         unit,
-        headline: headline
-          ? { year: headline.year, month: headline.month, ratio: headline.ratio, kind: verdictKind(headline.ratio, headlineError?.share ?? null) }
-          : null,
         unusual,
         yearError: harmonizedTrust ? harmonizedTrust.checks.harmonized[wholeRegion ? "country_year" : "tile_year"] : null,
       })
@@ -715,6 +712,7 @@ export function App() {
             />
 
             <ChartCard
+              id="peak-months"
               title={t("Peak burning months")}
               subtitle={
                 t(
@@ -761,6 +759,7 @@ export function App() {
                 pngName={exportName([`season-${year}`, ...fileParts], "png")}
               />
               <ChartCard
+                id="burning-per-year"
                 title={t("Burning per year")}
                 subtitle={
                   rawLine && meta
