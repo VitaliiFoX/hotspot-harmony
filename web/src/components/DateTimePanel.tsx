@@ -2,7 +2,7 @@ import { formatCount, t } from "../i18n";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { DayHotspots, MonthDays } from "../api";
 import {
-  type HourCounts, LAST_MINUTE, dayKey, dotStyle, longDate, longMonth, monthGrid, moveToMonth, parseTimeParam, sensorLabel, shiftMonth, timeLabel,
+  type GlobeLayer, type HourCounts, LAST_MINUTE, WEEK_DAYS, dayKey, dotStyle, longDate, longMonth, monthGrid, moveToMonth, parseTimeParam, sensorLabel, shiftMonth, timeLabel,
 } from "../globe";
 
 type Props = {
@@ -18,7 +18,20 @@ type Props = {
   error: string | null;
   onDate: (date: string) => void;
   onTime: (time: number) => void;
+  /** What the map shows; the quick buttons pick the day, the week through it, its month or the fire season. */
+  layer: GlobeLayer;
+  onLayer: (layer: GlobeLayer) => void;
+  /** The area's fire season in the year of the date, "YYYY-MM"; null while the calendar is not loaded or has no peak. */
+  season: { start: string; end: string } | null;
 };
+
+/** The quick buttons, so a span is one click and not two dates. */
+const SPANS: { layer: GlobeLayer; label: string }[] = [
+  { layer: "day", label: "Day" },
+  { layer: "week", label: "7 days" },
+  { layer: "month", label: "Month" },
+  { layer: "season", label: "Fire season" },
+];
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const;
 
@@ -43,8 +56,12 @@ const PLAY_TICK_MS = 80;
 
 /** The floating glass panel that picks the UTC day and minute the globe shows, plays the day, and reads out its hotspots. */
 export function DateTimePanel({
-  date, time, firstDay, lastDay, monthDays, day, counts, loading, error, onDate, onTime,
+  date, time, firstDay, lastDay, monthDays, day, counts, loading, error, onDate, onTime, layer, onLayer, season,
 }: Props) {
+  const isDay = layer === "day";
+  const isWeek = layer === "week";
+  // Months and seasons are drawn as cells of the record: the hotspot figures of a day do not belong to them.
+  const showsHotspots = isDay || isWeek;
   const [playing, setPlaying] = useState(false);
   const timeRef = useRef(time);
   timeRef.current = time;
@@ -57,8 +74,8 @@ export function DateTimePanel({
     }, PLAY_TICK_MS);
     return () => window.clearInterval(timer);
   }, [playing, onTime]);
-  // A new day stops the clock where it is.
-  useEffect(() => setPlaying(false), [date]);
+  // A new day, or a span other than the day, stops the clock where it is.
+  useEffect(() => setPlaying(false), [date, layer]);
   // The typed time, while it is being edited; HH:MM in 24-hour form, whatever the browser's locale.
   const [draft, setDraft] = useState<string | null>(null);
   function commitDraft() {
@@ -113,22 +130,64 @@ export function DateTimePanel({
     buttons.current[next]?.focus();
   }
 
+  const weekStart = new Date(Date.parse(`${date}T00:00:00Z`) - (WEEK_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+  const spanTitle = isWeek
+    ? t("{from} to {to}", { from: longDate(weekStart < firstDay ? firstDay : weekStart), to: longDate(date) })
+    : layer === "month"
+      ? longMonth(date.slice(0, 7))
+      : layer === "season" && season
+        ? season.start === season.end
+          ? longMonth(season.start)
+          : t("{from} to {to}", { from: longMonth(season.start), to: longMonth(season.end) })
+        : longDate(date);
+  const spanNote = isDay
+    ? t("Hotspots from 00:00 through {time} UTC", { time: timeLabel(time) })
+    : isWeek
+      ? t("Hotspots of the {n} days through the chosen day, at every time of day", { n: WEEK_DAYS })
+      : layer === "season"
+        ? season
+          ? t("The fire season of the area: its peak months in this year. The map shows where it burned in them.")
+          : t("The fire season comes from the area's calendar below, which is not loaded.")
+        : layer === "month"
+          ? t("The map shows where it burned in this month. Pick a day to see its hotspots.")
+          : t("The map shows where it burns over the period of the filters.");
+
   let status: string | null = null;
-  if (loading) status = t("Loading the hotspots of this day...");
-  else if (error) status = t("Cannot load this day: {error}", { error });
+  if (!showsHotspots) status = null;
+  else if (loading) status = isWeek ? t("Loading the hotspots of these days...") : t("Loading the hotspots of this day...");
+  else if (error) status = isWeek ? t("Cannot load these days: {error}", { error }) : t("Cannot load this day: {error}", { error });
+  else if (isWeek && day?.sensor_gap)
+    status = t("{sensor} was down on some of these days, so their hotspots are missing or incomplete.", {
+      sensor: sensorLabel(day.sensor),
+    });
   else if (day?.sensor_gap)
     status = t(
       "{sensor} was down on this day, so its hotspots are missing or incomplete: a low count or a zero here is missing data, not a quiet day.",
       { sensor: sensorLabel(day.sensor) },
     );
-  else if (day && day.count === 0) status = t("No hotspots on this day.");
+  else if (day && day.count === 0) status = isWeek ? t("No hotspots on these days.") : t("No hotspots on this day.");
 
   return (
     <section className="dt-panel" aria-label={t("Date and time")}>
       <div className="dt-sheen" aria-hidden="true" />
       <div className="dt-heading">
-        <h2 className="dt-date">{longDate(date)}</h2>
-        <p className="dt-secondary">{t("Hotspots from 00:00 through {time} UTC", { time: timeLabel(time) })}</p>
+        <h2 className="dt-date">{spanTitle}</h2>
+        <p className="dt-secondary">{spanNote}</p>
+      </div>
+
+      <div className="segmented dt-spans" role="group" aria-label={t("What the map shows")}>
+        {SPANS.map((span) => (
+          <button
+            key={span.layer}
+            type="button"
+            aria-pressed={layer === span.layer}
+            disabled={span.layer === "season" && !season}
+            title={span.layer === "season" && !season ? t("The fire season comes from the area's calendar below, which is not loaded.") : undefined}
+            onClick={() => onLayer(span.layer)}
+          >
+            {t(span.label)}
+          </button>
+        ))}
       </div>
 
       <div className="dt-month">
@@ -192,7 +251,7 @@ export function DateTimePanel({
                   buttons.current[index] = element;
                 }}
                 type="button"
-                className={gap ? "dt-day is-gap" : "dt-day"}
+                className={["dt-day", gap && "is-gap", isWeek && d >= weekStart && d < date && "is-in-span"].filter(Boolean).join(" ")}
                 title={gap ? t("{sensor} was down: missing data, not a quiet day", { sensor: gapSensor }) : undefined}
                 disabled={!enabled(d)}
                 aria-pressed={d === date}
@@ -213,8 +272,9 @@ export function DateTimePanel({
         </div>
       </div>
 
-      <div className="dt-divider" />
+      {isDay && <div className="dt-divider" />}
 
+      {isDay && (
       <div className="dt-time">
         <div className="dt-time-row">
           <label htmlFor="dt-time" className="dt-secondary">
@@ -275,13 +335,16 @@ export function DateTimePanel({
           <span>23:59</span>
         </div>
       </div>
+      )}
 
-      <div className="dt-readout" aria-live="polite">
+      <div className={showsHotspots ? "dt-readout" : "dt-readout is-hidden"} aria-live="polite">
         {status && <p className="dt-status">{status}</p>}
-        {!loading && !error && day && counts && day.count > 0 && (
+        {showsHotspots && !loading && !error && day && counts && day.count > 0 && (
           <>
             <p className="dt-big">{formatCount(counts.throughHour)}</p>
-            <p className="dt-secondary">{t("{unit} so far that day", { unit: t(day.unit) })}</p>
+            <p className="dt-secondary">
+              {isWeek ? t("{unit} in these {n} days", { unit: t(day.unit), n: WEEK_DAYS }) : t("{unit} so far that day", { unit: t(day.unit) })}
+            </p>
             <dl className="dt-figures">
               {day.regions.map((name, index) => (
                 <div key={name}>
@@ -289,22 +352,26 @@ export function DateTimePanel({
                   <dd>{formatCount(counts.regions[index]?.throughHour ?? 0)}</dd>
                 </div>
               ))}
-              <div>
-                <dt>{t("Last hour")}</dt>
-                <dd>{formatCount(counts.inHour)}</dd>
-              </div>
+              {isDay && (
+                <div>
+                  <dt>{t("Last hour")}</dt>
+                  <dd>{formatCount(counts.inHour)}</dd>
+                </div>
+              )}
             </dl>
             {day.truncated && (
               <p className="dt-status">
-                {t("This day is cut at {count} hotspots, so the figures are lower than the full record.", {
-                  count: formatCount(day.hotspots.length),
-                })}
+                {isWeek
+                  ? t("Some of these days are cut, so the figures are lower than the full record.")
+                  : t("This day is cut at {count} hotspots, so the figures are lower than the full record.", {
+                      count: formatCount(day.hotspots.length),
+                    })}
               </p>
             )}
           </>
         )}
       </div>
-      {day && <p className="dt-sensor">{t("Sensor: {sensor}", { sensor: sensorLabel(day.sensor) })}</p>}
+      {showsHotspots && day && <p className="dt-sensor">{t("Sensor: {sensor}", { sensor: sensorLabel(day.sensor) })}</p>}
     </section>
   );
 }

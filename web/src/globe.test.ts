@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, changeLabel, cellMonthSentence, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, changeLabel, cellSpanSentence, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
   trendSentence, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
-  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, parseViewParam, parseLayerParam, layerPeriod, shownMonth, flatFillZoom, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
+  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, parseViewParam, parseLayerParam, layerPeriod, shownMonths, weekDays, mergeDays, flatFillZoom, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
 describe("monthGrid", () => {
@@ -267,16 +267,16 @@ describe("cellSentence", () => {
   });
 });
 
-describe("cellMonthSentence", () => {
-  it("says how much a cell burned in the one month, and the same per 100 km2", () => {
+describe("cellSpanSentence", () => {
+  it("says how much a cell burned over a short span, and the same per 100 km2", () => {
     const cell = { lat: 48.375, lon: 38.875, per_year: 54.2, years_burning: 1, peak_month: 8 };
-    expect(cellMonthSentence(cell, "2020-08", "MODIS-equivalent fire cell-days", 0.25)).toBe(
+    expect(cellSpanSentence(cell, 54.2, "August 2020", "MODIS-equivalent fire cell-days", 0.25)).toBe(
       "About 54 MODIS-equivalent fire cell-days in August 2020 (11 per 100 km²).",
     );
   });
   it("keeps one decimal for a small cell", () => {
-    const cell = { lat: 0.5, lon: 1.5, per_year: 1.04, years_burning: 1, peak_month: 3 };
-    expect(cellMonthSentence(cell, "2019-03", "fire cell-days", 1)).toBe("About 1.0 fire cell-days in March 2019 (0.01 per 100 km²).");
+    const cell = { lat: 0.5, lon: 1.5, per_year: 0.52, years_burning: 2, peak_month: 3 };
+    expect(cellSpanSentence(cell, 1.04, "March 2019", "fire cell-days", 1)).toBe("About 1.0 fire cell-days in March 2019 (0.01 per 100 km²).");
   });
 });
 
@@ -334,8 +334,10 @@ describe("parseViewParam", () => {
 });
 
 describe("parseLayerParam", () => {
-  it("reads the month and the whole period by name", () => {
+  it("reads the week, the month, the fire season and the whole period by name", () => {
+    expect(parseLayerParam("week")).toBe("week");
     expect(parseLayerParam("month")).toBe("month");
+    expect(parseLayerParam("season")).toBe("season");
     expect(parseLayerParam("period")).toBe("period");
   });
   it("opens on the day when the address says nothing or something unknown", () => {
@@ -347,27 +349,70 @@ describe("parseLayerParam", () => {
 
 describe("layerPeriod", () => {
   const period = { start: "2012-01", end: "2025-12" };
+  const season = { start: "2020-07", end: "2020-09" };
   it("is the month of the date in the month layer", () => {
-    expect(layerPeriod("month", "2020-08-20", period)).toEqual({ start: "2020-08", end: "2020-08" });
+    expect(layerPeriod("month", "2020-08-20", period, season)).toEqual({ start: "2020-08", end: "2020-08" });
   });
-  it("is the filters' period in the period layer", () => {
-    expect(layerPeriod("period", "2020-08-20", period)).toEqual(period);
+  it("is the fire season in the season layer and the filters' period in the period layer", () => {
+    expect(layerPeriod("season", "2020-08-20", period, season)).toEqual(season);
+    expect(layerPeriod("period", "2020-08-20", period, season)).toEqual(period);
   });
-  it("is nothing for the day, or before the date or the filters are known", () => {
-    expect(layerPeriod("day", "2020-08-20", period)).toBeNull();
-    expect(layerPeriod("month", null, period)).toBeNull();
-    expect(layerPeriod("period", "2020-08-20", null)).toBeNull();
+  it("is nothing for the hotspots of a day or a week, or before the date, the season or the filters are known", () => {
+    expect(layerPeriod("day", "2020-08-20", period, season)).toBeNull();
+    expect(layerPeriod("week", "2020-08-20", period, season)).toBeNull();
+    expect(layerPeriod("month", null, period, season)).toBeNull();
+    expect(layerPeriod("season", "2020-08-20", period, null)).toBeNull();
+    expect(layerPeriod("period", "2020-08-20", null, season)).toBeNull();
   });
 });
 
-describe("shownMonth", () => {
+describe("shownMonths", () => {
   it("is the month of the date while the map shows a day or a month", () => {
-    expect(shownMonth("day", "2020-08-20")).toBe("2020-08");
-    expect(shownMonth("month", "2020-08-20")).toBe("2020-08");
+    expect(shownMonths("day", "2020-08-20", null)).toEqual(["2020-08"]);
+    expect(shownMonths("month", "2020-08-20", null)).toEqual(["2020-08"]);
   });
-  it("is nothing over the whole period, or without a date", () => {
-    expect(shownMonth("period", "2020-08-20")).toBeNull();
-    expect(shownMonth("day", null)).toBeNull();
+  it("is both months when the week runs back into the month before", () => {
+    expect(shownMonths("week", "2020-08-03", null)).toEqual(["2020-07", "2020-08"]);
+    expect(shownMonths("week", "2020-08-20", null)).toEqual(["2020-08"]);
+  });
+  it("is every month of the fire season, across the new year too", () => {
+    expect(shownMonths("season", "2020-08-20", { start: "2020-11", end: "2021-02" })).toEqual([
+      "2020-11", "2020-12", "2021-01", "2021-02",
+    ]);
+  });
+  it("is nothing over the whole period, or without a date or a season", () => {
+    expect(shownMonths("period", "2020-08-20", null)).toEqual([]);
+    expect(shownMonths("day", null, null)).toEqual([]);
+    expect(shownMonths("season", "2020-08-20", null)).toEqual([]);
+  });
+});
+
+describe("weekDays", () => {
+  it("is the seven days through the date, earliest first, across a month end", () => {
+    expect(weekDays("2020-03-03", "2000-11-01")).toEqual([
+      "2020-02-26", "2020-02-27", "2020-02-28", "2020-02-29", "2020-03-01", "2020-03-02", "2020-03-03",
+    ]);
+  });
+  it("starts no earlier than the record", () => {
+    expect(weekDays("2000-11-02", "2000-11-01")).toEqual(["2000-11-01", "2000-11-02"]);
+  });
+});
+
+describe("mergeDays", () => {
+  const day = (date: string, hotspots: [number, number, number, number][], extra = {}) => ({
+    date, sensor: "viirs_snpp", unit: "hotspots", count: hotspots.length, truncated: false, regions: ["A", "B"], hotspots, ...extra,
+  });
+  it("puts the hotspots of the days together under the last day", () => {
+    const merged = mergeDays([day("2020-08-19", [[1, 2, 600, 0]]), day("2020-08-20", [[3, 4, 30, 1], [5, 6, 90, 0]])]);
+    expect(merged).toMatchObject({ date: "2020-08-20", count: 3, truncated: false, sensor_gap: false, regions: ["A", "B"] });
+    expect(merged?.hotspots).toHaveLength(3);
+  });
+  it("is cut or has a sensor gap when any of its days is", () => {
+    const merged = mergeDays([day("2020-08-19", [], { truncated: true }), day("2020-08-20", [], { sensor_gap: true })]);
+    expect(merged).toMatchObject({ truncated: true, sensor_gap: true });
+  });
+  it("is nothing without days", () => {
+    expect(mergeDays([])).toBeNull();
   });
 });
 

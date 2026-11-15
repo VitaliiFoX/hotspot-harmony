@@ -1,7 +1,7 @@
 // Pure logic behind the globe and the date and time panel: dates, counts, scales and the night side.
 
 import type { FilterSpecification } from "maplibre-gl";
-import type { Bbox, DayHotspot, Region } from "./api";
+import type { Bbox, DayHotspot, DayHotspots, Region } from "./api";
 import { dayInWords, formatCount, monthName, monthTitle, t, tn } from "./i18n";
 
 
@@ -21,29 +21,64 @@ export function parseViewParam(text: string | null): MapView {
 }
 
 /**
- * What the map shows: the hotspots of one day, where it burned in the date's month, or where it burns over the
- * filters' period. The burning calendar opens a month on the map by a click on its cell.
+ * What the map shows: the hotspots of one day or of the seven days through it, or where it burned in the date's
+ * month, in the area's fire season or over the filters' period. The quick buttons of the date panel pick the first
+ * four; a click on a month of the burning calendar opens the month.
  */
-export type GlobeLayer = "day" | "month" | "period";
+export type GlobeLayer = "day" | "week" | "month" | "season" | "period";
+
+/** How many days the week layer shows, the date the last of them. */
+export const WEEK_DAYS = 7;
 
 /** `?layer=` from the address; anything unknown or missing is the day. */
 export function parseLayerParam(text: string | null): GlobeLayer {
-  return text === "month" || text === "period" ? text : "day";
+  return text === "week" || text === "month" || text === "season" || text === "period" ? text : "day";
 }
 
-/** The months "Where it burns" colours: the date's month, the filters' period, or none for the day's hotspots. */
-export function layerPeriod(
-  layer: GlobeLayer,
-  date: string | null,
-  period: { start: string; end: string } | null,
-): { start: string; end: string } | null {
+type MonthSpan = { start: string; end: string };
+
+/** The months "Where it burns" colours: the date's month, the fire season, the filters' period, or none for hotspots. */
+export function layerPeriod(layer: GlobeLayer, date: string | null, period: MonthSpan | null, season: MonthSpan | null): MonthSpan | null {
   if (layer === "month") return date ? { start: date.slice(0, 7), end: date.slice(0, 7) } : null;
+  if (layer === "season") return season;
   return layer === "period" ? period : null;
 }
 
-/** The month the map is on, which the burning calendar outlines; none while the map shows the whole period. */
-export function shownMonth(layer: GlobeLayer, date: string | null): string | null {
-  return layer === "period" || !date ? null : date.slice(0, 7);
+/** The days of the week layer: the `WEEK_DAYS` days through `date`, earliest first, none before `first`. */
+export function weekDays(date: string, first: string): string[] {
+  const end = Date.parse(`${date}T00:00:00Z`);
+  const days: string[] = [];
+  for (let back = WEEK_DAYS - 1; back >= 0; back--) {
+    const day = new Date(end - back * 86_400_000).toISOString().slice(0, 10);
+    if (day >= first) days.push(day);
+  }
+  return days;
+}
+
+/** The hotspots of several days as one, under the last day: cut or with a sensor gap when any day is. */
+export function mergeDays(days: readonly DayHotspots[]): DayHotspots | null {
+  if (days.length === 0) return null;
+  const last = days[days.length - 1];
+  return {
+    ...last,
+    count: days.reduce((sum, day) => sum + day.count, 0),
+    truncated: days.some((day) => day.truncated),
+    sensor_gap: days.some((day) => Boolean(day.sensor_gap)),
+    hotspots: days.flatMap((day) => day.hotspots),
+  };
+}
+
+/** The months the map is on, which the burning calendar outlines; none while it shows the whole period. */
+export function shownMonths(layer: GlobeLayer, date: string | null, season: MonthSpan | null): string[] {
+  if (!date || layer === "period") return [];
+  if (layer === "season") {
+    if (!season) return [];
+    const months: string[] = [];
+    for (let m = season.start; m <= season.end; m = shiftMonth(m, 1)) months.push(m);
+    return months;
+  }
+  if (layer === "week") return [...new Set(weekDays(date, "0000-01-01").map((day) => day.slice(0, 7)))];
+  return [date.slice(0, 7)];
 }
 
 /**
@@ -429,11 +464,11 @@ export function cellSentence(cell: BurnCell, years: number, unit: string, cellDe
   );
 }
 
-/** A cell over one month: how much burned in it, and the same per 100 km². */
-export function cellMonthSentence(cell: BurnCell, month: string, unit: string, cellDeg: number): string {
-  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : cell.per_year.toFixed(1);
-  const perArea = stopLabel((cell.per_year / cellAreaKm2(cell.lat, cellDeg)) * 100);
-  return t("About {amount} {unit} in {month} ({perArea} per 100 km²).", { amount, unit: t(unit), month: longMonth(month), perArea });
+/** A cell over a span shorter than a year ("August 2020"): how much burned in it, and the same per 100 km². */
+export function cellSpanSentence(cell: BurnCell, total: number, span: string, unit: string, cellDeg: number): string {
+  const amount = total >= 10 ? formatCount(Math.round(total)) : total.toFixed(1);
+  const perArea = stopLabel((total / cellAreaKm2(cell.lat, cellDeg)) * 100);
+  return t("About {amount} {unit} in {month} ({perArea} per 100 km²).", { amount, unit: t(unit), month: span, perArea });
 }
 
 /** A cell centre as people read it: "48.13° N, 37.63° E". */
