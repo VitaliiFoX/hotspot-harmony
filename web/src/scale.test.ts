@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  SEQUENTIAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel, niceTicks,
-  position, valuesByYear,
+  PEAK_SHARE, SEQUENTIAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel,
+  monthSpans, niceTicks, peakMonths, position, valuesByYear,
 } from "./scale";
 
 describe("position", () => {
@@ -116,5 +116,41 @@ describe("brokenLinePath", () => {
   });
   it("is empty without points", () => {
     expect(brokenLinePath([null, null])).toBe("");
+  });
+});
+
+// Monthly medians that add up to 100, so every share is the median itself in percent.
+const MEDIANS = [0, 0, 30, 20, 5, 5, 10, 15, 10, 5, 0, 0];
+const climatology = MEDIANS.map((median, i) => ({ month: i + 1, median, p25: 0, p75: median, years: 25 }));
+
+describe("peakMonths", () => {
+  it("takes the fewest months that hold 60% of a typical year, largest first, and lists them in calendar order", () => {
+    // Mar 30 + Apr 20 = 50 < 60; adding Aug 15 gives 65.
+    expect(PEAK_SHARE).toBe(0.6);
+    expect(peakMonths(climatology)).toEqual({ months: [3, 4, 8], held: 0.65, total: 100 });
+  });
+  it("breaks a tie by the earlier month", () => {
+    // Mar 30 + Apr 20 + Aug 15 = 65 < 70; Jul and Sep tie at 10, and Jul comes first: 75.
+    expect(peakMonths(climatology, 0.7).months).toEqual([3, 4, 7, 8]);
+  });
+  it("is empty when every month's median is zero", () => {
+    const quiet = climatology.map((c) => ({ ...c, median: 0 }));
+    expect(peakMonths(quiet)).toEqual({ months: [], held: 0, total: 0 });
+  });
+});
+
+describe("monthSpans", () => {
+  it("joins neighbouring months into spans", () => {
+    expect(monthSpans([3, 4, 8])).toBe("Mar–Apr and Aug");
+    expect(monthSpans([7, 8, 9])).toBe("Jul–Sep");
+  });
+  it("runs a span across the new year", () => {
+    expect(monthSpans([1, 2, 12])).toBe("Dec–Feb");
+    expect(monthSpans([1, 6, 11, 12])).toBe("Jun and Nov–Jan");
+  });
+  it("names a single month, three spans with commas, and nothing", () => {
+    expect(monthSpans([5])).toBe("May");
+    expect(monthSpans([1, 4, 8])).toBe("Jan, Apr and Aug");
+    expect(monthSpans([])).toBe("");
   });
 });
