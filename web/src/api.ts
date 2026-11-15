@@ -66,7 +66,10 @@ export type Calendar = {
   warnings: string[];
   months: MonthValue[];
   climatology: Climatology[];
+  /** The last month of the period against its history. */
   anomaly: Anomaly;
+  /** The busiest of the last twelve months of the period against its history: the headline figure. */
+  season_peak?: Anomaly;
   yearly: YearTotal[];
 };
 

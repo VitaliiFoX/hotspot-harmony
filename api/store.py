@@ -248,17 +248,23 @@ class Store:
             for m, v in history.items()
             if len(v)
         ]
-        last = chosen.last
-        past = history[last % 12]
-        median = float(np.median(past))
-        anomaly = {
-            "year": last // 12,
-            "month": last % 12 + 1,
-            "value": value(last),
-            "median": median,
-            "ratio": round(value(last) / median, 2) if median > 0 else None,
-            "percentile": round(100 * float(np.mean(past < value(last)))),
-        }
+        def against_history(ym: int) -> dict:
+            """One month next to the same calendar month in every year of the record."""
+            past = history[ym % 12]
+            median = float(np.median(past))
+            return {
+                "year": ym // 12,
+                "month": ym % 12 + 1,
+                "value": value(ym),
+                "median": median,
+                "ratio": round(value(ym) / median, 2) if median > 0 else None,
+                "percentile": round(100 * float(np.mean(past < value(ym)))),
+            }
+
+        # The last month can be a quiet one; the headline compares the busiest of the last twelve months of the
+        # chosen period instead (a tie goes to the later month, so with no burning at all it is the last month).
+        window = range(max(chosen.first, chosen.last - 11), chosen.last + 1)
+        peak = max(window, key=lambda ym: (value(ym), ym))
         yearly = [
             {
                 "year": year,
@@ -277,7 +283,8 @@ class Store:
                 for ym in chosen.months()
             ],
             "climatology": climatology,
-            "anomaly": anomaly,
+            "anomaly": against_history(chosen.last),
+            "season_peak": against_history(peak),
             "yearly": yearly,
         }
 

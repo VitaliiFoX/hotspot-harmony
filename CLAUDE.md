@@ -52,6 +52,7 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 
 - `api/` serves two series: `raw` (MODIS before 2012-02, VIIRS S-NPP after, sensor jump included) and `harmonized`. The contract for `data/agg/harmonized.parquet` is the docstring of `api/store.py`; the API picks the file up at start with no code change.
 - A cell belongs to an area of interest when its centre is inside it.
+- `/api/calendar` compares two months with their history: `anomaly`, the last month of the period, and `season_peak`, the busiest of its last twelve months (a tie goes to the later month). The headline tiles show `season_peak`, because the last month is often a quiet December.
 - Regions are known by bounding box only. An area in a neighbouring country that falls inside a region's box gets zeros and a warning, not an error. Real borders are not in the repo yet.
 - API tests go through HTTP on a record small enough to work out on paper (`api/tests/test_api.py`). Extend that record when adding behaviour.
 - `/api/validation` serves the held-out error and the two baselines from `data/agg/harmonization_report.json`, read at start; without the file it answers 404 and the web app hides its "How far to trust this" block (`web/src/components/TrustBlock.tsx`, wording and choices in `web/src/trust.ts`, tested). The single-factor baseline is fitted on all years, the scored one included, so the block must never call it held out. Ship the report from `make validate NESTED=1` with any deployment: an older report shows the method as "chosen once on all years".
@@ -60,6 +61,7 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 
 - `web/` is React + TypeScript on Vite. `make web` runs it against `make api` through the dev proxy; production reads `VITE_API_URL`.
 - Charts are hand-written SVG and CSS grid, with no chart library. Shared number, tick and colour logic lives in `web/src/scale.ts` and is the part under test (`npm test`).
+- The calendar opens on the log scale: on a linear one a few record months wash every other month out.
 - Colour rules: burning is one blue ramp, light to dark (`SEQUENTIAL`); exactly zero gets its own neutral fill; on a dark surface the ramp is reversed so more is further from the surface. Add no second hue to the calendar.
 - Downloads live in `web/src/exports.ts` (tested): `calendarCsv` writes one row per month with the record, unit, sensor, that month's climatology and the area (its bounds, and its outline as WKT in `area_wkt`); `downloadPng` captures a chart card with html-to-image and inlines the SVG paint first, because the renderer does not resolve CSS classes and custom properties inside SVG. Elements marked `data-export="skip"` (buttons) stay out of the image.
 - Every chart card has a table view and reads on arrow keys. Keep both when adding a chart: they are how the page works without colour or a pointer.
