@@ -70,7 +70,8 @@ export function App() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scaleMode, setScaleMode] = useState<ScaleMode>("linear");
+  // Log by default: on a linear scale a few record months wash every other month out to the lightest blue.
+  const [scaleMode, setScaleMode] = useState<ScaleMode>("log");
   const [highlightYear, setHighlightYear] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
@@ -220,7 +221,7 @@ export function App() {
     const show = (result: Calendar) => {
       setCalendar(result);
       setError(null);
-      setHighlightYear((year) => (year && result.yearly.some((y) => y.year === year) ? year : result.anomaly.year));
+      setHighlightYear((year) => (year && result.yearly.some((y) => y.year === year) ? year : (result.season_peak ?? result.anomaly).year));
       const other = otherSeries(filters.series, meta?.series ?? []);
       const ahead = other && { ...body, series: other };
       const known = ahead ? cache.current.get(ahead) : undefined;
@@ -294,7 +295,8 @@ export function App() {
       : viirsTakesOver
         ? { year: Number(viirsTakesOver.from.slice(0, 4)), label: "VIIRS NOAA-20 takes over" }
         : undefined;
-  const year = highlightYear ?? calendar?.anomaly.year ?? 0;
+  // The seasonal chart opens on the year of the headline month.
+  const year = highlightYear ?? (calendar?.season_peak ?? calendar?.anomaly)?.year ?? 0;
   // Over the harmonized columns, the raw record as a line: its jump in 2012 is what the harmonization removes.
   const rawLine =
     calendar?.series === "harmonized" && otherCalendar?.series === "raw"
@@ -407,7 +409,12 @@ export function App() {
 
         {calendar && (
           <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
-            <AnomalyTiles anomaly={calendar.anomaly} climatology={calendar.climatology} unit={unit} />
+            <AnomalyTiles
+              anomaly={calendar.season_peak ?? calendar.anomaly}
+              climatology={calendar.climatology}
+              unit={unit}
+              busiest={Boolean(calendar.season_peak)}
+            />
 
             <ChartCard
               title="Burning activity calendar"

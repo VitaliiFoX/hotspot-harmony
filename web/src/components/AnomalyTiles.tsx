@@ -1,10 +1,16 @@
 import type { Anomaly, Climatology } from "../api";
 import { MONTHS_LONG, formatValue } from "../scale";
 
-type Props = { anomaly: Anomaly; climatology: Climatology[]; unit: string };
+type Props = {
+  anomaly: Anomaly;
+  climatology: Climatology[];
+  unit: string;
+  /** The month is the busiest of the last twelve of the period, not simply the last one. */
+  busiest?: boolean;
+};
 
-/** The headline: how the last selected month compares with the same month in every year on record. */
-export function AnomalyTiles({ anomaly, climatology, unit }: Props) {
+/** The headline: how one month (the busiest of the last twelve, or the last) compares with the same month in every year on record. */
+export function AnomalyTiles({ anomaly, climatology, unit, busiest = false }: Props) {
   const month = MONTHS_LONG[anomaly.month - 1];
   const years = climatology.find((c) => c.month === anomaly.month)?.years ?? 0;
   const verdict =
@@ -29,7 +35,7 @@ export function AnomalyTiles({ anomaly, climatology, unit }: Props) {
           {month} {anomaly.year}
         </span>
         <span className="tile-value">{formatValue(anomaly.value)}</span>
-        <span className="tile-note">{unit}</span>
+        <span className="tile-note">{busiest ? `${unit}; the busiest of the last 12 months` : unit}</span>
       </div>
       <div className="tile">
         <span className="tile-label">{month} median</span>

@@ -199,6 +199,23 @@ def test_anomaly_compares_the_last_selected_month_with_its_history(client):
     assert (quiet["value"], quiet["median"], quiet["ratio"]) == (0.0, 0.0, None)  # no ratio against zero
 
 
+def test_season_peak_compares_the_busiest_of_the_last_twelve_months_with_its_history(client):
+    # Ending in July 2013, the last twelve months are 2012-08 .. 2013-07; August 2012 (40) is the busiest.
+    # The Augusts of the record are 10, 22, 40, 64: median 31, and two of four burned less than 40.
+    body = calendar(client, start="2012-01", end="2013-07").json()
+    assert body["season_peak"] == {
+        "year": 2012, "month": 8, "value": 40.0, "median": 31.0, "ratio": 1.29, "percentile": 50,
+    }  # fmt: skip
+    assert (body["anomaly"]["year"], body["anomaly"]["month"]) == (2013, 7)  # the last month itself stays as it was
+
+
+def test_season_peak_stays_inside_the_chosen_period(client):
+    # 2012-01 .. 2012-03 holds only January's 7 (MODIS); the Januaries of the record are 0, 7, 0.
+    assert calendar(client, start="2012-01", end="2012-03").json()["season_peak"] == {
+        "year": 2012, "month": 1, "value": 7.0, "median": 0.0, "ratio": None, "percentile": 67,
+    }  # fmt: skip
+
+
 def test_yearly_totals_flag_years_that_are_not_fully_covered(client):
     assert calendar(client).json()["yearly"] == [
         {"year": 2010, "value": 10.0, "complete": False},  # the record starts in August

@@ -63,7 +63,7 @@ JSON for the two countries and no API.
 |---|---|---|---|---|---|
 | 5 | "How far to trust this" block: held-out error, the two baselines, where the numbers come from (`harmonization_report.json`) | 1.5 h | Validity, where we lead every competitor we read | VitaliiFoX | [x] |
 | 6 | The raw record as a thin line over the harmonized bars on the yearly chart, so the 2012 jump is visible without the switch | 1 h | It answers the challenge at first glance | VitaliiFoX | [x] |
-| 7 | Log scale for the calendar by default. The headline figure shows the peak of the last season instead of December | 1 h | Today the calendar looks washed out and the headline figure is a quiet month | | [ ] |
+| 7 | Log scale for the calendar by default. The headline figure shows the peak of the last season instead of December | 1 h | Today the calendar looks washed out and the headline figure is a quiet month | VitaliiFoX | [x] |
 | 8 | Draw an area on the globe (done as a polygon, sent to the API as its geometry; the `box` filter shows its bounds) | 2-3 h | Every strong competitor has it; the README promises it | vovikLXUS | [x] |
 | 8a | "Peak burning months" card for the chosen area: the fewest months that together hold 60% of a typical year (the sum of the monthly medians in `climatology`), with a table view. Web only: a pure function in `web/src/scale.ts` under test, and the term in `GLOSSARY.md`. Call it burning activity, not risk: we do not measure risk | 1.5 h | The challenge asks for critical periods by name, and the API already returns what the card needs | VitaliiFoX | [x] |
 
