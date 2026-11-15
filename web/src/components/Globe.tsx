@@ -6,12 +6,15 @@ import {
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { formatCount, monthTitle, numberLocale, t } from "../i18n";
+import { formatValue } from "../scale";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
-import { type Country, type Tap, countryAt, isDoubleTap } from "../countries";
+import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
-  type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, cellSentence, cellSquares, cellStops, flatFillZoom, hourFilters,
-  hourInstant, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine, regionsCenter, trendSentence,
+  type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops,
+  changeLabel, flatFillZoom, hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
+  regionsCenter, trendSentence,
 } from "../globe";
 
 type Props = {
@@ -30,6 +33,8 @@ type Props = {
   onViewChange: (view: MapView) => void;
   /** The borders a double-click finds a country by; empty until they arrive. */
   countries: Country[];
+  /** Lazy loader for `countries.geojson`, called on the first double-click when borders are not loaded yet. */
+  onEnsureCountries: () => Promise<Country[]>;
   /** The country picked on the globe, or null. Its border is outlined, and the calendar counts inside it. */
   country: Country | null;
   /** False when no record is loaded for the picked country. */
@@ -74,8 +79,6 @@ const HEAT_FADE_TO = 8;
 // The drawn area of interest: white on a dark casing, so it reads on the imagery and on the street map.
 const AREA_INK = "#ffffff";
 const AREA_CASING = "rgba(3, 5, 11, 0.75)";
-// Longer than the gap between the two clicks of a double-click on every common system setting.
-const DOUBLE_CLICK_MS = 500;
 const EMPTY = { type: "FeatureCollection" as const, features: [] };
 
 const ATMOSPHERE: SkySpecification["atmosphere-blend"] = ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0];
@@ -104,6 +107,11 @@ const OSM_ATTRIBUTION =
 const STREET_ZOOM = 8;
 /** Zoomed in past this, the date panel and the legend fold into small buttons to leave the map clear. */
 const CARD_ZOOM = 4;
+/** The globe turns on its own while it is shown whole: one turn in two minutes, west to east. */
+const SPIN_DEG_PER_S = 3;
+const SPIN_MAX_ZOOM = 3;
+/** After the user moves the globe it holds still this long before it starts turning again. */
+const SPIN_RESUME_MS = 30_000;
 const LABEL_FONT = ["Noto Sans Regular"];
 const NAME = ["coalesce", ["get", "name:en"], ["get", "name"]] as unknown as string;
 
@@ -386,13 +394,13 @@ const VIEW_EASE_MS = 800;
 
 /** What a screen reader hears on the map itself; turning is a thing of the globe alone. */
 function canvasLabel(view: MapView): string {
-  return (
-    (view === "flat"
-      ? "Map of the selected day's hotspots. Drag or use the arrow keys to move it; "
-      : "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it; ")
-    + "plus and minus, or Ctrl or Command with the scroll wheel, to zoom. "
-    + "Double-click a country to see its burning calendar below."
-  );
+  return view === "flat"
+    ? t(
+      "Map of the selected day's hotspots. Drag or use the arrow keys to move it; plus and minus, or Ctrl or Command with the scroll wheel, to zoom. Double-click a country to see its burning calendar below.",
+    )
+    : t(
+      "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it; plus and minus, or Ctrl or Command with the scroll wheel, to zoom. Double-click a country to see its burning calendar below.",
+    );
 }
 
 /** Zoom at which the flat world covers the whole map element. */
@@ -475,8 +483,8 @@ function CalendarIcon() {
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
 export function Globe({
-  regions, date, time, day, counts, focusRegion, dark, view, onViewChange, countries, country, countryHasData, onPickCountry, area,
-  onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
+  regions, date, time, day, counts, focusRegion, dark, view, onViewChange, countries, onEnsureCountries, country, countryHasData,
+  onPickCountry, area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -498,6 +506,8 @@ export function Globe({
   const [cells, setCells] = useState<{
     years: number; unit: string; start: string; end: string; stops: number[]; cellDeg: number;
     halves: { early: string; late: string } | null; series: SeriesName; error: number;
+    /** The cells that burn most, for the table that stands in for the map. */
+    busiest: BurnCell[];
   } | null>(null);
   // What the cells show (how much, or how it changed) and their size: 1-degree tiles by default, the scale the
   // method's error was measured on; 0.25-degree cells on request, finer than that.
@@ -519,10 +529,12 @@ export function Globe({
   const regionsRef = useRef(regions);
   // Picking a country: the map's handlers are attached once, so they read the borders and the callback through refs.
   const countriesRef = useRef(countries);
+  const ensureCountriesRef = useRef(onEnsureCountries);
   const pickRef = useRef(onPickCountry);
   const countryRef = useRef(country);
   regionsRef.current = regions;
   countriesRef.current = countries;
+  ensureCountriesRef.current = onEnsureCountries;
   pickRef.current = onPickCountry;
   countryRef.current = country;
   // The last click or tap, to tell when the next one makes a double: a mouse and a finger are read the same way.
@@ -599,7 +611,7 @@ export function Globe({
     }
     // The second click of a double-click lands on the corner the first one placed.
     if (corners.length > 0 && near(corners[corners.length - 1], 6)) return;
-    if (corners.length >= MAX_CORNERS) return setDrawNote(`An area can have at most ${MAX_CORNERS} corners.`);
+    if (corners.length >= MAX_CORNERS) return setDrawNote(t("An area can have at most {max} corners.", { max: MAX_CORNERS }));
     const { lng, lat } = event.lngLat.wrap();
     setDrawNote(null);
     setCorners([...corners, roundCorner([lng, lat])]);
@@ -644,9 +656,9 @@ export function Globe({
       // wheel is hidden in globe.css: the shortcut is written in the legend instead.
       cooperativeGestures: true,
       locale: {
-        "CooperativeGesturesHandler.WindowsHelpText": "Scroll to move down the page. Ctrl + scroll zooms the map.",
-        "CooperativeGesturesHandler.MacHelpText": "Scroll to move down the page. \u2318 + scroll zooms the map.",
-        "CooperativeGesturesHandler.MobileHelpText": "Use two fingers to move the map.",
+        "CooperativeGesturesHandler.WindowsHelpText": t("Scroll to move down the page. {key} + scroll zooms the map.", { key: "Ctrl" }),
+        "CooperativeGesturesHandler.MacHelpText": t("Scroll to move down the page. {key} + scroll zooms the map.", { key: "\u2318" }),
+        "CooperativeGesturesHandler.MobileHelpText": t("Use two fingers to move the map."),
       },
     });
     // A double-click or a double tap picks a country, so it must not zoom as well: the buttons and the wheel do.
@@ -664,32 +676,41 @@ export function Globe({
       setReady(true);
       addStreetMap(map);
     });
-    const justClosed = () => performance.now() - closedAt.current < DOUBLE_CLICK_MS;
+    const justClosed = () => performance.now() - closedAt.current < DOUBLE_TAP_MS;
     map.on("dblclick", (event) => {
       if (!draw.current.active && !justClosed()) return;
       event.preventDefault(); // no zoom: a double-click closes the outline
       if (draw.current.active) drawActions.current.finishDrawing();
     });
-    map.on("click", (event) => {
+    map.on("click", async (event) => {
       if (draw.current.active) return drawActions.current.addCorner(event);
-      // In "Where it burns" a click on a cell makes that cell the area of interest.
+      if (justClosed()) return;
       const info = cellsRef.current;
       const cellFeature = info ? map.queryRenderedFeatures(event.point, { layers: ["cells-fill"] })[0] : undefined;
-      if (info && cellFeature) {
+      const decision = resolveTap(lastTap.current, {
+        time: performance.now(),
+        x: event.point.x,
+        y: event.point.y,
+        hasCell: Boolean(info && cellFeature),
+        hasArea: Boolean(areaRef.current),
+      });
+      lastTap.current = decision.nextTap;
+      // In "Where it burns" a single click on a cell makes it the area; a double tap takes priority and picks the country.
+      if (decision.kind === "pick-cell" && info && cellFeature) {
         // The square from the cell's own centre: tile geometry is quantized, the centre is exact.
         const { lat, lon } = cellFeature.properties as BurnCell;
         const half = info.cellDeg / 2;
         return drawActions.current.pickCell(boxCorners([lon - half, lat - half, lon + half, lat + half]));
       }
-      if (justClosed()) return;
-      // Two clicks or taps on one spot pick the country under them; a single one only starts the wait.
-      const tap: Tap = { time: performance.now(), x: event.point.x, y: event.point.y };
-      const double = isDoubleTap(lastTap.current, tap);
-      lastTap.current = double ? null : tap;
-      if (!double) return;
+      if (decision.kind !== "pick-country") return;
       const { lng, lat } = event.lngLat.wrap();
-      const found = countryAt(countriesRef.current, lng, lat);
+      const areaBefore = areaRef.current;
+      const list = countriesRef.current.length > 0 ? countriesRef.current : await ensureCountriesRef.current();
+      if (!mapRef.current || draw.current.active || areaRef.current !== areaBefore) return;
+      const found = countryAt(list, lng, lat);
       if (!found) return;
+      areaRef.current = null;
+      paintArea();
       flownTo.current = found.name;
       pickRef.current(found.name);
       fitBox(map, found.view, 6);
@@ -718,7 +739,7 @@ export function Globe({
         cellViewRef.current === "change" && info.halves
           ? trendSentence(cell, info.halves, info.error)
           : cellSentence(cell, info.years, info.unit, info.cellDeg);
-      popup.setLngLat(event.lngLat).setText(`${text} Click to make it your area.`).addTo(map);
+      popup.setLngLat(event.lngLat).setText(`${text} ${t("Click to make it your area.")}`).addTo(map);
     });
     map.on("mouseleave", "cells-fill", () => popup.remove());
     mapRef.current = map;
@@ -730,6 +751,44 @@ export function Globe({
       map.remove();
     };
   }, []);
+
+  // The globe turns slowly on its own. It holds still while the user drags, zooms or types on it (and for
+  // SPIN_RESUME_MS after), while a flight to a region runs, while an outline is being drawn, when zoomed in,
+  // when the tab is hidden, on the flat map, and always for users who ask for reduced motion.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || reducedMotion()) return;
+    const element = map.getContainer();
+    let touchedAt = -Infinity;
+    const touch = () => {
+      touchedAt = performance.now();
+    };
+    const events = ["pointerdown", "wheel", "keydown", "touchstart"] as const;
+    events.forEach((name) => element.addEventListener(name, touch, { passive: true }));
+    let frame = 0;
+    let last = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(now - last, 100) / 1000; // no leap after a pause or a slow frame
+      last = now;
+      const still =
+        document.hidden ||
+        shownView.current === "flat" ||
+        map.isMoving() ||
+        draw.current.active ||
+        map.getZoom() > SPIN_MAX_ZOOM ||
+        now - touchedAt < SPIN_RESUME_MS;
+      if (!still) {
+        const center = map.getCenter();
+        map.jumpTo({ center: [center.lng - SPIN_DEG_PER_S * dt, center.lat] });
+      }
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(frame);
+      events.forEach((name) => element.removeEventListener(name, touch));
+    };
+  }, [ready]);
 
   // The map is made before the regions arrive; centre it on them once they do.
   const centred = useRef(false);
@@ -755,7 +814,7 @@ export function Globe({
     const markers = regions.map((region) => {
       const label = document.createElement("div");
       label.className = "globe-region-label";
-      label.textContent = region.name;
+      label.textContent = t(region.name);
       return new Marker({ element: label, anchor: "bottom-left", opacityWhenCovered: "0" })
         .setLngLat([region.bbox[0], region.bbox[3]])
         .addTo(map);
@@ -826,7 +885,7 @@ export function Globe({
         );
         setCells({
           years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
-          halves: answer.halves, series: answer.series, error,
+          halves: answer.halves, series: answer.series, error, busiest: busiestCells(answer.cells),
         });
       })
       .catch((reason: Error) => {
@@ -835,10 +894,23 @@ export function Globe({
     return () => controller.abort();
   }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError]);
 
-  // "Show on the globe" from the list of busiest cells: switch to where it burns and fly there.
+  /** Leave the table for the globe and fly to a cell, its neighbours around it. */
+  function flyToCell(cell: { lat: number; lon: number }) {
+    setShowTable(false);
+    mapRef.current?.flyTo({ center: [cell.lon, cell.lat], zoom: 7, duration: reducedMotion() ? 0 : 1600 });
+  }
+
+  /** The table stands in for the map: what is drawn over the globe goes, and a drawing in progress is given up. */
+  function toggleTable() {
+    if (!showTable && drawing) stopDrawing();
+    setShowTable(!showTable);
+  }
+
+  // "Show on the map" from the list of busiest cells: switch to where it burns and fly there.
   useEffect(() => {
     const map = mapRef.current;
     if (!focus || !ready || !map) return;
+    setShowTable(false);
     setShowCells(true);
     // Zoom 7: the cell and its neighbours, so it reads against the cells around it.
     map.flyTo({ center: [focus.lon, focus.lat], zoom: 7, duration: reducedMotion() ? 0 : 1600 });
@@ -937,32 +1009,42 @@ export function Globe({
     if (!showTable) mapRef.current?.resize();
   }, [showTable]);
 
-  const unit = day?.unit ?? "";
+  const unit = t(day?.unit ?? "");
+  // The caption names the unit only when it is not simply hotspots, which the caption already says.
+  const dayCaption = day
+    ? day.unit === "hotspots"
+      ? t("Hotspots on {date}", { date: longDate(day.date) })
+      : t("Hotspots on {date}, in {unit}", { date: longDate(day.date), unit })
+    : "";
+  const record = cells?.series === "raw" ? t("raw record") : t("harmonized record");
   return (
-    <section className={street ? "stage is-street" : "stage"} aria-label={view === "flat" ? "Map of hotspots" : "Globe of hotspots"}>
+    <section
+      className={["stage", street && "is-street", showTable && "is-table", showTable && !panelOpen && "is-table-wide"].filter(Boolean).join(" ")}
+      aria-label={view === "flat" ? t("Map of hotspots") : t("Globe of hotspots")}
+    >
       <div className="stage-head">
         <h1>Hotspot Harmony</h1>
-        <p>Satellite fire hotspots, day by day</p>
+        <p>{t("Satellite fire hotspots, day by day")}</p>
         <div className="stage-actions">
           <a className="stage-next" href="#calendar">
-            Burning activity calendar, 2000 to 2025 <span aria-hidden="true">↓</span>
+            {t("Burning activity calendar, 2000 to 2025")} <span aria-hidden="true">↓</span>
           </a>
-          <div className="stage-view" role="group" aria-label="Map view">
+          <div className="stage-view" role="group" aria-label={t("Map view")}>
             <button type="button" aria-pressed={view === "globe"} onClick={() => onViewChange("globe")}>
-              Globe
+              {t("Globe")}
             </button>
             <button type="button" aria-pressed={view === "flat"} onClick={() => onViewChange("flat")}>
-              Flat map
+              {t("Flat map")}
             </button>
           </div>
           <button type="button" className="stage-toggle" aria-pressed={showCells} onClick={() => setShowCells(!showCells)}>
-            {showCells ? "Back to the day" : "Where it burns"}
+            {showCells ? t("Back to the day") : t("Where it burns")}
           </button>
           <button type="button" className="stage-toggle" aria-pressed={drawing} onClick={drawing ? stopDrawing : startDrawing}>
-            {area && !drawing ? "Redraw the area" : "Draw an area"}
+            {area && !drawing ? t("Redraw the area") : t("Draw an area")}
           </button>
-          <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={() => setShowTable(!showTable)}>
-            {showTable ? (view === "flat" ? "Show map" : "Show globe") : "Show table"}
+          <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={toggleTable}>
+            {showTable ? (view === "flat" ? t("Show map") : t("Show globe")) : t("Show table")}
           </button>
         </div>
       </div>
@@ -970,75 +1052,124 @@ export function Globe({
       {panelOpen ? (
         <>
           {panel}
-          <button type="button" className="stage-fold stage-fold-panel" aria-label="Hide the date panel" title="Hide" onClick={() => setPanelOpen(false)}>
+          <button type="button" className="stage-fold stage-fold-panel" aria-label={t("Hide the date panel")} title={t("Hide")} onClick={() => setPanelOpen(false)}>
             <FoldIcon />
           </button>
         </>
       ) : (
-        <button type="button" className="stage-pill stage-pill-panel" aria-label="Show the date panel" onClick={() => setPanelOpen(true)}>
+        <button type="button" className="stage-pill stage-pill-panel" aria-label={t("Show the date panel")} onClick={() => setPanelOpen(true)}>
           <CalendarIcon />
-          {date ? `${longDate(date)}, ${timeLabel(time)} UTC` : "Date and time"}
-          {counts && <strong>{counts.throughHour.toLocaleString("en-US")}</strong>}
+          {date ? `${longDate(date)}, ${timeLabel(time)} UTC` : t("Date and time")}
+          {counts && <strong>{formatCount(counts.throughHour)}</strong>}
         </button>
       )}
 
       <div className="stage-map">
         <div ref={container} className={showTable ? "stage-canvas is-hidden" : "stage-canvas"} />
-        {showTable && (
+        {showTable && showCells && (
           <div className="stage-table">
-            {day && counts ? (
+            {cells ? (
               <table>
                 <caption>
-                  {`Hotspots on ${longDate(day.date)}, in ${unit}`}
+                  {t("Where it burns most, {start} to {end}, {record}: {unit} a year, {deg}° cells", {
+                    start: cells.start, end: cells.end, record, unit: t(cells.unit), deg: cells.cellDeg.toLocaleString(numberLocale()),
+                  })}
                 </caption>
                 <thead>
                   <tr>
-                    <th scope="col">Region</th>
-                    <th scope="col">{`00:00 through ${timeLabel(time)}`}</th>
-                    <th scope="col">{`${timeLabel(Math.max(0, time - 59))} to ${timeLabel(time)}`}</th>
-                    <th scope="col">Whole day</th>
+                    <th scope="col">{t("Cell centre")}</th>
+                    <th scope="col">{t("A year")}</th>
+                    <th scope="col">{t("Per 100 km²")}</th>
+                    <th scope="col">{t("Years burning")}</th>
+                    <th scope="col">{t("Most in")}</th>
+                    {cells.halves && (
+                      <th scope="col">
+                        {t("{late} against {early}", {
+                          late: cells.halves.late.replace("-", "–"), early: cells.halves.early.replace("-", "–"),
+                        })}
+                      </th>
+                    )}
+                    <th scope="col">
+                      <span className="dt-hidden">{t("Map")}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cells.busiest.map((cell) => (
+                    <tr key={`${cell.lat},${cell.lon}`}>
+                      <th scope="row">{latLonLabel(cell.lat, cell.lon)}</th>
+                      <td>{formatValue(cell.per_year)}</td>
+                      <td>{stopLabel((cell.per_year / cellAreaKm2(cell.lat, cells.cellDeg)) * 100)}</td>
+                      <td>{t("{n} of {years}", { n: cell.years_burning, years: cells.years })}</td>
+                      <td>{monthTitle(cell.peak_month)}</td>
+                      {cells.halves && <td>{changeLabel(cell.trend, cells.error)}</td>}
+                      <td>
+                        <button type="button" className="stage-toggle stage-table-action" onClick={() => flyToCell(cell)}>
+                          {t("Show on the map")}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p>{cellsError ? t("Cannot load the cells: {error}", { error: cellsError }) : t("Loading where it burns...")}</p>
+            )}
+          </div>
+        )}
+        {showTable && !showCells && (
+          <div className="stage-table">
+            {day && counts ? (
+              <table>
+                <caption>{dayCaption}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{t("Region")}</th>
+                    <th scope="col">{t("00:00 through {time}", { time: timeLabel(time) })}</th>
+                    <th scope="col">{t("{from} to {to}", { from: timeLabel(Math.max(0, time - 59)), to: timeLabel(time) })}</th>
+                    <th scope="col">{t("Whole day")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {day.regions.map((name, index) => (
                     <tr key={name}>
-                      <th scope="row">{name}</th>
-                      <td>{(counts.regions[index]?.throughHour ?? 0).toLocaleString("en-US")}</td>
-                      <td>{(counts.regions[index]?.inHour ?? 0).toLocaleString("en-US")}</td>
-                      <td>{(counts.regions[index]?.day ?? 0).toLocaleString("en-US")}</td>
+                      <th scope="row">{t(name)}</th>
+                      <td>{formatCount(counts.regions[index]?.throughHour ?? 0)}</td>
+                      <td>{formatCount(counts.regions[index]?.inHour ?? 0)}</td>
+                      <td>{formatCount(counts.regions[index]?.day ?? 0)}</td>
                     </tr>
                   ))}
                   <tr>
-                    <th scope="row">All</th>
-                    <td>{counts.throughHour.toLocaleString("en-US")}</td>
-                    <td>{counts.inHour.toLocaleString("en-US")}</td>
-                    <td>{counts.day.toLocaleString("en-US")}</td>
+                    <th scope="row">{t("All")}</th>
+                    <td>{formatCount(counts.throughHour)}</td>
+                    <td>{formatCount(counts.inHour)}</td>
+                    <td>{formatCount(counts.day)}</td>
                   </tr>
                 </tbody>
               </table>
             ) : (
-              <p>No hotspots loaded for this day.</p>
+              <p>{t("No hotspots loaded for this day.")}</p>
             )}
           </div>
         )}
       </div>
 
-      {showCells && !drawing && (
-        <div className={area || country ? "stage-draw stage-cells is-raised" : "stage-draw stage-cells"} role="group" aria-label="What the cells show">
+      {showCells && !drawing && !showTable && (
+        <div className={area || country ? "stage-draw stage-cells is-raised" : "stage-draw stage-cells"} role="group" aria-label={t("What the cells show")}>
           <div className="segmented">
             <button type="button" aria-pressed={cellView === "amount"} onClick={() => showCellView("amount")}>
-              How much
+              {t("How much")}
             </button>
             <button type="button" aria-pressed={cellView === "change"} onClick={() => showCellView("change")}>
-              How it changed
+              {t("How it changed")}
             </button>
           </div>
           <div className="segmented">
             <button type="button" aria-pressed={tileDeg === 1} onClick={() => setTileDeg(1)}>
-              1° tiles
+              {t("1° tiles")}
             </button>
             <button type="button" aria-pressed={tileDeg === 0.25} onClick={() => setTileDeg(0.25)}>
-              0.25° cells
+              {t("0.25° cells")}
             </button>
           </div>
         </div>
@@ -1048,69 +1179,69 @@ export function Globe({
           <p role="status">
             {drawNote
               ?? (draft.length === 0
-                ? "Click the map to place the corners of your area of interest."
+                ? t("Click the map to place the corners of your area of interest.")
                 : draft.length < 3
-                  ? `${draft.length} of at least 3 corners placed.`
-                  : `${draft.length} corners. Click the first corner, double-click or press Enter to finish.`)}
+                  ? t("{n} of at least 3 corners placed.", { n: draft.length })
+                  : t("{n} corners. Click the first corner, double-click or press Enter to finish.", { n: draft.length }))}
           </p>
           <div className="stage-draw-actions">
             <button type="button" className="stage-toggle" disabled={draft.length === 0} onClick={undoCorner}>
-              Undo corner
+              {t("Undo corner")}
             </button>
             <button type="button" className="stage-toggle is-strong" disabled={draft.length < 3} onClick={finishDrawing}>
-              Finish
+              {t("Finish")}
             </button>
             <button type="button" className="stage-toggle" onClick={stopDrawing}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </div>
       )}
-      {!drawing && area && (
+      {!drawing && !showTable && area && (
         <div className="stage-draw">
           <p role="status">
             {areaError
-              ? `Your area, ${area.length} corners: ${areaError}`
-              : `Your area, ${area.length} corners. The calendar below now counts the burning inside it.`}
+              ? t("Your area, {n} corners: {error}", { n: area.length, error: areaError })
+              : t("Your area, {n} corners. The calendar below now counts the burning inside it.", { n: area.length })}
           </p>
           <div className="stage-draw-actions">
             {!areaError && (
               <a className="stage-toggle is-strong" href="#calendar">
-                See its calendar <span aria-hidden="true">↓</span>
+                {t("See its calendar")} <span aria-hidden="true">↓</span>
               </a>
             )}
             <button type="button" className="stage-toggle" onClick={() => onDrawArea(null)}>
-              Remove the area
+              {t("Remove the area")}
             </button>
           </div>
         </div>
       )}
 
-      {!drawing && !area && country && (
+      {!drawing && !showTable && !area && country && (
         <div className="stage-draw">
           <p role="status">
             {!countryHasData
-              ? `${country.name}: no record is loaded for this country yet.`
+              ? t("{country}: no record is loaded for this country yet.", { country: t(country.name) })
               : areaError
-                ? `${country.name}: ${areaError}`
-                : `${country.name}. The calendar below now counts the burning inside its border.`}
+                ? `${t(country.name)}: ${areaError}`
+                : t("{country}. The calendar below now counts the burning inside its border.", { country: t(country.name) })}
           </p>
           <div className="stage-draw-actions">
             {!areaError && (
               <a className="stage-toggle is-strong" href="#calendar">
-                {countryHasData ? "See its calendar" : "See what is missing"} <span aria-hidden="true">↓</span>
+                {countryHasData ? t("See its calendar") : t("See what is missing")} <span aria-hidden="true">↓</span>
               </a>
             )}
             <button type="button" className="stage-toggle" onClick={() => onPickCountry(null)}>
-              Let the country go
+              {t("Let the country go")}
             </button>
           </div>
         </div>
       )}
 
-      {legendOpen ? (
+      {showTable ? null : legendOpen ? (
         <div className="stage-legend">
-          <button type="button" className="stage-fold stage-fold-legend" aria-label="Hide the legend" title="Hide" onClick={() => setLegendOpen(false)}>
+          <button type="button" className="stage-fold stage-fold-legend" aria-label={t("Hide the legend")} title={t("Hide")} onClick={() => setLegendOpen(false)}>
             <FoldIcon />
           </button>
         {showCells ? (
@@ -1118,13 +1249,17 @@ export function Globe({
             <p className="legend-title">
               {!cells
                 ? cellsError
-                  ? `Cannot load the cells: ${cellsError}`
-                  : "Loading where it burns..."
+                  ? t("Cannot load the cells: {error}", { error: cellsError })
+                  : t("Loading where it burns...")
                 : cellView === "change"
                   ? cells.halves
-                    ? `How burning changed, ${cells.halves.late.replace("-", "–")} against ${cells.halves.early.replace("-", "–")}, ${cells.series} record`
-                    : "The period has fewer than two full years: choose a longer one to see a change"
-                  : `Where it burns, ${cells.start} to ${cells.end}: ${cells.unit} a year per 100 km², ${cells.series} record`}
+                    ? t("How burning changed, {late} against {early}, {record}", {
+                        late: cells.halves.late.replace("-", "–"), early: cells.halves.early.replace("-", "–"), record,
+                      })
+                    : t("The period has fewer than two full years: choose a longer one to see a change")
+                  : t("Where it burns, {start} to {end}: {unit} a year per 100 km², {record}", {
+                      start: cells.start, end: cells.end, unit: t(cells.unit), record,
+                    })}
             </p>
             {cells && cellView === "amount" && (
               <>
@@ -1149,16 +1284,24 @@ export function Globe({
                 </div>
                 <p className="legend-hint">
                   {cells.series === "raw"
-                    ? "The raw record switches from MODIS to VIIRS in 2012, so much of this rise is the sensor, not the fire: switch the record to harmonized to see the change that is real."
-                    : `A change within the method's error for a 1-degree tile and a year (±${Math.round(cells.error * 100)}%) is shown as none.${cells.cellDeg < 1 ? " That error was measured on 1-degree tiles; on 0.25-degree cells it is larger, so a small change here can still be noise." : ""} Grey: no burning in the first half. From 2022 the record also holds the fires of the war in the east and south.`}
+                    ? t("The raw record switches from MODIS to VIIRS in 2012, so much of this rise is the sensor, not the fire: switch the record to harmonized to see the change that is real.")
+                    : [
+                        t("A change within the method's error for a 1-degree tile and a year (±{error}%) is shown as none.", {
+                          error: Math.round(cells.error * 100),
+                        }),
+                        cells.cellDeg < 1
+                          ? t("That error was measured on 1-degree tiles; on 0.25-degree cells it is larger, so a small change here can still be noise.")
+                          : "",
+                        t("Grey: no burning in the first half. From 2022 the record also holds the fires of the war in the east and south."),
+                      ].filter(Boolean).join(" ")}
                 </p>
               </>
             )}
             {cells && (
               <p className="legend-hint">
                 {cells.cellDeg >= 1
-                  ? "Point at a tile for its figures; click it to make it your area. 1-degree tiles are the scale the method's error was measured on."
-                  : "Point at a cell for its figures; click it to make it your area. 0.25-degree cells are finer than the 1-degree tiles the method's error was measured on."}
+                  ? t("Point at a tile for its figures; click it to make it your area. 1-degree tiles are the scale the method's error was measured on.")
+                  : t("Point at a cell for its figures; click it to make it your area. 0.25-degree cells are finer than the 1-degree tiles the method's error was measured on.")}
               </p>
             )}
           </div>
@@ -1166,33 +1309,33 @@ export function Globe({
           <ul>
             <li>
               <i className="legend-dot" aria-hidden="true" />
-              Hotspots through the selected time
+              {t("Hotspots through the selected time")}
             </li>
             <li>
               <i className="legend-dot is-ringed" aria-hidden="true" />
-              Detected in the hour up to it
+              {t("Detected in the hour up to it")}
             </li>
             <li>
               <i className="legend-heat" aria-hidden="true" />
-              Where hotspots crowd, orange turns red
+              {t("Where hotspots crowd, orange turns red")}
             </li>
           </ul>
         )}
-        <p className="legend-hint">Double-click a country to see its burning calendar below.</p>
-        <p className="legend-hint">{`${ZOOM_KEY} + scroll zooms the map; scroll alone moves down the page.`}</p>
+        <p className="legend-hint">{t("Double-click a country to see its burning calendar below.")}</p>
+        <p className="legend-hint">{t("{key} + scroll zooms the map; scroll alone moves down the page.", { key: ZOOM_KEY })}</p>
         <p>
-          Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Map:{" "}
+          {t("Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Map:")}{" "}
           <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" "}
-          <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">© OpenMapTiles</a>, data{" "}
-          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>.
-          Borders a country is picked by:{" "}
+          <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">© OpenMapTiles</a>, {t("data")}{" "}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{t("© OpenStreetMap contributors")}</a>.{" "}
+          {t("Borders a country is picked by:")}{" "}
           <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>.
         </p>
         </div>
       ) : (
-        <button type="button" className="stage-pill stage-pill-legend" aria-label="Show the legend and data credits" onClick={() => setLegendOpen(true)}>
+        <button type="button" className="stage-pill stage-pill-legend" aria-label={t("Show the legend and data credits")} onClick={() => setLegendOpen(true)}>
           <i className="legend-dot" aria-hidden="true" />
-          Legend and credits
+          {t("Legend and credits")}
         </button>
       )}
     </section>

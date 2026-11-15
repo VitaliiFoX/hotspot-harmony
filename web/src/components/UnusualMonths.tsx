@@ -1,6 +1,7 @@
+import { monthTitle, t } from "../i18n";
 import type { Unusual } from "../insights";
 import { UNUSUAL_Z } from "../insights";
-import { MONTHS_LONG, formatValue } from "../scale";
+import { formatValue } from "../scale";
 
 type Props = {
   unusual: Unusual[];
@@ -17,27 +18,36 @@ export function UnusualMonths({ unusual, unit, raw, onShow }: Props) {
     <section className="card unusual" aria-labelledby="unusual-title">
       <div className="card-head">
         <div>
-          <h2 id="unusual-title">Unusual months</h2>
+          <h2 id="unusual-title">{t("Unusual months")}</h2>
           <p className="subtitle">
-            {`Months that stand out from the same month of the other years of the period: a robust z of ${UNUSUAL_Z} or more (median and median absolute deviation), and further from the median than the method's error. Largest departure first.`}
-            {raw && " On the raw record many months after 2012 stand out because VIIRS replaced MODIS, not because more burned."}
+            {t(
+              "Months that stand out from the same month of the other years of the period: a robust z of {z} or more (median and median absolute deviation), and further from the median than the method's error. Largest departure first.",
+              { z: UNUSUAL_Z },
+            )}
+            {raw && ` ${t("On the raw record many months after 2012 stand out because VIIRS replaced MODIS, not because more burned.")}`}
           </p>
         </div>
       </div>
       {unusual.length === 0 ? (
-        <p className="subtitle">No month of this area stands out from its own history by more than the method's error.</p>
+        <p className="subtitle">{t("No month of this area stands out from its own history by more than the method's error.")}</p>
       ) : (
         <ul className="unusual-list">
           {unusual.map((m) => (
             <li key={`${m.year}-${m.month}`} className={m.direction === "above" ? "is-above" : "is-below"}>
-              <button type="button" className="ghost" onClick={() => onShow(m.year)} title="Show this year on the calendar">
-                <strong>{`${MONTHS_LONG[m.month - 1]} ${m.year}`}</strong>
+              <button type="button" className="ghost" onClick={() => onShow(m.year)} title={t("Show this year on the calendar")}>
+                <strong>{`${monthTitle(m.month)} ${m.year}`}</strong>
                 <span>
                   {m.ratio === null
-                    ? `${formatValue(m.value)} ${unit} in a month that usually has none`
-                    : `${m.ratio.toFixed(2)}× its median: ${formatValue(m.value)} against ${formatValue(m.median)} ${unit}`}
+                    ? t("{value} {unit} in a month that usually has none", { value: formatValue(m.value), unit })
+                    : t("{ratio}× its median: {value} against {median} {unit}", {
+                        ratio: m.ratio.toFixed(2), value: formatValue(m.value), median: formatValue(m.median), unit,
+                      })}
                 </span>
-                <span className="unusual-z">{`${m.direction === "above" ? "more" : "less"} than usual, z ${m.z.toFixed(1)}`}</span>
+                <span className="unusual-z">
+                  {m.direction === "above"
+                    ? t("more than usual, z {z}", { z: m.z.toFixed(1) })
+                    : t("less than usual, z {z}", { z: m.z.toFixed(1) })}
+                </span>
               </button>
             </li>
           ))}

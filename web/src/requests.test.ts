@@ -59,9 +59,28 @@ describe("delayFor", () => {
 
 describe("requestKey", () => {
   it("tells apart the record, the dates and the area", () => {
-    const keys = [body("harmonized"), body("raw"), body("harmonized", 23), { ...body("harmonized"), start: "2010-01" }].map(requestKey);
+    const keys = [body("harmonized"), body("raw"), body("harmonized", 23), { ...body("harmonized"), start: "2010-01" }].map((b) =>
+      requestKey(b),
+    );
     expect(new Set(keys).size).toBe(4);
     expect(requestKey(body("raw"))).toBe(requestKey(body("raw")));
+  });
+
+  it("uses a cheap area key when given instead of stringifying a large border", () => {
+    const withBrokenCoords = {
+      ...body("harmonized"),
+      geometry: {
+        type: "Polygon" as const,
+        get coordinates(): number[][][] {
+          throw new Error("should not stringify coordinates when areaKey is given");
+        },
+      },
+    };
+    expect(requestKey(withBrokenCoords, "country:Ukraine")).toBe("harmonized|2000-11|2025-12|country:Ukraine");
+    const cache = new CalendarCache();
+    cache.set(withBrokenCoords, answer(7), "country:Ukraine");
+    expect(cache.get(withBrokenCoords, "country:Ukraine")).toEqual(answer(7));
+    expect(cache.get(withBrokenCoords, "country:Argentina")).toBeUndefined();
   });
 });
 

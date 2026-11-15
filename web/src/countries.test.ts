@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Region } from "./api";
 import {
-  DOUBLE_TAP_MS, DOUBLE_TAP_PX, countryAt, countryBoxText, findCountry, insideCountry, isDoubleTap, namesCountry, readCountries,
-  regionOfCountry,
+  BORDER_SOURCE, DOUBLE_TAP_MS, DOUBLE_TAP_PX, countryAt, countryBoxText, findCountry, insideCountry, isDoubleTap,
+  namesCountry, readCountries, regionOfCountry, resolveTap, searchPlaces,
 } from "./countries";
 
 // Two made-up countries on a small map:
@@ -120,5 +120,92 @@ describe("isDoubleTap", () => {
   it("refuses a second tap somewhere else", () => {
     // 3-4-5 triangle scaled by 7: 21 across and 28 down are 35 px away.
     expect(isDoubleTap(first, { time: 1100, x: 121, y: 128 })).toBe(false);
+  });
+
+  it("keeps the border edition source from the collection or falls back to the pinned default", () => {
+    expect(ringland.source).toBe(BORDER_SOURCE);
+    const tagged = readCountries({
+      source: "Natural Earth 10m _ukr v5.1.2",
+      features: [{ properties: { name: "Holia", iso: "HOL", view: [4, 4, 6, 6] }, geometry: { type: "MultiPolygon", coordinates: [[square(4, 4, 6, 6)]] } }],
+    });
+    expect(tagged[0].source).toBe("Natural Earth 10m _ukr v5.1.2");
+  });
+});
+
+describe("resolveTap", () => {
+  it("picks a cell on the first tap in 'Where it burns', then promotes a double tap to the country", () => {
+    const first = resolveTap(null, { time: 1000, x: 100, y: 100, hasCell: true, hasArea: false });
+    expect(first.kind).toBe("pick-cell");
+    // The first tap set the cell as the area, so hasArea is now true on the second tap.
+    const second = resolveTap(first.nextTap, { time: 1200, x: 102, y: 101, hasCell: true, hasArea: true });
+    expect(second.kind).toBe("pick-country");
+    expect(second.nextTap).toBeNull();
+  });
+
+  it("ignores a double tap when a drawn area is already set", () => {
+    const first = resolveTap(null, { time: 1000, x: 100, y: 100, hasCell: false, hasArea: true });
+    expect(first.kind).toBe("wait");
+    const second = resolveTap(first.nextTap, { time: 1200, x: 102, y: 101, hasCell: false, hasArea: true });
+    expect(second.kind).toBe("wait");
+    expect(second.nextTap).toBeNull();
+  });
+
+  it("still picks a country on a double tap in 'Where it burns' even if an earlier cell was already selected", () => {
+    const first = resolveTap(null, { time: 1000, x: 100, y: 100, hasCell: true, hasArea: true });
+    expect(first.kind).toBe("pick-cell");
+    const second = resolveTap(first.nextTap, { time: 1200, x: 101, y: 100, hasCell: true, hasArea: true });
+    expect(second.kind).toBe("pick-country");
+  });
+});
+
+describe("searchPlaces", () => {
+  const ringRegion: Region = { name: "Ringland", bbox: [0, 0, 22, 10] };
+  const world: Region = { name: "World", bbox: [-180, -90, 180, 90] };
+  const more = readCountries({
+    features: ["Olingar", "Garland", "Holia"].map((name) => ({
+      properties: { name, aliases: name === "Garland" ? ["Rep. of Gar"] : [], iso: name.slice(0, 3).toUpperCase(), view: [0, 0, 1, 1] },
+      geometry: { type: "MultiPolygon" as const, coordinates: [[square(0, 0, 1, 1)]] },
+    })),
+  });
+  const all = [ringland, ...more];
+  const names = (query: string, regions = [ringRegion]) => searchPlaces(regions, all, query).map((place) => place.name);
+
+  it("lists the regions first, then every other country by name, when nothing is typed", () => {
+    expect(searchPlaces([ringRegion], all, "")).toEqual([
+      { name: "Ringland", kind: "region", hasData: true },
+      { name: "Garland", kind: "country", hasData: false },
+      { name: "Holia", kind: "country", hasData: false },
+      { name: "Olingar", kind: "country", hasData: false },
+    ]);
+  });
+
+  it("does not list a country twice when it is a region", () => {
+    expect(names("ring")).toEqual(["Ringland"]);
+  });
+
+  it("puts a name that starts with the text before one that only holds it", () => {
+    // "gar" starts Garland and sits inside Olingar; "lin" is only inside Olingar.
+    expect(names("gar")).toEqual(["Garland", "Olingar"]);
+    expect(names("LIN")).toEqual(["Olingar"]);
+  });
+
+  it("finds a country by an alias or its code", () => {
+    expect(names("rep of")).toEqual(["Garland"]);
+    expect(names("hol")).toEqual(["Holia"]);
+  });
+
+  it("finds a place by the name the page shows for it in another language", () => {
+    const shown = (name: string) => (name === "Ringland" ? "Kiltseland" : name === "Holia" ? "Dirkia" : name);
+    expect(searchPlaces([ringRegion], all, "kilts", shown).map((place) => place.name)).toEqual(["Ringland"]);
+    expect(searchPlaces([ringRegion], all, "dirk", shown).map((place) => place.name)).toEqual(["Holia"]);
+    expect(searchPlaces([ringRegion], all, "kilts").map((place) => place.name)).toEqual([]);
+  });
+
+  it("finds nothing for a text no name holds", () => {
+    expect(names("zzz")).toEqual([]);
+  });
+
+  it("marks every country as having a record when a region spans the globe", () => {
+    expect(searchPlaces([world], all, "holia")).toEqual([{ name: "Holia", kind: "country", hasData: true }]);
   });
 });

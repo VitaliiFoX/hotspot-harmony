@@ -29,8 +29,11 @@ from pathlib import Path
 import shapely
 from shapely.geometry import MultiPolygon, mapping, shape
 
+BORDER_VERSION = "v5.1.2"
+BORDER_COMMIT = "f1890d9f152c896d250a77557a5751a93d494776"
+BORDER_SOURCE = f"Natural Earth 10m _ukr {BORDER_VERSION}"
 SOURCE = (
-    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
+    f"https://raw.githubusercontent.com/nvkelso/natural-earth-vector/{BORDER_COMMIT}/geojson/"
     "ne_10m_admin_0_countries_ukr.geojson"
 )
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,7 +81,7 @@ def build(source: dict) -> dict:
             "geometry": mapping(country),
         })  # fmt: skip
     features.sort(key=lambda f: f["properties"]["name"])
-    return {"type": "FeatureCollection", "features": features}
+    return {"type": "FeatureCollection", "source": BORDER_SOURCE, "features": features}
 
 
 def main() -> None:

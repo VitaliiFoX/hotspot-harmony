@@ -319,6 +319,60 @@ html {
 .stage-table th:first-child {
   text-align: left;
 }
+.stage-table p {
+  color: var(--stage-ink-2);
+}
+.stage .stage-table-action {
+  min-height: 32px;
+  margin-top: 0;
+  padding: 0 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* The table stands in for the globe: it takes the globe's place beside the date panel, and the stage is only as
+   tall as the two of them, so no empty sky is left under a short table. */
+.stage.is-table {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--panel-width);
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  gap: 16px 24px;
+  height: auto;
+  min-height: 0;
+  padding: 24px;
+}
+.stage.is-table .stage-head {
+  position: relative;
+  inset: auto;
+  grid-column: 1;
+  grid-row: 1;
+  max-width: none;
+  justify-self: start;
+}
+.stage.is-table .dt-panel {
+  position: relative;
+  inset: auto;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.stage.is-table .stage-map {
+  position: static;
+  grid-column: 1;
+  grid-row: 2;
+}
+.stage.is-table .stage-table {
+  position: relative;
+  inset: auto;
+  max-height: none;
+}
+/* With the date panel folded into its pill, the table takes the whole width; the pill keeps the top right corner. */
+.stage.is-table-wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+.stage.is-table-wide .stage-head {
+  max-width: calc(100% - 340px);
+}
 
 .stage-legend {
   position: absolute;
@@ -668,6 +722,22 @@ html {
   .stage-table {
     inset: 16px;
     max-height: none;
+  }
+  .stage.is-table {
+    display: flex;
+    align-items: stretch;
+    padding: 20px 16px;
+  }
+  .stage.is-table > * {
+    min-width: 0;
+  }
+  .stage.is-table .stage-head {
+    max-width: none;
+  }
+  .stage.is-table .stage-map {
+    position: relative;
+    height: auto;
+    margin: 0;
   }
 }
 .stage .maplibregl-ctrl-top-left {

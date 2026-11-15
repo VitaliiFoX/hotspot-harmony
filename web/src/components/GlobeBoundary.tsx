@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { Component, type ReactNode } from "react";
 
 type Props = { children: ReactNode };
@@ -21,8 +22,7 @@ export class GlobeBoundary extends Component<Props, State> {
       <div className="page">
         <h1>Hotspot Harmony</h1>
         <p className="notice" role="status">
-          The map needs WebGL2, which this browser does not offer. The burning activity calendar below works
-          without it.
+          {t("The map needs WebGL2, which this browser does not offer. The burning activity calendar below works without it.")}
         </p>
       </div>
     );

@@ -2,6 +2,7 @@
 
 The project language is English (see CLAUDE.md). The team writes Ukrainian day to day, so Cyrillic
 letters are the realistic way for another language to slip in; other scripts are not checked.
+The one exception is TRANSLATIONS: the Ukrainian texts of the web page, which a visitor can switch to.
 
 Usage:  python3 scripts/check_english.py [<commit range>]      (default range: origin/main..HEAD)
 In CI the range comes from COMMIT_RANGE and the PR text from PR_TITLE / PR_BODY.
@@ -14,6 +15,8 @@ import sys
 
 # Unicode blocks "Cyrillic" and "Cyrillic Supplement", written as code points so this file passes its own check
 CYRILLIC = re.compile(f"[{chr(0x0400)}-{chr(0x052F)}]")
+# The page's Ukrainian texts, keyed by the English ones; the page opens in English. Only this exact path is exempt.
+TRANSLATIONS = {"web/src/uk.ts"}
 
 
 def git(*args: str) -> str:
@@ -35,7 +38,7 @@ def main() -> int:
     commit_range = (sys.argv[1:] or [os.environ.get("COMMIT_RANGE") or "origin/main..HEAD"])[0]
     found: list[str] = []
     for path in git("ls-files", "-z").split("\0"):
-        if not path or not os.path.isfile(path):
+        if not path or path in TRANSLATIONS or not os.path.isfile(path):
             continue
         with open(path, "rb") as f:
             data = f.read()

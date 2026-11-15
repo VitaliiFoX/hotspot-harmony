@@ -35,7 +35,7 @@ on which satellite was flying.
 | Fire cell-days on a 1 km grid, local solar day | done |
 | Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
 | API (FastAPI): calendar, anomaly, CSV export, daily hotspots, validation | done; serves the raw and the harmonized series in fire cell-days, daily hotspot counts and coordinates with the days a sensor was down, and the held-out error with its two baselines from `harmonization_report.json` |
-| Web app: 3D satellite globe, date and time picker, filters, calendar, charts, downloads | done; a region can be chosen in the filters or a box typed in degrees; the calendar opens on the log scale; downloads: calendar data as CSV, every chart as PNG |
+| Web app: 3D satellite globe, date and time picker, filters, calendar, charts, downloads | done; a region or any country can be found by the search in the filters, or a box typed in degrees; the calendar opens on the log scale; downloads: calendar data as CSV, every chart as PNG |
 | Area of interest drawn on the globe | done; "Draw an area" places the corners of a polygon by click, and the calendar, the charts and both CSV downloads then count what is inside its outline; the area travels in the link (`&area=lon,lat;...`). Only inside the regions that have data |
 | Country picked on the globe | done for the countries with data (Argentina, Ukraine); a double-click or a double tap on a country outlines its border, and the calendar, the charts and the downloads then count what is inside it; the country travels in the link (`&country=Name`). Any other country of the world can be picked too and shows a "No record yet" card until its data are loaded: one entry in `config/regions.yaml`, then `make data` |
 | Headline: the season's peak against its history | done; the busiest of the last 12 months of the period, against the same month in every year of the record |
@@ -182,6 +182,8 @@ The same credits are in the globe's legend.
 - **English only.** Code, comments, docs, UI text, commit messages, branch names, PR titles and
   bodies, issues and review comments are written in English, whoever or whatever writes them.
   CI fails when Cyrillic text shows up in a tracked file, a commit message, or a PR title or body.
+  The one exception is `web/src/uk.ts`: the page opens in English and can be switched to Ukrainian,
+  and those texts live there, keyed by the English ones.
 - Work on a branch and open a pull request against `main`.
 - Run `make test` and `make lint` before you push.
 - **No commits after Sunday 2026-11-15 23:59 Kyiv time (21:59 UTC).** The hackathon submission is frozen then.

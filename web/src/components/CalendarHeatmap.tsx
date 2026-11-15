@@ -1,6 +1,7 @@
+import { monthName, monthShort, monthTitle, t } from "../i18n";
 import { type KeyboardEvent, useMemo, useRef, useState } from "react";
 import type { Climatology, MonthValue } from "../api";
-import { MONTHS, MONTHS_LONG, type ScaleMode, SEQUENTIAL, ZERO_FILL, cellColor, formatValue } from "../scale";
+import { MONTHS, type ScaleMode, SEQUENTIAL, ZERO_FILL, cellColor, formatValue } from "../scale";
 import { type Tip, Tooltip } from "./Tooltip";
 
 type Props = {
@@ -37,10 +38,10 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
   function describe(cell: MonthValue): Omit<Tip, "x" | "y"> {
     const median = medians.get(cell.month) ?? 0;
     const rows = [{ value: formatValue(cell.value), label: unit }];
-    rows.push({ value: formatValue(median), label: `median for ${MONTHS_LONG[cell.month - 1]}` });
-    if (median > 0) rows.push({ value: `${(cell.value / median).toFixed(2)}×`, label: "of that median" });
-    if (cell.sensor) rows.push({ value: SENSOR_NAMES[cell.sensor] ?? cell.sensor, label: "sensor" });
-    return { title: `${MONTHS_LONG[cell.month - 1]} ${cell.year}`, rows };
+    rows.push({ value: formatValue(median), label: t("median for {month}", { month: monthName(cell.month) }) });
+    if (median > 0) rows.push({ value: `${(cell.value / median).toFixed(2)}×`, label: t("of that median") });
+    if (cell.sensor) rows.push({ value: t(SENSOR_NAMES[cell.sensor] ?? cell.sensor), label: t("sensor") });
+    return { title: `${monthTitle(cell.month)} ${cell.year}`, rows };
   }
 
   function showAt(key: string, x: number, y: number) {
@@ -71,16 +72,19 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
         ref={grid}
         className="calendar-grid"
         role="application"
-        aria-label={`Burning activity calendar, ${years[0]} to ${years[years.length - 1]}. Use the arrow keys to read months, or switch to the table.`}
+        aria-label={t("Burning activity calendar, {first} to {last}. Use the arrow keys to read months, or switch to the table.", {
+          first: years[0],
+          last: years[years.length - 1],
+        })}
         tabIndex={0}
         onKeyDown={onKeyDown}
         onBlur={() => showAt("", 0, 0)}
         onPointerLeave={() => showAt("", 0, 0)}
       >
         <span />
-        {MONTHS.map((name) => (
+        {MONTHS.map((name, index) => (
           <span key={name} className="calendar-month">
-            {name}
+            {monthShort(index + 1)}
           </span>
         ))}
         {years.map((year) => (
@@ -89,7 +93,7 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
               type="button"
               tabIndex={-1}
               className={`calendar-year${year === highlightYear ? " is-selected" : ""}`}
-              title={`Highlight ${year} in the seasonal chart`}
+              title={t("Highlight {year} in the seasonal chart", { year })}
               onClick={() => onHighlightYear(year)}
             >
               {year}
@@ -120,8 +124,8 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
         </span>
         <span>
           {mode === "log"
-            ? `${formatValue(min)} to ${formatValue(max)} ${unit}, log scale`
-            : `up to ${formatValue(max)} ${unit}`}
+            ? t("{min} to {max} {unit}, log scale", { min: formatValue(min), max: formatValue(max), unit })
+            : t("up to {max} {unit}", { max: formatValue(max), unit })}
         </span>
       </div>
       <Tooltip tip={tip} />
@@ -134,13 +138,13 @@ export function CalendarTable({ months, unit }: { months: MonthValue[]; unit: st
   const years = [...new Set(months.map((m) => m.year))].sort((a, b) => a - b);
   return (
     <table>
-      <caption>{`Monthly ${unit}`}</caption>
+      <caption>{t("Monthly {unit}", { unit })}</caption>
       <thead>
         <tr>
-          <th scope="col">Year</th>
-          {MONTHS.map((name) => (
+          <th scope="col">{t("Year")}</th>
+          {MONTHS.map((name, index) => (
             <th scope="col" key={name}>
-              {name}
+              {monthShort(index + 1)}
             </th>
           ))}
         </tr>
