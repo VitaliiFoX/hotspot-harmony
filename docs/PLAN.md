@@ -15,7 +15,6 @@ a row.
   numbers is still in progress.
 - Not done yet:
   - a public demo (README still says "not deployed yet");
-  - drawing an area on the map;
   - showing in the app how far the numbers can be trusted;
   - the video or slides;
   - the project page.

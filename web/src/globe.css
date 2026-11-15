@@ -915,7 +915,8 @@ html {
 .stage-draw {
   position: absolute;
   left: 380px;
-  right: 340px;
+  /* Clear of the date panel and its 20 px margin, whatever width the panel has. */
+  right: calc(var(--panel-width, 300px) + 40px);
   bottom: 20px;
   z-index: 3;
   display: flex;

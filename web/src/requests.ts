@@ -18,11 +18,11 @@ export const TYPING_PAUSE_MS = 300;
 
 /**
  * How long to wait before asking for a new view. Only a box edited by hand waits: a first load, a
- * region, a date, a switch between the raw and the harmonized record or an area drawn on the globe is
- * one deliberate action.
+ * region, a date, a switch between the raw and the harmonized record, or an area drawn on the globe or
+ * removed from it is one deliberate action.
  */
 export function delayFor(previous: View | null, next: View): number {
-  if (!previous || next.area) return 0;
+  if (!previous || next.area || previous.area) return 0;
   const boxEdited = previous.box.join(",") !== next.box.join(",");
   const restSame =
     previous.region === next.region &&
