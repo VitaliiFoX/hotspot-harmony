@@ -13,9 +13,11 @@ type Props = {
   pngName?: string;
   /** Extra download buttons, e.g. the data behind the chart as CSV. */
   downloads?: ReactNode;
+  /** Anchor for links and scrolling to this card. */
+  id?: string;
 };
 
-export function ChartCard({ title, subtitle, options, chart, table, pngName, downloads }: Props) {
+export function ChartCard({ title, subtitle, options, chart, table, pngName, downloads, id }: Props) {
   const [showTable, setShowTable] = useState(false);
   const [saving, setSaving] = useState(false);
   const figure = useRef<HTMLElement>(null);
@@ -31,7 +33,7 @@ export function ChartCard({ title, subtitle, options, chart, table, pngName, dow
   }
 
   return (
-    <figure className="card" ref={figure}>
+    <figure className="card" ref={figure} id={id}>
       <figcaption className="card-head">
         <div>
           <h2>{title}</h2>

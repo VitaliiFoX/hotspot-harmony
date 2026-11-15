@@ -897,3 +897,52 @@ td.text-cell {
   padding: 4px 10px;
   font-size: 12px;
 }
+
+/* In short: the area in a few sentences from the page's own figures. */
+.in-short h2 {
+  margin-bottom: 8px;
+}
+.in-short ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+/* Unusual months: each a button that shows its year on the calendar. */
+.unusual-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.unusual-list .ghost {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  height: auto;
+  padding: 10px 12px;
+  white-space: normal;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  text-align: left;
+}
+.unusual-list .is-above strong::before {
+  content: "▲ ";
+  color: var(--accent);
+}
+.unusual-list .is-below strong::before {
+  content: "▼ ";
+  color: var(--muted);
+}
+.unusual-list span {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.unusual-z {
+  color: var(--muted);
+}
