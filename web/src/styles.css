@@ -481,6 +481,104 @@ fieldset > legend {
   line-height: 1;
 }
 
+/* The record on screen: a sentence, then its parts end to end. The reference is solid, the parts adjusted to it are
+   hatched, so the strip does not lean on colour; the numbered list under it ties each segment to its words. */
+.record-sentence {
+  max-width: 75ch;
+  margin: 0;
+}
+.record-strip {
+  display: flex;
+  gap: 2px;
+  margin: 12px 0 0;
+  padding: 5px 0;
+}
+.record-segment,
+.record-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.record-segment {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 18px;
+  height: 20px;
+}
+.record-swatch {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -1px;
+}
+.record-segment.is-reference,
+.record-swatch.is-reference {
+  background: var(--ink-2);
+  color: var(--surface);
+}
+.record-segment.is-adjusted,
+.record-swatch.is-adjusted {
+  background: repeating-linear-gradient(135deg, var(--muted) 0 1.5px, var(--surface) 1.5px 5px);
+  box-shadow: inset 0 0 0 1px var(--muted);
+}
+.record-segment.is-plain,
+.record-swatch.is-plain,
+.record-segment.is-jump,
+.record-swatch.is-jump {
+  background: var(--axis);
+}
+/* Raw record: the sensor switch is the point where the values jump, marked across the strip. */
+.record-segment.is-jump::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  left: -2px;
+  width: 2px;
+  background: var(--ink);
+}
+.record-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+.is-adjusted > .record-number {
+  background: var(--surface);
+}
+.record-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.record-parts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 75ch;
+}
+.record-part-label {
+  color: var(--ink);
+}
+.record-parts li.is-reference .record-part-label {
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .record-parts {
+    flex-direction: column;
+  }
+}
+
 .content {
   display: grid;
   gap: 16px;

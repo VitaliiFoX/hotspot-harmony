@@ -109,12 +109,15 @@ export const UK: Record<string, string> = {
   Dark: "Темна",
   "Example areas": "Приклади областей",
   Examples: "Приклади",
-  "Raw record: MODIS before {month}, VIIRS S-NPP from then on, counted as {unit} with no correction. VIIRS sees many small fires that MODIS misses, so the values jump at that month and cannot be compared across it.":
-    "Сирий ряд: MODIS до {month}, далі VIIRS S-NPP; рахуються {unit} без поправки. VIIRS бачить багато дрібних пожеж, яких MODIS не помічає, тож на цьому місяці значення стрибають, і порівнювати періоди до і після нього не можна.",
-  "Harmonized record, in {unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so {first} and {last} can be compared. {parts}.":
-    "Гармонізований ряд, {unit}: кожне значення — це кількість клітинок 1 км з вогнем за день, як їх показали б MODIS Terra + Aqua, тож {first} і {last} можна порівнювати. {parts}.",
-  "{label}: {from} to {to}": "{label}: з {from} до {to}",
-  "{label}: from {from}": "{label}: з {from}",
+  "Values are {unit} (1 km cells with fire on a day), matched to the MODIS Terra + Aqua reference, so {first} and {last} compare.":
+    "Значення — {unit} (клітинки 1 км з вогнем за день), зведені до еталону MODIS Terra + Aqua, тож {first} і {last} можна порівнювати.",
+  "Raw {unit}, uncorrected: VIIRS sees small fires MODIS misses, so values jump at {month} and cannot be compared across it.":
+    "Сирі {unit} без поправки: VIIRS бачить дрібні пожежі, яких не помічає MODIS, тож з {month} значення стрибають і порівнювати через цю межу не можна.",
+  MODIS: "MODIS",
+  "VIIRS S-NPP": "VIIRS S-NPP",
+  "as reported": "як є",
+  "adjusted to the reference": "зведено до еталону",
+  "values jump at its start": "на його початку значення стрибають",
   "How far to trust it": "Наскільки цьому довіряти",
   "Loading the record...": "Завантаження ряду...",
   "Burning activity calendar": "Календар активності горіння",
