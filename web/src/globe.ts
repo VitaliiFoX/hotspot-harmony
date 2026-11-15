@@ -137,10 +137,11 @@ export type HourCounts = RegionCounts & { regions: RegionCounts[] };
 
 /**
  * Hotspots from 00:00 through `time` (minutes after 00:00 UTC, inclusive), in the hour up to it, and in the
- * whole day, overall and per region.
+ * whole day, overall and per region. Over a period the third field of a hotspot is its day of the period instead
+ * of its minute: `time` is then a day and `window` 1, so "in the hour" reads "on that day".
  */
-export function countHotspots(hotspots: DayHotspot[], time: number, regionCount: number): HourCounts {
-  const start = time - 59;
+export function countHotspots(hotspots: DayHotspot[], time: number, regionCount: number, window = 60): HourCounts {
+  const start = time - (window - 1);
   const end = time + 1;
   const regions: RegionCounts[] = Array.from({ length: regionCount }, () => ({ throughHour: 0, inHour: 0, day: 0 }));
   const total: RegionCounts = { throughHour: 0, inHour: 0, day: 0 };
@@ -162,11 +163,11 @@ export function dotStyle(value: number, monthMax: number): { size: number; opaci
   return { size: 4 + 4 * share, opacity: 0.35 + 0.65 * share };
 }
 
-/** Map filters: every hotspot up to the end of the hour, and those detected within the hour. */
-export function hourFilters(time: number): { through: FilterSpecification; inHour: FilterSpecification } {
+/** Map filters: every hotspot up to the end of the hour, and those detected within the hour (or on that day of a period). */
+export function hourFilters(time: number, window = 60): { through: FilterSpecification; inHour: FilterSpecification } {
   return {
     through: ["<=", ["get", "minute"], time],
-    inHour: ["all", [">", ["get", "minute"], time - 60], ["<=", ["get", "minute"], time]],
+    inHour: ["all", [">", ["get", "minute"], time - window], ["<=", ["get", "minute"], time]],
   };
 }
 

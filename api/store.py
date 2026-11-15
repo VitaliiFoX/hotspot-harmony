@@ -45,6 +45,7 @@ from pipeline.harmonize import JUMP_AFTER, JUMP_BEFORE, METHOD_NAMES, RECORD
 
 RAW_SWITCH = (2012, 2)  # first month the raw series takes from VIIRS S-NPP (it started on 2012-01-20)
 RECORD_FIRST = (2000, 11)  # first full month of the FIRMS archive
+MAX_PERIOD_DAYS = 366  # the longest period the globe shows at once: a year, leap day included
 UNITS = {
     "harmonized": "MODIS-equivalent fire cell-days",
     "raw": "fire cell-days",
@@ -496,6 +497,62 @@ class Store:
             "regions": regions,
             "hotspots": [[lon, lat, minute, index.get(country, 0)] for lon, lat, minute, country in rows],
             "sensor_gap": date in self.gap_days.get(sensor, set()),
+        }
+
+    def hotspot_period(self, start: str, end: str, limit: int) -> dict:
+        """Hotspots from the UTC day `start` through `end` as [lon, lat, day of the period, region index].
+
+        The period may cross months and the switch from MODIS to VIIRS: each month is read from its own sensor. Past
+        `limit` rows an even sample is returned, the same share of every month, and `count` still holds every hotspot.
+        """
+        try:
+            first, last = pd.Timestamp(start), pd.Timestamp(end)
+        except ValueError as e:
+            raise ApiError(400, f"{start} to {end} is not a pair of calendar days") from e
+        if last < first:
+            raise ApiError(400, "the period ends before it starts")
+        days = (last - first).days + 1
+        if days > MAX_PERIOD_DAYS:
+            raise ApiError(400, f"a period can be at most {MAX_PERIOD_DAYS} days long")
+        cur = self.con.cursor()
+        parts = []
+        segment = first
+        while segment <= last:
+            stop = min(segment + pd.offsets.MonthBegin(1), last + pd.Timedelta(days=1))
+            sensor, source, params = self._day_source(segment, stop)
+            (count,) = cur.execute(f"select count(*) {source}", params).fetchone()
+            parts.append((sensor, source, params, int(count)))
+            segment = stop
+        total = sum(part[-1] for part in parts)
+        share = min(1.0, limit / total) if total else 1.0
+        regions = [r.name for r in self.cfg.regions]
+        index = {name: i for i, name in enumerate(regions)}
+        rows = []
+        for _, source, params, count in parts:
+            # hash() orders the rows the same way on every call, so the sample is stable and spread evenly in time.
+            rows += cur.execute(
+                f"""select round(lon, 4), round(lat, 4),
+                           cast(date_diff('day', ?::date, cast(acq_datetime_utc as date)) as integer) as day,
+                           country, acq_datetime_utc
+                    {source}
+                    order by hash(lon, lat, acq_datetime_utc)
+                    limit ?""",
+                [first.date(), *params, round(count * share)],
+            ).fetchall()
+        rows.sort(key=lambda row: (row[4], row[1], row[0]))
+        sensors = list(dict.fromkeys(part[0] for part in parts))
+        gaps = sorted(d for sensor in sensors for d in self.gap_days.get(sensor, ()) if start <= d <= end)
+        return {
+            "start": start,
+            "end": end,
+            "days": days,
+            "sensor": sensors[0] if len(sensors) == 1 else "+".join(sensors),
+            "unit": UNITS["raw_hotspots"],
+            "count": total,
+            "truncated": total > len(rows),
+            "regions": regions,
+            "hotspots": [[lon, lat, day, index.get(country, 0)] for lon, lat, day, country, _ in rows],
+            "gap_days": gaps,
         }
 
     def validation(self) -> dict:

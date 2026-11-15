@@ -405,9 +405,48 @@ def test_day_stops_at_the_row_limit_and_still_counts_every_hotspot(tmp_path):
     assert body["hotspots"] == [[6.0, 6.0, 0, 0], [21.9877, 25.1234, 187, 1]]
 
 
+def test_period_lists_hotspots_by_day_of_the_period_across_months(client_two_regions):
+    r = client_two_regions.get("/api/hotspots/period?start=2013-08-04&end=2013-08-06")
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["start"], body["end"], body["days"], body["sensor"], body["count"]) == (
+        "2013-08-04",
+        "2013-08-06",
+        3,
+        "viirs_snpp",
+        5,
+    )
+    # the day before at 23:59 is day 0; the three hotspots of the 5th are day 1, in time order; the 6th is day 2
+    assert body["hotspots"] == [
+        [6.5, 6.5, 0, 0],
+        [6.0, 6.0, 1, 0],
+        [21.9877, 25.1234, 1, 1],
+        [0.6, 0.4, 1, 0],
+        [5.5, 5.5, 2, 0],
+    ]
+    assert (body["truncated"], body["gap_days"]) == (False, [])
+
+
+def test_period_reads_each_month_from_its_own_sensor(client):
+    body = client.get("/api/hotspots/period?start=2012-01-15&end=2012-02-10").json()
+    assert (body["sensor"], body["days"], body["count"]) == ("modis+viirs_snpp", 27, 0)
+    body = client.get("/api/hotspots/period?start=2011-08-09&end=2011-08-11").json()
+    assert (body["sensor"], body["hotspots"]) == ("modis", [[3.0, 3.0, 1, 0]])
+
+
+def test_period_samples_past_the_row_limit_and_still_counts_every_hotspot(tmp_path):
+    config = build_data(tmp_path, config_text=CONFIG_TWO_REGIONS)
+    client = TestClient(create_app(data_dir=tmp_path, config_path=config, day_limit=2))
+    body = client.get("/api/hotspots/period?start=2013-08-04&end=2013-08-06").json()
+    assert (body["count"], body["truncated"], len(body["hotspots"])) == (5, True, 2)
+
+
 @pytest.mark.parametrize(
     "url",
     [
+        "/api/hotspots/period?start=2013-08-06&end=2013-08-04",  # ends before it starts
+        "/api/hotspots/period?start=2012-08-01&end=2013-08-05",  # longer than a year
+        "/api/hotspots/period?start=2013-08-30&end=2013-09-02",  # past the last month of the record
         "/api/hotspots/day?date=2013-09-02",  # after the last month of the record
         "/api/hotspots/day?date=2000-10-31",  # before the archive starts
         "/api/hotspots/day?date=2013-02-30",

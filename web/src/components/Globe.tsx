@@ -8,6 +8,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { formatCount, monthTitle, numberLocale, t } from "../i18n";
 import { formatValue } from "../scale";
+import { type Span, cursorLabel, spanLabel } from "../period";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
@@ -21,8 +22,10 @@ import {
 type Props = {
   regions: Region[];
   date: string | null;
-  /** Minutes after 00:00 UTC. */
+  /** Minutes after 00:00 UTC; over a span, the day of the span the slider is on. */
   time: number;
+  /** A month or period on screen instead of one day: the hotspots then carry their day of the span, not their minute. */
+  span: Span | null;
   day: DayHotspots | null;
   counts: HourCounts | null;
   /** The region chosen in the filters; the globe eases to it when it changes. */
@@ -507,8 +510,8 @@ function CalendarIcon() {
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
 export function Globe({
-  regions, date, time, day, counts, focusRegion, dark, view, onViewChange, countries, onEnsureCountries, country, countryHasData,
-  onPickCountry, area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
+  regions, date, time, span, day, counts, focusRegion, dark, view, onViewChange, countries, onEnsureCountries, country,
+  countryHasData, onPickCountry, area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -864,18 +867,20 @@ export function Globe({
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    const { through, inHour } = hourFilters(time);
+    const { through, inHour } = hourFilters(time, span ? 1 : 60);
     map.setFilter("hotspot-heat", through);
     map.setFilter("hotspot-glow", through);
     map.setFilter("hotspot", through);
     map.setFilter("hotspot-hour", inHour);
+    // Over a span of days there is no one moment, so no night side either.
+    const moment = date && !span;
     (map.getSource("night") as GeoJSONSource).setData(
-      date ? { type: "Feature", properties: {}, geometry: nightPolygon(hourInstant(date, time)) } : EMPTY,
+      moment ? { type: "Feature", properties: {}, geometry: nightPolygon(hourInstant(date, time)) } : EMPTY,
     );
     (map.getSource("terminator") as GeoJSONSource).setData(
-      date ? { type: "Feature", properties: {}, geometry: terminatorLine(hourInstant(date, time)) } : EMPTY,
+      moment ? { type: "Feature", properties: {}, geometry: terminatorLine(hourInstant(date, time)) } : EMPTY,
     );
-  }, [ready, date, time]);
+  }, [ready, date, time, span]);
 
   // Where it burns: fetch the cells of the period, colour them, and hide the day's hotspots while they show.
   useEffect(() => {
@@ -1081,7 +1086,9 @@ export function Globe({
 
   const unit = t(day?.unit ?? "");
   // The caption names the unit only when it is not simply hotspots, which the caption already says.
-  const dayCaption = day
+  const dayCaption = day && span
+    ? t("Hotspots, {span}", { span: spanLabel(span) })
+    : day
     ? day.unit === "hotspots"
       ? t("Hotspots on {date}", { date: longDate(day.date) })
       : t("Hotspots on {date}, in {unit}", { date: longDate(day.date), unit })
@@ -1129,7 +1136,11 @@ export function Globe({
       ) : (
         <button type="button" className="stage-pill stage-pill-panel" aria-label={t("Show the date panel")} onClick={() => setPanelOpen(true)}>
           <CalendarIcon />
-          {date ? `${longDate(date)}, ${timeLabel(time)} UTC` : t("Date and time")}
+          {span
+            ? t("{span}, through {day}", { span: spanLabel(span), day: cursorLabel(span, time) })
+            : date
+              ? `${longDate(date)}, ${timeLabel(time)} UTC`
+              : t("Date and time")}
           {counts && <strong>{formatCount(counts.throughHour)}</strong>}
         </button>
       )}
@@ -1195,9 +1206,19 @@ export function Globe({
                 <thead>
                   <tr>
                     <th scope="col">{t("Region")}</th>
-                    <th scope="col">{t("00:00 through {time}", { time: timeLabel(time) })}</th>
-                    <th scope="col">{t("{from} to {to}", { from: timeLabel(Math.max(0, time - 59)), to: timeLabel(time) })}</th>
-                    <th scope="col">{t("Whole day")}</th>
+                    {span ? (
+                      <>
+                        <th scope="col">{t("{from} to {to}", { from: cursorLabel(span, 0), to: cursorLabel(span, time) })}</th>
+                        <th scope="col">{cursorLabel(span, time)}</th>
+                        <th scope="col">{t("All days")}</th>
+                      </>
+                    ) : (
+                      <>
+                        <th scope="col">{t("00:00 through {time}", { time: timeLabel(time) })}</th>
+                        <th scope="col">{t("{from} to {to}", { from: timeLabel(Math.max(0, time - 59)), to: timeLabel(time) })}</th>
+                        <th scope="col">{t("Whole day")}</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -1218,7 +1239,7 @@ export function Globe({
                 </tbody>
               </table>
             ) : (
-              <p>{t("No hotspots loaded for this day.")}</p>
+              <p>{span ? t("No hotspots loaded for these days.") : t("No hotspots loaded for this day.")}</p>
             )}
           </div>
         )}
@@ -1379,11 +1400,11 @@ export function Globe({
           <ul>
             <li>
               <i className="legend-dot" aria-hidden="true" />
-              {t("Hotspots through the selected time")}
+              {span ? t("Hotspots through the selected day") : t("Hotspots through the selected time")}
             </li>
             <li>
               <i className="legend-dot is-ringed" aria-hidden="true" />
-              {t("Detected in the hour up to it")}
+              {span ? t("Detected on that day") : t("Detected in the hour up to it")}
             </li>
             <li>
               <i className="legend-heat" aria-hidden="true" />
