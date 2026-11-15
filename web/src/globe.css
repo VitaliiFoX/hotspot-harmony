@@ -586,6 +586,82 @@ html {
   );
 }
 
+/* A month or a period: its days form one tinted band, its first and last day stand out as the selected day does. */
+.dt-days.is-span {
+  column-gap: 0;
+}
+.stage .dt-days.is-span .dt-day[aria-pressed="true"],
+.stage .dt-days.is-span .dt-day.is-in-span {
+  border-radius: 0;
+  background: color-mix(in srgb, var(--hotspot) 24%, transparent);
+  color: var(--stage-ink);
+  font-weight: 500;
+}
+.stage .dt-days.is-span .dt-day.is-span-start {
+  border-top-left-radius: 14px;
+  border-bottom-left-radius: 14px;
+}
+.stage .dt-days.is-span .dt-day.is-span-end {
+  border-top-right-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+.stage .dt-days.is-span .dt-day.is-span-start,
+.stage .dt-days.is-span .dt-day.is-span-end,
+.stage .dt-days.is-span .dt-day.is-pending {
+  background: var(--selected-bg);
+  color: var(--selected-ink);
+  font-weight: 600;
+}
+.stage .dt-days.is-span .dt-day.is-span-start .dt-dot,
+.stage .dt-days.is-span .dt-day.is-span-end .dt-dot,
+.stage .dt-days.is-span .dt-day.is-pending .dt-dot {
+  background: var(--selected-ink);
+}
+.stage .dt-days.is-span .dt-day.is-in-span:not(.is-span-start):not(.is-span-end):not(.is-pending) .dt-dot {
+  background: var(--hotspot);
+}
+.stage .dt-days.is-span .dt-day:hover:not(:disabled):not(.is-in-span) {
+  border-radius: 14px;
+}
+
+/* Day, month or period: three equal glass segments across the top of the panel. */
+.stage .dt-views {
+  /* Clear of the panel's fold button in the top right corner. */
+  margin-right: 34px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: var(--glass-button);
+}
+.stage .dt-views > button {
+  height: 32px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--stage-ink-2);
+  font: inherit;
+  font-size: 14px;
+}
+.stage .dt-views > button:hover {
+  color: var(--stage-ink);
+}
+.stage .dt-views > button[aria-pressed="true"] {
+  background: var(--selected-bg);
+  color: var(--selected-ink);
+  font-weight: 600;
+}
+.stage .dt-cursor {
+  display: inline-grid;
+  place-items: center;
+  width: auto;
+  min-width: 64px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
 .dt-divider {
   height: 1px;
   background: var(--glass-line);
@@ -957,6 +1033,9 @@ html {
 @media (max-width: 899px) {
   .stage-fold {
     display: none;
+  }
+  .stage .dt-views {
+    margin-right: 0;
   }
   .stage-legend {
     padding-right: 16px;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type AreaGeometry, type Bbox, type Calendar, type Cells, type DayHotspots, type Meta, type MonthDays, type SeriesName, type Validation,
-  boxPolygon, fetchCalendar, fetchDayHotspots, fetchHotspotsCsv, fetchMeta, fetchMonthDays, fetchTopCells, fetchValidation,
+  boxPolygon, fetchCalendar, fetchDayHotspots, fetchHotspotsCsv, fetchPeriodHotspots, fetchMeta, fetchMonthDays, fetchTopCells, fetchValidation,
 } from "./api";
 import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
@@ -16,6 +16,7 @@ import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
 import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
+import { type Span, type View, makeSpan, monthSpan, parseView, periodAround, spanDays } from "./period";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
@@ -89,6 +90,12 @@ export function App() {
     const query = new URLSearchParams(window.location.search);
     return parseTimeParam(query.get("time"), query.get("hour")) ?? DEFAULT_TIME;
   });
+  // One day, a calendar month or a period from day to day. In a month or a period `date` is the day the panel's
+  // calendar is turned to, and the slider runs over the days of the span instead of the minutes of a day.
+  const [view, setView] = useState<View>(() => parseView(new URLSearchParams(window.location.search).get("view")));
+  const [periodSpan, setPeriodSpan] = useState<Span | null>(null);
+  // Day of the span the slider is on; null is its last day, where a new span opens.
+  const [cursor, setCursor] = useState<number | null>(null);
   const [monthDays, setMonthDays] = useState<MonthDays | null>(null);
   const [day, setDay] = useState<DayHotspots | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
@@ -168,7 +175,12 @@ export function App() {
         const first = loaded.first_day ?? `${loaded.first_month}-01`;
         const last = loaded.last_day ?? lastDay(loaded.last_month);
         const linkedDate = parseDateParam(query.get("date"));
-        setDate(linkedDate ? clampDate(linkedDate, first, last) : defaultDate(first, last));
+        const opened = linkedDate ? clampDate(linkedDate, first, last) : defaultDate(first, last);
+        // A period comes as &view=period&date=first day&to=last day; its calendar opens on the last day's month.
+        const linkedEnd = parseDateParam(query.get("to"));
+        const span = makeSpan(opened, linkedEnd ? clampDate(linkedEnd, first, last) : opened, first, last);
+        setPeriodSpan(span);
+        setDate(parseView(query.get("view")) === "period" ? span.end : opened);
       })
       .catch((reason: Error) => setError(t("Cannot reach the API: {reason}. Start it with `make api`.", { reason: reason.message })));
   }, []);
@@ -208,14 +220,47 @@ export function App() {
     });
   }, [countries, filters?.country, picked, pickedRegion]);
 
+  // What the globe shows: null for one day, else the month of `date` or the period picked.
+  const span = useMemo((): Span | null => {
+    if (view === "day" || !date || !firstDay || !finalDay) return null;
+    return view === "month" ? monthSpan(date, firstDay, finalDay) : (periodSpan ?? periodAround(date, firstDay, finalDay));
+  }, [view, date, periodSpan, firstDay, finalDay]);
+  const spanLength = span ? spanDays(span) : 0;
+  // A new span opens on its last day, so the globe shows all of it at once.
+  useEffect(() => setCursor(null), [span?.start, span?.end]);
+  const cursorDay = Math.min(cursor ?? spanLength - 1, spanLength - 1);
+
   useEffect(() => {
     if (!date) return;
     const query = new URLSearchParams(window.location.search);
-    query.set("date", date);
     query.delete("hour");
+    if (span && view === "period") {
+      query.set("view", "period");
+      query.set("date", span.start);
+      query.set("to", span.end);
+    } else {
+      if (view === "month") query.set("view", "month");
+      else query.delete("view");
+      query.set("date", date);
+      query.delete("to");
+    }
     query.set("time", timeLabel(time));
     writeAddress(query);
-  }, [date, time]);
+  }, [date, time, view, span]);
+
+  /** Switch between one day, its month and a period; a period opens as the week up to the day on screen. */
+  function changeView(next: View) {
+    if (!date || !firstDay || !finalDay) return;
+    if (next === "period" && view !== "period") setPeriodSpan(span ?? periodAround(date, firstDay, finalDay));
+    if (next === "day" && span) setDate(span.end);
+    setView(next);
+  }
+
+  /** A period picked in the calendar: the calendar stays on the month of its last day. */
+  function pickPeriod(next: Span) {
+    setPeriodSpan(next);
+    setDate(next.end);
+  }
 
   const month = date?.slice(0, 7) ?? null;
   useEffect(() => {
@@ -229,12 +274,20 @@ export function App() {
     return () => controller.abort();
   }, [month]);
 
+  // The hotspots on the globe: those of the day, or of every day of the span.
+  const shown = span ? `${span.start}/${span.end}` : date;
   useEffect(() => {
-    if (!date) return;
+    if (!shown) return;
+    const [start, end] = shown.split("/");
     const controller = new AbortController();
     setDayLoading(true);
     setDayError(null);
-    fetchDayHotspots(date, controller.signal)
+    const load: Promise<DayHotspots> = end
+      ? fetchPeriodHotspots(start, end, controller.signal).then(({ start: first, gap_days, ...rest }) => ({
+          ...rest, date: first, sensor_gap: gap_days.length > 0, gap_days,
+        }))
+      : fetchDayHotspots(start, controller.signal);
+    load
       .then(setDay)
       .catch((reason: Error) => {
         if (reason.name === "AbortError") return;
@@ -245,10 +298,13 @@ export function App() {
         if (!controller.signal.aborted) setDayLoading(false);
       });
     return () => controller.abort();
-  }, [date]);
+  }, [shown]);
 
-  // Changing the hour only filters the day already loaded.
-  const counts = useMemo(() => (day ? countHotspots(day.hotspots, time, day.regions.length) : null), [day, time]);
+  // Changing the hour, or the day of a span, only filters the hotspots already loaded.
+  const counts = useMemo(() => {
+    if (!day) return null;
+    return day.end ? countHotspots(day.hotspots, cursorDay, day.regions.length, 1) : countHotspots(day.hotspots, time, day.regions.length);
+  }, [day, time, cursorDay]);
 
   /** Take the country double-clicked on the globe as the area of interest, or go back to the region's box. */
   function pickCountry(name: string | null) {
@@ -485,7 +541,8 @@ export function App() {
       <Globe
         regions={meta?.regions ?? []}
         date={date}
-        time={time}
+        time={day?.end ? cursorDay : time}
+        span={day?.end && span ? span : null}
         day={day}
         counts={counts}
         focusRegion={filters?.region ?? null}
@@ -509,6 +566,12 @@ export function App() {
             <DateTimePanel
               date={date}
               time={time}
+              view={view}
+              span={span}
+              cursor={cursorDay}
+              onView={changeView}
+              onPeriod={pickPeriod}
+              onCursor={setCursor}
               firstDay={firstDay}
               lastDay={finalDay}
               monthDays={monthDays}
