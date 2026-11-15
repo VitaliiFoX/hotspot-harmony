@@ -409,3 +409,127 @@ export function latLonLabel(lat: number, lon: number): string {
     `${(Math.round(Math.abs(value) * 100) / 100).toFixed(2)}° ${value >= 0 ? positive : negative}`;
   return `${part(lat, t("N"), t("S"))}, ${part(lon, t("E"), t("W"))}`;
 }
+
+/** A colour with its opacity: red, green and blue from 0 to 255, alpha from 0 to 1. */
+export type Rgba = [r: number, g: number, b: number, a: number];
+
+function hexRgb(hex: string): [number, number, number] {
+  return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16)) as [number, number, number];
+}
+
+/**
+ * The colour of a value on a ramp of `#rrggbb` colours set at `stops` (ascending): mixed from the two stops
+ * around the value, the first or the last colour outside them. The same reading as the map's own
+ * `interpolate` expression, so a cell keeps the colour its legend promises.
+ */
+export function rampRgba(value: number, stops: readonly number[], colors: readonly string[]): Rgba {
+  let upper = stops.findIndex((stop) => value <= stop);
+  if (upper === -1) upper = stops.length - 1;
+  const lower = Math.max(0, upper - 1);
+  const span = stops[upper] - stops[lower];
+  const share = span > 0 ? Math.max(0, Math.min(1, (value - stops[lower]) / span)) : 0;
+  const [from, to] = [hexRgb(colors[lower]), hexRgb(colors[upper])];
+  return [0, 1, 2].map((i) => from[i] + (to[i] - from[i]) * share).concat(1) as Rgba;
+}
+
+/** A cell of "Where it burns" with the colour it is drawn in. */
+export type PaintedCell = { lat: number; lon: number; color: Rgba };
+
+/**
+ * The cells as one surface with no steps. At the centre of a cell the surface has the cell's own colour;
+ * between four centres it is mixed from the four by distance (bilinear). A place where no cell burned counts
+ * as fully transparent, so the surface fades out over one cell past the last one. The fade is the square of
+ * the mixed opacity: a quarter is left on that cell's outer edge and a sixteenth half a cell further, so the
+ * surface ends close to where the cells end and not in a wide pale band. Colours are mixed weighted by their
+ * opacity, so a colour next to nothing fades without turning dark.
+ */
+export function cellSurface(cells: readonly PaintedCell[], cellDeg: number) {
+  const lons = cells.map((cell) => cell.lon);
+  const lats = cells.map((cell) => cell.lat);
+  // One empty cell around the cells, for the fade.
+  const west = Math.min(...lons) - cellDeg;
+  const south = Math.min(...lats) - cellDeg;
+  const columns = Math.round((Math.max(...lons) - west) / cellDeg) + 2;
+  const rows = Math.round((Math.max(...lats) - south) / cellDeg) + 2;
+  // Red, green and blue already multiplied by alpha, then alpha.
+  const grid = new Float32Array(columns * rows * 4);
+  for (const { lat, lon, color } of cells) {
+    const at = (Math.round((lat - south) / cellDeg) * columns + Math.round((lon - west) / cellDeg)) * 4;
+    grid.set([color[0] * color[3], color[1] * color[3], color[2] * color[3], color[3]], at);
+  }
+  const bounds: [number, number, number, number] = [west, south, west + (columns - 1) * cellDeg, south + (rows - 1) * cellDeg];
+
+  /** The colour of the surface at a point; transparent outside the bounds. */
+  function at(lon: number, lat: number): Rgba {
+    const x = (lon - west) / cellDeg;
+    const y = (lat - south) / cellDeg;
+    if (!(x >= 0 && y >= 0 && x <= columns - 1 && y <= rows - 1)) return [0, 0, 0, 0];
+    const x0 = Math.min(columns - 2, Math.floor(x));
+    const y0 = Math.min(rows - 2, Math.floor(y));
+    const [tx, ty] = [x - x0, y - y0];
+    const mixed = [0, 0, 0, 0];
+    for (const [dx, dy, weight] of [
+      [0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty],
+    ]) {
+      const from = ((y0 + dy) * columns + x0 + dx) * 4;
+      for (let i = 0; i < 4; i++) mixed[i] += grid[from + i] * weight;
+    }
+    const alpha = mixed[3];
+    return alpha > 0 ? [mixed[0] / alpha, mixed[1] / alpha, mixed[2] / alpha, alpha * alpha] : [0, 0, 0, 0];
+  }
+  return { bounds, columns, rows, at };
+}
+
+/**
+ * The cells split into groups that lie far apart: first where a gap of more than `gapDeg` degrees of longitude
+ * holds no cell, then each of those where such a gap of latitude holds none. Argentina and Ukraine come out
+ * as two groups, so that each gets an image of its own size and not one image that is mostly empty sea.
+ */
+export function cellGroups<T extends { lat: number; lon: number }>(cells: readonly T[], gapDeg = 10): T[][] {
+  const split = (group: readonly T[], key: "lon" | "lat"): T[][] => {
+    const sorted = [...group].sort((a, b) => a[key] - b[key]);
+    const groups: T[][] = [];
+    for (const cell of sorted) {
+      const last = groups[groups.length - 1];
+      if (last && cell[key] - last[last.length - 1][key] <= gapDeg) last.push(cell);
+      else groups.push([cell]);
+    }
+    return groups;
+  };
+  return split(cells, "lon").flatMap((band) => split(band, "lat"));
+}
+
+function mercatorY(lat: number): number {
+  return Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+}
+
+/**
+ * The surface of the cells as an image the map can lay over its bounds: `data` holds red, green, blue and
+ * alpha (0-255) of each pixel, top row first. The map stretches an image evenly in Web Mercator, where a
+ * degree of latitude grows towards the poles, so the rows are spaced evenly in Mercator and not in degrees:
+ * each pixel then lies over the place it was computed for. `scale` is pixels per cell across; it is lowered
+ * until the image fits `maxSide`, and the map smooths what is left between pixels.
+ */
+export function cellImage(cells: readonly PaintedCell[], cellDeg: number, scale = 4, maxSide = 2048) {
+  if (cells.length === 0) return null;
+  const surface = cellSurface(cells, cellDeg);
+  const [west, rawSouth, east, rawNorth] = surface.bounds;
+  const south = Math.max(-MERCATOR_LIMIT, rawSouth);
+  const north = Math.min(MERCATOR_LIMIT, rawNorth);
+  const [top, bottom] = [mercatorY(north), mercatorY(south)];
+  // Pixels as wide as they are tall on the map: the height follows the Mercator shape of the bounds.
+  const shape = (top - bottom) / (((east - west) * Math.PI) / 180);
+  const fit = Math.min(scale, maxSide / (surface.columns - 1), maxSide / ((surface.columns - 1) * shape));
+  const width = Math.max(2, Math.round((surface.columns - 1) * fit));
+  const height = Math.max(2, Math.round(width * shape));
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let py = 0; py < height; py++) {
+    const y = top - ((py + 0.5) / height) * (top - bottom);
+    const lat = (Math.atan(Math.exp(y)) * 360) / Math.PI - 90;
+    for (let px = 0; px < width; px++) {
+      const [r, g, b, a] = surface.at(west + ((px + 0.5) / width) * (east - west), lat);
+      data.set([r, g, b, a * 255], (py * width + px) * 4);
+    }
+  }
+  return { width, height, data, bounds: [west, south, east, north] as [number, number, number, number] };
+}
