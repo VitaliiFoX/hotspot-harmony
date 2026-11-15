@@ -15,7 +15,7 @@ import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densi
 import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
   type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops,
-  changeLabel, flatFillZoom, hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
+  changeLabel, flatFillZoom, hourFilters, hourInstant, zeroNote, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
   regionsCenter, trendSentence,
   type PaintedCell, type Rgba, cellGroups, cellImage, rampRgba,
 } from "../globe";
@@ -1233,6 +1233,9 @@ export function Globe({
               </table>
             ) : (
               <p>{span ? t("No hotspots loaded for these days.") : t("No hotspots loaded for this day.")}</p>
+            )}
+            {day && counts && zeroNote(day.regions, counts, Boolean(span)) && (
+              <p className="stage-table-note">{zeroNote(day.regions, counts, Boolean(span))}</p>
             )}
           </div>
         )}

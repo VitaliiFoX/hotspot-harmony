@@ -745,6 +745,18 @@ html {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* A zero reads quieter than a count, and a line under the figures says why it is zero. */
+.dt-figures dd.is-zero {
+  color: var(--stage-ink-2);
+  font-weight: 500;
+}
+.dt-note,
+.stage-table-note {
+  margin-top: 8px;
+  color: var(--stage-ink-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
 .dt-sensor {
   margin-top: -8px;
   color: var(--stage-ink-2);
