@@ -286,6 +286,22 @@ fieldset > legend {
 .filters > .primary {
   margin-left: auto;
 }
+/* One-click example areas under the filters: links, so each is also a view to share. */
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  padding: 0 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.presets > span {
+  color: var(--muted);
+}
+.presets a {
+  color: var(--accent);
+}
 .filter-problem {
   width: 100%;
   color: var(--danger);

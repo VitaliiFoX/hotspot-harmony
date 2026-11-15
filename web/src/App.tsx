@@ -21,6 +21,7 @@ import { TrustBlock } from "./components/TrustBlock";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
+import { PRESETS, presetHref } from "./presets";
 import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
@@ -374,6 +375,21 @@ export function App() {
             downloading={downloading}
             problem={problem}
           />
+        )}
+
+        {meta && (
+          <nav className="presets" aria-label="Example areas">
+            <span>Examples</span>
+            {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
+              <a
+                key={preset.name}
+                href={presetHref(preset, new URLSearchParams(themeChoice === "auto" ? "" : `theme=${themeChoice}`))}
+                title={preset.note}
+              >
+                {preset.name}
+              </a>
+            ))}
+          </nav>
         )}
 
         {error && (

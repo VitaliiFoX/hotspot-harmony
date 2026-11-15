@@ -31,6 +31,7 @@ on which satellite was flying.
 | Fire cell-days on a 1 km grid, local solar day | done |
 | Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
 | API (FastAPI): calendar, anomaly, CSV export, daily hotspots, validation | done; serves the raw and the harmonized series in fire cell-days, daily hotspot counts and coordinates, and the held-out error with its two baselines from `harmonization_report.json` |
+| Example areas | done; links under the filters open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
 | Peak burning months (critical periods) | done; a card under the calendar names the fewest months that hold 60% of a typical year of the area, with each month's share, a table view and arrow-key reading |
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
 | Web app: 3D satellite globe, date/hour picker, filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done; a region can be picked on the globe, a box typed in degrees; the yearly chart draws the raw record as a line over the harmonized columns, so the 2012 sensor jump shows without switching; downloads: calendar data as CSV, every chart as PNG |
