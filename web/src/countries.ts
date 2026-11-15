@@ -7,6 +7,9 @@ import type { Bbox, MultiPolygon, Region } from "./api";
 /** One closed ring of a border: [longitude, latitude] pairs, degrees. */
 type Ring = number[][];
 
+/** Default border edition when a GeoJSON fixture omits top-level `source`. */
+export const BORDER_SOURCE = "Natural Earth 10m _ukr v5.1.2";
+
 export type Country = {
   /** The Natural Earth name, e.g. "United States of America". It is what the address carries as `&country=`. */
   name: string;
@@ -14,6 +17,8 @@ export type Country = {
   aliases: string[];
   /** Three-letter Natural Earth code (ADM0_A3). */
   iso: string;
+  /** Border edition name carried by the GeoJSON collection. */
+  source: string;
   /** West, south, east, north of the whole border, overseas parts included. */
   bbox: Bbox;
   /** West, south, east, north worth flying to: the mainland, without far and small parts. */
@@ -40,7 +45,8 @@ function ringBounds(ring: Ring): Bbox {
 }
 
 /** The countries of a GeoJSON collection written by scripts/build_countries.py. */
-export function readCountries(collection: { features: CountryFeature[] }): Country[] {
+export function readCountries(collection: { source?: string; features: CountryFeature[] }): Country[] {
+  const source = collection.source ?? BORDER_SOURCE;
   return collection.features.map(({ properties, geometry }) => {
     // The first ring of a polygon is its outside; the bounds of the outside are the bounds of the polygon.
     const partBounds = geometry.coordinates.map((polygon) => ringBounds(polygon[0]));
@@ -54,6 +60,7 @@ export function readCountries(collection: { features: CountryFeature[] }): Count
       name: properties.name,
       aliases: properties.aliases ?? [],
       iso: properties.iso,
+      source,
       bbox,
       view: properties.view.length === 4 ? (properties.view as Bbox) : bbox,
       geometry,
@@ -123,7 +130,7 @@ export function countryBoxText(country: Country): [string, string, string, strin
 }
 
 /** A click or a tap on the map: when, in milliseconds, and where, in pixels. */
-export type Tap = { time: number; x: number; y: number };
+export type Tap = { time: number; x: number; y: number; fromCell?: boolean; hadArea?: boolean };
 
 /** Longer than the gap between the two clicks of a double-click on every common system setting. */
 export const DOUBLE_TAP_MS = 500;
@@ -135,6 +142,28 @@ export function isDoubleTap(previous: Tap | null, next: Tap): boolean {
   if (!previous) return false;
   const gap = next.time - previous.time;
   return gap >= 0 && gap <= DOUBLE_TAP_MS && Math.hypot(next.x - previous.x, next.y - previous.y) <= DOUBLE_TAP_PX;
+}
+
+export type TapDecision = { kind: "pick-country" | "pick-cell" | "wait"; nextTap: Tap | null };
+
+/**
+ * Decide what a click on the globe does:
+ * - A double tap picks the country under it, taking priority over a "Where it burns" cell click.
+ * - While a drawn area is already set (and was not just created by the first tap's cell click), a double tap is
+ *   ignored so zooming/clicking inside a drawn polygon does not silently replace it with the whole country.
+ */
+export function resolveTap(
+  previous: Tap | null,
+  next: { time: number; x: number; y: number; hasCell: boolean; hasArea: boolean },
+): TapDecision {
+  const double = isDoubleTap(previous, next);
+  if (double && (!previous?.hadArea || previous?.fromCell)) {
+    return { kind: "pick-country", nextTap: null };
+  }
+  const nextTap: Tap | null = double
+    ? null
+    : { time: next.time, x: next.x, y: next.y, fromCell: next.hasCell, hadArea: next.hasArea };
+  return { kind: next.hasCell ? "pick-cell" : "wait", nextTap };
 }
 
 /** Download the borders. They are a static file of the web app, not an answer of the API. */

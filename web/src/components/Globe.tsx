@@ -9,7 +9,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { formatCount, t } from "../i18n";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
-import { type Country, type Tap, countryAt, isDoubleTap } from "../countries";
+import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
   type BurnCell, type HourCounts, MERCATOR_LIMIT, boxRing, cellSentence, cellSquares, cellStops, hourFilters, hourInstant, longDate,
   stopLabel, timeLabel, nightPolygon, terminatorLine, regionsCenter, trendSentence,
@@ -28,6 +28,8 @@ type Props = {
   dark: boolean;
   /** The borders a double-click finds a country by; empty until they arrive. */
   countries: Country[];
+  /** Lazy loader for `countries.geojson`, called on the first double-click when borders are not loaded yet. */
+  onEnsureCountries: () => Promise<Country[]>;
   /** The country picked on the globe, or null. Its border is outlined, and the calendar counts inside it. */
   country: Country | null;
   /** False when no record is loaded for the picked country. */
@@ -72,8 +74,6 @@ const HEAT_FADE_TO = 8;
 // The drawn area of interest: white on a dark casing, so it reads on the imagery and on the street map.
 const AREA_INK = "#ffffff";
 const AREA_CASING = "rgba(3, 5, 11, 0.75)";
-// Longer than the gap between the two clicks of a double-click on every common system setting.
-const DOUBLE_CLICK_MS = 500;
 const EMPTY = { type: "FeatureCollection" as const, features: [] };
 
 const ATMOSPHERE: SkySpecification["atmosphere-blend"] = ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0];
@@ -449,8 +449,8 @@ function CalendarIcon() {
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
 export function Globe({
-  regions, date, time, day, counts, focusRegion, dark, countries, country, countryHasData, onPickCountry, area, onDrawArea,
-  areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
+  regions, date, time, day, counts, focusRegion, dark, countries, onEnsureCountries, country, countryHasData, onPickCountry,
+  area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -491,10 +491,12 @@ export function Globe({
   const regionsRef = useRef(regions);
   // Picking a country: the map's handlers are attached once, so they read the borders and the callback through refs.
   const countriesRef = useRef(countries);
+  const ensureCountriesRef = useRef(onEnsureCountries);
   const pickRef = useRef(onPickCountry);
   const countryRef = useRef(country);
   regionsRef.current = regions;
   countriesRef.current = countries;
+  ensureCountriesRef.current = onEnsureCountries;
   pickRef.current = onPickCountry;
   countryRef.current = country;
   // The last click or tap, to tell when the next one makes a double: a mouse and a finger are read the same way.
@@ -640,32 +642,41 @@ export function Globe({
       setReady(true);
       addStreetMap(map);
     });
-    const justClosed = () => performance.now() - closedAt.current < DOUBLE_CLICK_MS;
+    const justClosed = () => performance.now() - closedAt.current < DOUBLE_TAP_MS;
     map.on("dblclick", (event) => {
       if (!draw.current.active && !justClosed()) return;
       event.preventDefault(); // no zoom: a double-click closes the outline
       if (draw.current.active) drawActions.current.finishDrawing();
     });
-    map.on("click", (event) => {
+    map.on("click", async (event) => {
       if (draw.current.active) return drawActions.current.addCorner(event);
-      // In "Where it burns" a click on a cell makes that cell the area of interest.
+      if (justClosed()) return;
       const info = cellsRef.current;
       const cellFeature = info ? map.queryRenderedFeatures(event.point, { layers: ["cells-fill"] })[0] : undefined;
-      if (info && cellFeature) {
+      const decision = resolveTap(lastTap.current, {
+        time: performance.now(),
+        x: event.point.x,
+        y: event.point.y,
+        hasCell: Boolean(info && cellFeature),
+        hasArea: Boolean(areaRef.current),
+      });
+      lastTap.current = decision.nextTap;
+      // In "Where it burns" a single click on a cell makes it the area; a double tap takes priority and picks the country.
+      if (decision.kind === "pick-cell" && info && cellFeature) {
         // The square from the cell's own centre: tile geometry is quantized, the centre is exact.
         const { lat, lon } = cellFeature.properties as BurnCell;
         const half = info.cellDeg / 2;
         return drawActions.current.pickCell(boxCorners([lon - half, lat - half, lon + half, lat + half]));
       }
-      if (justClosed()) return;
-      // Two clicks or taps on one spot pick the country under them; a single one only starts the wait.
-      const tap: Tap = { time: performance.now(), x: event.point.x, y: event.point.y };
-      const double = isDoubleTap(lastTap.current, tap);
-      lastTap.current = double ? null : tap;
-      if (!double) return;
+      if (decision.kind !== "pick-country") return;
       const { lng, lat } = event.lngLat.wrap();
-      const found = countryAt(countriesRef.current, lng, lat);
+      const areaBefore = areaRef.current;
+      const list = countriesRef.current.length > 0 ? countriesRef.current : await ensureCountriesRef.current();
+      if (!mapRef.current || draw.current.active || areaRef.current !== areaBefore) return;
+      const found = countryAt(list, lng, lat);
       if (!found) return;
+      areaRef.current = null;
+      paintArea();
       flownTo.current = found.name;
       pickRef.current(found.name);
       fitBox(map, found.view, 6);
