@@ -697,7 +697,8 @@ html {
   opacity: 0.4;
   cursor: default;
 }
-.stage .dt-cursor {
+/* The day of a span is longer than HH:MM: the box grows with it (".dt-time-input" alone would fix it at 64 px). */
+.stage .dt-time-input.dt-cursor {
   display: inline-grid;
   place-items: center;
   width: auto;
