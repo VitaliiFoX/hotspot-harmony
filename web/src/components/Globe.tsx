@@ -12,8 +12,9 @@ import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells }
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
-  type BurnCell, type HourCounts, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops, changeLabel,
-  hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine, regionsCenter, trendSentence,
+  type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops,
+  changeLabel, flatFillZoom, hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
+  regionsCenter, trendSentence,
   type PaintedCell, type Rgba, cellGroups, cellImage, rampRgba,
 } from "../globe";
 
@@ -28,6 +29,9 @@ type Props = {
   focusRegion: string | null;
   /** Page theme; the sky around the globe follows it. */
   dark: boolean;
+  /** The 3D globe, or the same map laid flat (Web Mercator). */
+  view: MapView;
+  onViewChange: (view: MapView) => void;
   /** The borders a double-click finds a country by; empty until they arrive. */
   countries: Country[];
   /** Lazy loader for `countries.geojson`, called on the first double-click when borders are not loaded yet. */
@@ -61,17 +65,23 @@ setWorkerUrl(workerUrl);
 
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 const HOTSPOT = "#ff8a3d";
-// "Where it burns": the harmonized record from little to much burning a year, in the colours of a thermal camera:
-// dark violet where it is cold, through pink, orange and amber to near white where it is hottest. The mode then reads
-// as a different thing from the day's orange hotspots (which it hides). As --cell-0 .. --cell-4 in globe.css.
-const CELL_RAMP = ["#2c0352", "#fd369b", "#fe8915", "#ffb60d", "#fefbec"] as const;
+// "Where it burns" on the globe: cells of the harmonized record from little to much burning a year, pale yellow to
+// deep red, so the mode reads as a different thing from the day's orange hotspots (which it hides). As --cell-0 ..
+// --cell-4 in globe.css.
+const CELL_RAMP = ["#ffe08a", "#ffb347", "#ff7a2f", "#e2361f", "#9e0f16"] as const;
+// The same on the flat map, where the cells are drawn as one surface with no steps, in the colours of a thermal
+// camera: dark violet where it is cold, through pink, orange and amber to near white where it is hottest.
+// As --thermal-0 .. --thermal-4 in globe.css.
+const THERMAL_RAMP = ["#2c0352", "#fd369b", "#fe8915", "#ffb60d", "#fefbec"] as const;
 // "How it changed": second half of the period against the first, in doublings from -2 (a quarter) to +2 (four
 // times); less burning in blue, more in red, a change within the method's error neutral. As --trend-* in globe.css.
 const TREND_RAMP = ["#2166ac", "#67a9cf", "#f4f1ea", "#ef8a62", "#b2182b"] as const;
 // A cell with no burning in the first half has no change to show: faint grey.
 const TREND_NONE: Rgba = [150, 150, 150, 0.35];
-// How much of the map shows through the surface of "Where it burns".
-const CELLS_OPACITY = 0.85;
+const TREND_NONE_CSS = `rgba(${TREND_NONE.join(", ")})`;
+// How much of the map shows through the cells of "Where it burns": the squares on the globe, the surface on the flat map.
+const CELLS_OPACITY = 0.72;
+const SURFACE_OPACITY = 0.85;
 // Where hotspots crowd, the heat layer runs from HOTSPOT to this red (as --hotspot-dense in globe.css).
 const HOTSPOT_DENSE = "#e0281f";
 // Below HEAT_FADE_FROM the heat layer carries the picture; by HEAT_FADE_TO single dots have taken over.
@@ -221,14 +231,14 @@ const STYLE: StyleSpecification = {
       paint: { "line-color": "rgba(255,255,255,0.6)", "line-width": 1.2 },
     },
     {
-      // Where it burns over the chosen period. The cells themselves are not seen: they are what the pointer and
-      // a click find. What is seen is one surface with no steps, laid under this layer as an image per region
-      // when the cells arrive (see `cellImage` in globe.ts).
+      // Where it burns over the chosen period; the colour steps are set from the cells when they arrive. On the
+      // flat map the squares are not seen (opacity 0) and only answer the pointer and a click: what is seen there
+      // is one surface with no steps, laid under this layer as images (see `cellImage` in globe.ts).
       id: "cells-fill",
       type: "fill",
       source: "cells",
       layout: { visibility: "none" },
-      paint: { "fill-color": CELL_RAMP[2], "fill-opacity": 0, "fill-antialias": false },
+      paint: { "fill-color": CELL_RAMP[2], "fill-opacity": CELLS_OPACITY, "fill-antialias": false },
     },
     {
       // The border of the picked country, in the ink of a drawn area: both are the area the calendar counts.
@@ -398,6 +408,30 @@ function reducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/**
+ * The flat map ends where Web Mercator does: it cannot be panned past the edges of the world. The sides stop a hair
+ * short of 180 degrees, because MapLibre 6 reads bounds from -180 to 180 as zero wide and throws.
+ */
+const FLAT_BOUNDS: LngLatBoundsLike = [[-179.999, -MERCATOR_LIMIT], [179.999, MERCATOR_LIMIT]];
+/** How long the map takes to settle after the switch between the globe and the flat map, ms. */
+const VIEW_EASE_MS = 800;
+
+/** What a screen reader hears on the map itself; turning is a thing of the globe alone. */
+function canvasLabel(view: MapView): string {
+  return view === "flat"
+    ? t(
+      "Map of the selected day's hotspots. Drag or use the arrow keys to move it; plus and minus, or Ctrl or Command with the scroll wheel, to zoom. Double-click a country to see its burning calendar below.",
+    )
+    : t(
+      "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it; plus and minus, or Ctrl or Command with the scroll wheel, to zoom. Double-click a country to see its burning calendar below.",
+    );
+}
+
+/** Zoom at which the flat world covers the whole map element. */
+function fillZoom(element: HTMLElement): number {
+  return flatFillZoom(element.clientWidth, element.clientHeight);
+}
+
 /** Zoom at which the globe's radius is about a third of the shorter side of the map. */
 function fittingZoom(element: HTMLElement): number {
   const side = Math.min(element.clientWidth, element.clientHeight) || 600;
@@ -423,7 +457,7 @@ function fitBox(map: MapLibreMap, [west, south, east, north]: Bbox, maxZoom: num
  * Zoomed in to city level the imagery is too coarse, so the OpenStreetMap street map of the OpenFreeMap
  * "Liberty" style takes over from STREET_ZOOM: land, water, roads, buildings and labels. Its layers go
  * under the region boxes and hotspots, renamed so they cannot clash with ours. A failed download only
- * means the globe keeps its imagery at every zoom.
+ * means the map keeps its imagery at every zoom.
  */
 async function addStreetMap(map: MapLibreMap): Promise<void> {
   try {
@@ -473,8 +507,8 @@ function CalendarIcon() {
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
 export function Globe({
-  regions, date, time, day, counts, focusRegion, dark, countries, onEnsureCountries, country, countryHasData, onPickCountry,
-  area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
+  regions, date, time, day, counts, focusRegion, dark, view, onViewChange, countries, onEnsureCountries, country, countryHasData,
+  onPickCountry, area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -514,7 +548,9 @@ export function Globe({
   const [cellsError, setCellsError] = useState<string | null>(null);
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
-  // The images of the cell surface now on the map, one per region: each is a source and a layer of that name.
+  // The view the map was last put in; it starts as the view the map is made in.
+  const shownView = useRef(view);
+  // The images of the cell surface now on the flat map, one per group of cells: each is a source and a layer of that name.
   const cellImages = useRef<string[]>([]);
   const regionsRef = useRef(regions);
   // Picking a country: the map's handlers are attached once, so they read the borders and the callback through refs.
@@ -631,34 +667,30 @@ export function Globe({
     const element = container.current;
     if (!element) return;
     const center = regionsCenter(regionsRef.current);
+    const flat = shownView.current === "flat";
     const map = new MapLibreMap({
       container: element,
-      style: STYLE,
+      style: flat ? { ...STYLE, projection: { type: "mercator" } } : STYLE,
       center: [center.lon, center.lat],
-      zoom: fittingZoom(element),
+      zoom: flat ? fillZoom(element) : fittingZoom(element),
       maxZoom: 17,
       renderWorldCopies: false,
       // The credits live in the legend, once; MapLibre's own attribution line would repeat them.
       attributionControl: false,
-      // The wheel scrolls the page; Cmd (Mac) or Ctrl + wheel zooms the globe. On touch screens one finger
-      // scrolls the page and two fingers move the globe. The desktop overlay that MapLibre shows on a plain
+      // The wheel scrolls the page; Cmd (Mac) or Ctrl + wheel zooms the map. On touch screens one finger
+      // scrolls the page and two fingers move the map. The desktop overlay that MapLibre shows on a plain
       // wheel is hidden in globe.css: the shortcut is written in the legend instead.
       cooperativeGestures: true,
       locale: {
-        "CooperativeGesturesHandler.WindowsHelpText": t("Scroll to move down the page. {key} + scroll zooms the globe.", { key: "Ctrl" }),
-        "CooperativeGesturesHandler.MacHelpText": t("Scroll to move down the page. {key} + scroll zooms the globe.", { key: "\u2318" }),
-        "CooperativeGesturesHandler.MobileHelpText": t("Use two fingers to move the globe."),
+        "CooperativeGesturesHandler.WindowsHelpText": t("Scroll to move down the page. {key} + scroll zooms the map.", { key: "Ctrl" }),
+        "CooperativeGesturesHandler.MacHelpText": t("Scroll to move down the page. {key} + scroll zooms the map.", { key: "\u2318" }),
+        "CooperativeGesturesHandler.MobileHelpText": t("Use two fingers to move the map."),
       },
     });
     // A double-click or a double tap picks a country, so it must not zoom as well: the buttons and the wheel do.
     map.doubleClickZoom.disable();
     map.addControl(new NavigationControl({ visualizePitch: false }), "top-left");
-    map.getCanvas().setAttribute(
-      "aria-label",
-      t(
-        "Globe of the selected day's hotspots. Drag or use the arrow keys to turn it; plus and minus, or Ctrl or Command with the scroll wheel, to zoom. Double-click a country to see its burning calendar below.",
-      ),
-    );
+    map.getCanvas().setAttribute("aria-label", canvasLabel(shownView.current));
     // Development only: lets a headless browser drive the map (see "Look at the globe" in CLAUDE.md).
     if (import.meta.env.DEV) (window as unknown as { __hhMap?: MapLibreMap }).__hhMap = map;
     // The glass cards are see-through: over the light street map they need a solid face to stay readable.
@@ -748,7 +780,7 @@ export function Globe({
 
   // The globe turns slowly on its own. It holds still while the user drags, zooms or types on it (and for
   // SPIN_RESUME_MS after), while a flight to a region runs, while an outline is being drawn, when zoomed in,
-  // when the tab is hidden, and always for users who ask for reduced motion.
+  // when the tab is hidden, on the flat map, and always for users who ask for reduced motion.
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map || reducedMotion()) return;
@@ -766,6 +798,7 @@ export function Globe({
       last = now;
       const still =
         document.hidden ||
+        shownView.current === "flat" ||
         map.isMoving() ||
         draw.current.active ||
         map.getZoom() > SPIN_MAX_ZOOM ||
@@ -858,6 +891,10 @@ export function Globe({
       }
       cellImages.current = [];
     };
+    // The flat map shows the cells as one surface; the globe keeps a square per cell.
+    const surface = view === "flat";
+    map.setPaintProperty("cells-fill", "fill-opacity", surface ? 0 : CELLS_OPACITY);
+    if (!surface) clearImages();
     if (!showCells || !period) return clearImages();
     const controller = new AbortController();
     setCellsError(null);
@@ -868,6 +905,28 @@ export function Globe({
         const squares = cellSquares(answer.cells, answer.cell_deg, error);
         const stops = cellStops(squares.features.map((f) => f.properties.density));
         (map.getSource("cells") as GeoJSONSource).setData(squares);
+        setCells({
+          years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
+          halves: answer.halves, series: answer.series, error, busiest: busiestCells(answer.cells),
+        });
+        if (!surface) {
+          map.setPaintProperty(
+            "cells-fill",
+            "fill-color",
+            cellView === "change"
+              ? [
+                  "case", ["==", ["get", "change"], null], TREND_NONE_CSS,
+                  ["interpolate", ["linear"], ["get", "change"],
+                    -2, TREND_RAMP[0], -1, TREND_RAMP[1], 0, TREND_RAMP[2], 1, TREND_RAMP[3], 2, TREND_RAMP[4]],
+                ]
+              : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
+                [
+                  "interpolate", ["linear"], ["get", "density"],
+                  0, CELL_RAMP[0], stops[0], CELL_RAMP[1], stops[1], CELL_RAMP[2], stops[2], CELL_RAMP[3], stops[3], CELL_RAMP[4],
+                ],
+          );
+          return;
+        }
         // Each cell gets the colour of its value, and the colours are spread into one surface with no steps.
         const painted: PaintedCell[] = squares.features.map(({ properties: cell }) => ({
           lat: cell.lat,
@@ -878,7 +937,7 @@ export function Globe({
                 ? TREND_NONE
                 : rampRgba(cell.change, [-2, -1, 0, 1, 2], TREND_RAMP)
               : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
-                rampRgba(cell.density, [0, ...stops], CELL_RAMP),
+                rampRgba(cell.density, [0, ...stops], THERMAL_RAMP),
         }));
         clearImages();
         // Countries that lie far apart get an image each: one from Argentina to Ukraine would be mostly empty sea.
@@ -893,21 +952,17 @@ export function Globe({
             coordinates: [[west, north], [east, north], [east, south], [west, south]],
           });
           map.addLayer(
-            { id, type: "raster", source: id, paint: { "raster-opacity": CELLS_OPACITY, "raster-fade-duration": 0 } },
+            { id, type: "raster", source: id, paint: { "raster-opacity": SURFACE_OPACITY, "raster-fade-duration": 0 } },
             "cells-fill",
           );
           cellImages.current.push(id);
-        });
-        setCells({
-          years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
-          halves: answer.halves, series: answer.series, error, busiest: busiestCells(answer.cells),
         });
       })
       .catch((reason: Error) => {
         if (reason.name !== "AbortError") setCellsError(reason.message);
       });
     return () => controller.abort();
-  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError]);
+  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError, view]);
 
   /** Leave the table for the globe and fly to a cell, its neighbours around it. */
   function flyToCell(cell: { lat: number; lon: number }) {
@@ -921,7 +976,7 @@ export function Globe({
     setShowTable(!showTable);
   }
 
-  // "Show on the globe" from the list of busiest cells: switch to where it burns and fly there.
+  // "Show on the map" from the list of busiest cells: switch to where it burns and fly there.
   useEffect(() => {
     const map = mapRef.current;
     if (!focus || !ready || !map) return;
@@ -977,6 +1032,49 @@ export function Globe({
     map.setPaintProperty("imagery", "raster-brightness-min", dark ? 0 : DAY_IMAGERY_LIFT);
   }, [ready, dark]);
 
+  // The globe or the flat map: one map, whose projection is switched. The flat map is north up, never smaller than
+  // the stage and never panned past the edges of the world, so the sky behind it does not show.
+  useEffect(() => {
+    const map = mapRef.current;
+    const element = container.current;
+    if (!ready || !map || !element) return;
+    const previous = shownView.current;
+    shownView.current = view;
+    const duration = reducedMotion() ? 0 : VIEW_EASE_MS;
+    map.getCanvas().setAttribute("aria-label", canvasLabel(view));
+    if (view === "flat") {
+      map.setProjection({ type: "mercator" });
+      map.dragRotate.disable();
+      map.touchZoomRotate.disableRotation();
+      map.touchPitch.disable();
+      map.keyboard.disableRotation();
+      map.easeTo({ bearing: 0, pitch: 0, duration });
+      // The stage changes size with the window, and so does the zoom at which the world fills it.
+      const fill = () => map.setMinZoom(fillZoom(element));
+      fill();
+      map.setMaxBounds(FLAT_BOUNDS);
+      map.on("resize", fill);
+      // MapLibre keeps the tiles the globe needed until the map next moves, which leaves the far edges of the flat
+      // world without imagery; a resize makes it ask for the tiles of the new projection.
+      const settle = window.setTimeout(() => map.resize(), 50);
+      return () => {
+        window.clearTimeout(settle);
+        map.off("resize", fill);
+      };
+    }
+    if (previous === "globe") return; // the map was made as a globe: nothing to undo
+    // Back from the whole flat world: the whole globe, not a globe larger than the stage.
+    const wholeWorld = map.getZoom() <= fillZoom(element) + 0.01;
+    map.setMaxBounds(null);
+    map.setMinZoom(null);
+    map.setProjection({ type: "globe" });
+    map.dragRotate.enable();
+    map.touchZoomRotate.enableRotation();
+    map.touchPitch.enable();
+    map.keyboard.enableRotation();
+    if (wholeWorld) map.easeTo({ zoom: fittingZoom(element), duration });
+  }, [ready, view]);
+
   useEffect(() => {
     if (!showTable) mapRef.current?.resize();
   }, [showTable]);
@@ -992,7 +1090,7 @@ export function Globe({
   return (
     <section
       className={["stage", street && "is-street", showTable && "is-table", showTable && !panelOpen && "is-table-wide"].filter(Boolean).join(" ")}
-      aria-label={t("Globe of hotspots")}
+      aria-label={view === "flat" ? t("Map of hotspots") : t("Globe of hotspots")}
     >
       <div className="stage-head">
         <h1>Hotspot Harmony</h1>
@@ -1001,6 +1099,14 @@ export function Globe({
           <a className="stage-next" href="#calendar">
             {t("Burning activity calendar, 2000 to 2025")} <span aria-hidden="true">↓</span>
           </a>
+          <div className="stage-view" role="group" aria-label={t("Map view")}>
+            <button type="button" aria-pressed={view === "globe"} onClick={() => onViewChange("globe")}>
+              {t("Globe")}
+            </button>
+            <button type="button" aria-pressed={view === "flat"} onClick={() => onViewChange("flat")}>
+              {t("Flat map")}
+            </button>
+          </div>
           <button type="button" className="stage-toggle" aria-pressed={showCells} onClick={() => setShowCells(!showCells)}>
             {showCells ? t("Back to the day") : t("Where it burns")}
           </button>
@@ -1008,7 +1114,7 @@ export function Globe({
             {area && !drawing ? t("Redraw the area") : t("Draw an area")}
           </button>
           <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={toggleTable}>
-            {showTable ? t("Show globe") : t("Show table")}
+            {showTable ? (view === "flat" ? t("Show map") : t("Show globe")) : t("Show table")}
           </button>
         </div>
       </div>
@@ -1069,7 +1175,7 @@ export function Globe({
                       {cells.halves && <td>{changeLabel(cell.trend, cells.error)}</td>}
                       <td>
                         <button type="button" className="stage-toggle stage-table-action" onClick={() => flyToCell(cell)}>
-                          {t("Show on the globe")}
+                          {t("Show on the map")}
                         </button>
                       </td>
                     </tr>
@@ -1143,7 +1249,7 @@ export function Globe({
           <p role="status">
             {drawNote
               ?? (draft.length === 0
-                ? t("Click the globe to place the corners of your area of interest.")
+                ? t("Click the map to place the corners of your area of interest.")
                 : draft.length < 3
                   ? t("{n} of at least 3 corners placed.", { n: draft.length })
                   : t("{n} corners. Click the first corner, double-click or press Enter to finish.", { n: draft.length }))}
@@ -1227,7 +1333,7 @@ export function Globe({
             </p>
             {cells && cellView === "amount" && (
               <>
-                <i className="legend-ramp" aria-hidden="true" />
+                <i className={view === "flat" ? "legend-ramp is-thermal" : "legend-ramp"} aria-hidden="true" />
                 <div className="legend-ramp-ticks" aria-hidden="true">
                   <span>0</span>
                   <span>{stopLabel(cells.stops[0])}</span>
@@ -1286,7 +1392,7 @@ export function Globe({
           </ul>
         )}
         <p className="legend-hint">{t("Double-click a country to see its burning calendar below.")}</p>
-        <p className="legend-hint">{t("{key} + scroll zooms the globe; scroll alone moves down the page.", { key: ZOOM_KEY })}</p>
+        <p className="legend-hint">{t("{key} + scroll zooms the map; scroll alone moves down the page.", { key: ZOOM_KEY })}</p>
         <p>
           {t("Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Map:")}{" "}
           <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" "}

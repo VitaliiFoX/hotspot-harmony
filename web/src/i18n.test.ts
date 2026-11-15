@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { dayInWords, formatCount, monthOfYear, monthShort, monthTitle, parseLang, setLanguage, t, tn } from "./i18n";
+import { dayInWords, formatCount, monthOfYear, monthShort, monthTitle, ordinal, parseLang, setLanguage, t, tn } from "./i18n";
 import { UK } from "./uk";
 
 // The page's source as text, through Vite: every file that can ask for a text, the tests and uk.ts aside.
@@ -87,6 +87,15 @@ describe("the page language", () => {
     expect(monthShort(8)).toBe(UK["Aug.short"]);
     expect(monthOfYear(2, 2012)).toBe(`${UK["February.of"]} 2012`);
     expect(dayInWords("2025-08-20")).toBe(`20 ${UK["August.of"]} 2025`);
+  });
+  it("writes a place in a ranking as an ordinal: English suffixes with the teens apart, one masculine form in Ukrainian", () => {
+    expect([1, 2, 3, 4, 10, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual([
+      "1st", "2nd", "3rd", "4th", "10th", "11th", "12th", "13th", "21st", "22nd", "23rd", "101st", "111th",
+    ]);
+    setLanguage("uk");
+    const form = (place: number) => UK["{place}.ordinal"].replace("{place}", String(place));
+    expect([1, 3, 10, 22].map(ordinal)).toEqual([form(1), form(3), form(10), form(22)]);
+    expect(form(10).startsWith("10")).toBe(true);
   });
   it("opens a Ukrainian sentence that starts with a value with a capital letter", () => {
     setLanguage("uk");

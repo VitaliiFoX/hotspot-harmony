@@ -142,6 +142,45 @@ export function valuesByYear(
   return columns.map((column) => byYear.get(column.year) ?? null);
 }
 
+/**
+ * Where one month stands among the same calendar month of every year given: its place is 1 + the number of years
+ * with a larger value, so years that tie share the better place (two equal busiest years are both 1st). `of` counts
+ * the years of that calendar month, the month itself included. Null when the month is not among them.
+ */
+export function monthRank(
+  months: readonly { year: number; month: number; value: number }[],
+  year: number,
+  month: number,
+): { rank: number; of: number } | null {
+  const same = months.filter((m) => m.month === month);
+  const own = same.find((m) => m.year === year);
+  if (!own) return null;
+  return { rank: 1 + same.filter((m) => m.value > own.value).length, of: same.length };
+}
+
+/**
+ * Lanes for the dots of a strip plot, so dots closer than `gap` on the axis do not cover each other: in order of
+ * position each dot takes the first free lane of 0, 1, -1, 2, -2, ... where the last dot is at least `gap` behind.
+ * Returns one lane per position, in the order given.
+ */
+export function stripLanes(positions: readonly number[], gap: number): number[] {
+  const order = positions.map((x, i) => [x, i] as const).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const lastInLane = new Map<number, number>();
+  const lanes = new Array<number>(positions.length);
+  for (const [x, i] of order) {
+    for (let step = 0; ; step++) {
+      const lane = step % 2 === 1 ? (step + 1) / 2 : step === 0 ? 0 : -step / 2;
+      const last = lastInLane.get(lane);
+      if (last === undefined || x - last >= gap) {
+        lastInLane.set(lane, x);
+        lanes[i] = lane;
+        break;
+      }
+    }
+  }
+  return lanes;
+}
+
 /** SVG path through the points in order; a null starts a new piece, so a gap is never bridged. */
 export function brokenLinePath(points: readonly ([x: number, y: number] | null)[]): string {
   const parts: string[] = [];
@@ -207,7 +246,7 @@ export function monthSpans(months: readonly number[]): string {
   return names.length === 1 ? names[0] : t("{list} and {last}", { list: names.slice(0, -1).join(", "), last: names[names.length - 1] });
 }
 
-type RecordPartLike = { sensor: string; label: string; from: string; to: string | null };
+export type RecordPartLike = { sensor: string; label: string; from: string; to: string | null };
 
 function monthIndex(yyyyMm: string): number {
   return Number(yyyyMm.slice(0, 4)) * 12 + Number(yyyyMm.slice(5, 7)) - 1;
@@ -238,5 +277,52 @@ export function partsOfYear(parts: readonly RecordPartLike[], year: number): str
   return parts
     .filter((part) => monthIndex(part.from) <= year * 12 + 11 && (part.to === null || monthIndex(part.to) >= year * 12))
     .map((part) => part.label);
+}
+
+function monthOf(index: number): string {
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+}
+
+/** "2000-11", "2002-06" -> "Nov 2000 – Jun 2002": the dates of a part of the record on the timeline. */
+export function monthRange(from: string, to: string): string {
+  const short = (yyyyMm: string) => `${monthShort(Number(yyyyMm.slice(5, 7)))} ${yyyyMm.slice(0, 4)}`;
+  return `${short(from)} – ${short(to)}`;
+}
+
+/**
+ * The parts of the raw record the page knows: MODIS up to the month before `sensorSwitch`, VIIRS S-NPP from it on.
+ * A part with no month in the record is left out.
+ */
+export function rawRecordParts(firstMonth: string, sensorSwitch: string, lastMonth: string): RecordPartLike[] {
+  const first = monthIndex(firstMonth);
+  const switchAt = monthIndex(sensorSwitch);
+  const last = monthIndex(lastMonth);
+  const parts: RecordPartLike[] = [];
+  if (first < switchAt) parts.push({ sensor: "modis", label: "MODIS", from: firstMonth, to: monthOf(Math.min(last, switchAt - 1)) });
+  if (switchAt <= last) parts.push({ sensor: "viirs_snpp", label: "VIIRS S-NPP", from: monthOf(Math.max(first, switchAt)), to: lastMonth });
+  return parts;
+}
+
+export type TimelinePart = {
+  sensor: string;
+  label: string;
+  from: string;
+  /** Last month of the part: an open part runs to the last month of the record. */
+  to: string;
+  /** Months in the part, both ends included, and their share of all the parts' months. */
+  months: number;
+  share: number;
+};
+
+/** The parts of a record laid end to end, each as long as its months: the segments of the timeline over the calendar. */
+export function recordTimeline(parts: readonly RecordPartLike[], lastMonth: string): TimelinePart[] {
+  const sized = parts
+    .map((part) => {
+      const to = part.to ?? lastMonth;
+      return { sensor: part.sensor, label: part.label, from: part.from, to, months: monthIndex(to) - monthIndex(part.from) + 1 };
+    })
+    .filter((part) => part.months > 0);
+  const total = sized.reduce((sum, part) => sum + part.months, 0);
+  return sized.map((part) => ({ ...part, share: part.months / total }));
 }
 

@@ -7,7 +7,7 @@ import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
 } from "./area";
 import { type Country, BORDER_SOURCE, countryBoxText, fetchCountries, findCountry, namesCountry, regionOfCountry } from "./countries";
-import { AnomalyTiles } from "./components/AnomalyTiles";
+import { HeadlineCard } from "./components/HeadlineCard";
 import { CalendarHeatmap, CalendarTable } from "./components/CalendarHeatmap";
 import { ChartCard } from "./components/ChartCard";
 import { calendarCsv, downloadBlob, exportName } from "./exports";
@@ -15,8 +15,11 @@ import { DateTimePanel } from "./components/DateTimePanel";
 import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
-import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
+import {
+  DEFAULT_TIME, type MapView, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, parseViewParam, timeLabel,
+} from "./globe";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
+import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { InShort } from "./components/InShort";
 import { TopPlaces } from "./components/TopPlaces";
@@ -28,7 +31,7 @@ import { type ThemeChoice, useDarkMode } from "./hooks";
 import { LANGUAGES, type Lang, formatCount, language, t, tn } from "./i18n";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
-import { monthError, sameMonthRatio, verdictKind } from "./trust";
+import { monthError, sameMonthRatio } from "./trust";
 import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
@@ -79,7 +82,7 @@ export function App() {
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   // The same view in the record not on screen, from the look-ahead: the raw line over the harmonized years.
   const [otherCalendar, setOtherCalendar] = useState<Calendar | null>(null);
-  // The busiest grid cells of the area, and the one the globe should fly to ("Show on the globe").
+  // The busiest grid cells of the area, and the one the globe should fly to ("Show on the map").
   const [topCells, setTopCells] = useState<Cells | null>(null);
   const [globeFocus, setGlobeFocus] = useState<{ lat: number; lon: number; n: number } | null>(null);
   const [date, setDate] = useState<string | null>(null);
@@ -88,6 +91,8 @@ export function App() {
     const query = new URLSearchParams(window.location.search);
     return parseTimeParam(query.get("time"), query.get("hour")) ?? DEFAULT_TIME;
   });
+  // The map at the top of the page: the 3D globe, or the flat world map.
+  const [view, setView] = useState<MapView>(() => parseViewParam(new URLSearchParams(window.location.search).get("view")));
   const [monthDays, setMonthDays] = useState<MonthDays | null>(null);
   const [day, setDay] = useState<DayHotspots | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
@@ -215,6 +220,15 @@ export function App() {
     query.set("time", timeLabel(time));
     writeAddress(query);
   }, [date, time]);
+
+  // Only the flat map is written, so a link to the globe stays what it was.
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if ((query.get("view") === "flat") === (view === "flat")) return;
+    if (view === "flat") query.set("view", "flat");
+    else query.delete("view");
+    writeAddress(query);
+  }, [view]);
 
   const month = date?.slice(0, 7) ?? null;
   useEffect(() => {
@@ -454,9 +468,6 @@ export function App() {
         })(),
         yearly: calendar.yearly,
         unit,
-        headline: headline
-          ? { year: headline.year, month: headline.month, ratio: headline.ratio, kind: verdictKind(headline.ratio, headlineError?.share ?? null) }
-          : null,
         unusual,
         yearError: harmonizedTrust ? harmonizedTrust.checks.harmonized[wholeRegion ? "country_year" : "tile_year"] : null,
       })
@@ -481,6 +492,12 @@ export function App() {
     downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
   }
 
+  // What an example link keeps of the current view: the theme, the language and the flat map. The view is taken from
+  // state, as the address catches up with it only after this render.
+  const presetView = new URLSearchParams(window.location.search);
+  if (view === "flat") presetView.set("view", "flat");
+  else presetView.delete("view");
+
   return (
     <>
       <GlobeBoundary>
@@ -497,6 +514,8 @@ export function App() {
         country={picked}
         countryHasData={!noData}
         onPickCountry={pickCountry}
+        view={view}
+        onViewChange={setView}
         area={filters?.area ?? null}
         onDrawArea={drawArea}
         areaError={filters?.area || picked ? error : null}
@@ -565,22 +584,20 @@ export function App() {
             countries={countries ?? []}
             onEnsureCountries={() => void ensureCountries()}
             onPickCountry={pickCountry}
-          />
-        )}
-
-        {meta && (
-          <nav className="presets" aria-label={t("Example areas")}>
-            <span>{t("Examples")}</span>
-            {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
-              <a
-                key={preset.name}
-                href={presetHref(preset, new URLSearchParams(window.location.search))}
-                title={t(preset.note)}
-              >
-                {t(preset.name)}
-              </a>
-            ))}
-          </nav>
+          >
+            <nav className="presets" aria-label={t("Example areas")}>
+              <span>{t("Examples")}</span>
+              {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
+                <a
+                  key={preset.name}
+                  href={presetHref(preset, presetView)}
+                  title={t(preset.note)}
+                >
+                  {t(preset.name)}
+                </a>
+              ))}
+            </nav>
+          </Filters>
         )}
 
         {noData && picked && meta && filters && (
@@ -619,52 +636,26 @@ export function App() {
             {serverText(warning)}
           </p>
         ))}
-        {!noData && calendar?.series === "raw" && meta && (
-          <p className="notice">
-            {t(
-              "Raw record: MODIS before {month}, VIIRS S-NPP from then on, counted as {unit} with no correction. VIIRS sees many small fires that MODIS misses, so the values jump at that month and cannot be compared across it.",
-              { month: monthLabel(meta.raw_sensor_switch), unit },
-            )}
-          </p>
-        )}
-        {!noData && calendar?.series === "harmonized" && meta?.harmonized_record && (
-          <p className="notice">
-            {t(
-              "Harmonized record, in {unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so {first} and {last} can be compared. {parts}.",
-              {
-                unit,
-                first: meta.harmonized_record[0].from.slice(0, 4),
-                last: meta.last_month?.slice(0, 4) ?? "",
-                parts: meta.harmonized_record
-                  .map((part) =>
-                    part.to
-                      ? t("{label}: {from} to {to}", { label: t(part.label), from: monthLabel(part.from), to: monthLabel(part.to) })
-                      : t("{label}: from {from}", { label: t(part.label), from: monthLabel(part.from) }),
-                  )
-                  .join("; "),
-              },
-            )}
-            {trusted && (
-              <>
-                {" "}
-                <a href="#trust">{t("How far to trust it")}</a>
-              </>
-            )}
-          </p>
+        {!noData && calendar && meta && (
+          <RecordTimeline meta={meta} series={calendar.series} unit={unit} trusted={Boolean(trusted)} />
         )}
 
         {!noData && !calendar && !error && <p className="notice">{t("Loading the record...")}</p>}
 
         {!noData && calendar && (
           <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
-            <AnomalyTiles
+            <HeadlineCard
               anomaly={calendar.season_peak ?? calendar.anomaly}
               climatology={calendar.climatology}
+              months={calendar.months}
               unit={unit}
               busiest={Boolean(calendar.season_peak)}
               error={headlineError}
               raw={headlineRaw}
               recordEnd={meta?.last_month ?? null}
+              series={filters?.series ?? calendar.series}
+              available={meta?.series ?? []}
+              onSeries={(series) => setFilters((current) => (current ? { ...current, series } : current))}
             />
 
             <InShort lines={inShort} />
@@ -715,6 +706,7 @@ export function App() {
             />
 
             <ChartCard
+              id="peak-months"
               title={t("Peak burning months")}
               subtitle={
                 t(
@@ -761,6 +753,7 @@ export function App() {
                 pngName={exportName([`season-${year}`, ...fileParts], "png")}
               />
               <ChartCard
+                id="burning-per-year"
                 title={t("Burning per year")}
                 subtitle={
                   rawLine && meta

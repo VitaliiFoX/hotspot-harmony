@@ -237,17 +237,27 @@ label.inline > span,
 .theme > span {
   margin: 0;
 }
+/* A grid of one column: the legend on its row, the fields under it. As a grid row the legend sets the width of
+   the group only when it is the widest row, and the row gap stands in for its margin, so it sits on the same line
+   as the label of a plain field next to the group. */
 fieldset {
   border: 0;
   padding: 0;
   margin: 0;
-  display: flex;
+  display: grid;
   gap: 6px;
-  flex-wrap: wrap;
+  justify-items: start;
 }
+/* Floated, the legend is an ordinary grid item instead of a caption drawn into the border. */
 fieldset > legend {
   float: left;
-  width: 100%;
+  margin-bottom: 0;
+}
+.coordinates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-self: stretch;
 }
 .coordinate {
   position: relative;
@@ -305,8 +315,34 @@ fieldset > legend {
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
 }
-.filters > .primary {
+/* Second row: the record switch leads, the example areas follow, the download closes it as a quiet button. */
+.filters-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 24px;
+  width: 100%;
+  padding-top: 16px;
+  border-top: 1px solid var(--grid);
+}
+.filters-record .segmented > button {
+  padding: 0 16px;
+}
+/* The switch between the two records is the main control of the card: the chosen one is filled with ink. */
+.filters-record .segmented > button[aria-pressed="true"],
+.filters-record .segmented > button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--surface);
+}
+.filters-download {
+  align-self: flex-end;
   margin-left: auto;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.filters-download:hover:not(:disabled) {
+  border-color: var(--ink-2);
+  color: var(--ink);
 }
 /* The region as a search: a button that names the place, and under it a field over the list of what it finds. */
 .region-search {
@@ -377,21 +413,34 @@ fieldset > legend {
   color: var(--muted);
   cursor: default;
 }
-/* One-click example areas under the filters: links, so each is also a view to share. */
+/* One-click example areas in the filters card: links, so each is also a view to share. Labelled like a field. */
 .presets {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 16px;
-  padding: 0 4px;
-  color: var(--ink-2);
-  font-size: 13px;
+  gap: 6px;
+  min-width: 0;
 }
+/* 3 px more under the label puts the chips level with the buttons inside the record switch. */
 .presets > span {
-  color: var(--muted);
+  width: 100%;
+  margin-bottom: 3px;
+  color: var(--ink-2);
+  font-size: 12px;
 }
 .presets a {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--accent);
+  font-size: 13px;
+  text-decoration: none;
+}
+.presets a:hover {
+  background: var(--wash);
+  text-decoration: underline;
 }
 .filter-problem {
   width: 100%;
@@ -432,6 +481,104 @@ fieldset > legend {
   line-height: 1;
 }
 
+/* The record on screen: a sentence, then its parts end to end. The reference is solid, the parts adjusted to it are
+   hatched, so the strip does not lean on colour; the numbered list under it ties each segment to its words. */
+.record-sentence {
+  max-width: 75ch;
+  margin: 0;
+}
+.record-strip {
+  display: flex;
+  gap: 2px;
+  margin: 12px 0 0;
+  padding: 5px 0;
+}
+.record-segment,
+.record-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.record-segment {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 18px;
+  height: 20px;
+}
+.record-swatch {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -1px;
+}
+.record-segment.is-reference,
+.record-swatch.is-reference {
+  background: var(--ink-2);
+  color: var(--surface);
+}
+.record-segment.is-adjusted,
+.record-swatch.is-adjusted {
+  background: repeating-linear-gradient(135deg, var(--muted) 0 1.5px, var(--surface) 1.5px 5px);
+  box-shadow: inset 0 0 0 1px var(--muted);
+}
+.record-segment.is-plain,
+.record-swatch.is-plain,
+.record-segment.is-jump,
+.record-swatch.is-jump {
+  background: var(--axis);
+}
+/* Raw record: the sensor switch is the point where the values jump, marked across the strip. */
+.record-segment.is-jump::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  left: -2px;
+  width: 2px;
+  background: var(--ink);
+}
+.record-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+.is-adjusted > .record-number {
+  background: var(--surface);
+}
+.record-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.record-parts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 75ch;
+}
+.record-part-label {
+  color: var(--ink);
+}
+.record-parts li.is-reference .record-part-label {
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .record-parts {
+    flex-direction: column;
+  }
+}
+
 .content {
   display: grid;
   gap: 16px;
@@ -440,28 +587,130 @@ fieldset > legend {
   opacity: 0.55;
 }
 
+/* The headline: one card with the verdict, the ratio, what the raw record would say, the place among the years and
+   a strip of those years. Its lines stay short enough to read (about 75 characters). */
 .headline {
   display: grid;
   gap: 10px;
 }
-.tiles {
+.headline-card {
   display: grid;
-  grid-template-columns: 1.6fr repeat(3, 1fr);
-  gap: 16px;
+  gap: 18px;
+}
+.headline-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.headline-verdict {
+  max-width: 60ch;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.headline-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+}
+.headline-ratio,
+.headline-raw {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 240px;
+  max-width: 46ch;
 }
 /* A month within the method's error is not called unusual: its ratio is shown, quieter. */
-.tile-hero.is-within .hero {
+.headline-ratio.is-within .hero {
   color: var(--ink-2);
 }
-.headline-notes {
-  display: grid;
-  gap: 4px;
-  padding: 0 4px;
+.headline-raw {
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+.headline-raw-label {
   color: var(--ink-2);
   font-size: 13px;
 }
-.headline-notes strong {
+.headline-raw-value {
+  color: var(--ink-2);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.headline-note {
+  max-width: 75ch;
+  color: var(--muted);
+  font-size: 13px;
+}
+.headline-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.headline-rank strong {
+  font-size: 18px;
+  font-weight: 600;
+}
+.strip {
+  display: grid;
+  gap: 6px;
+}
+.strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.strip svg {
+  overflow: visible;
+}
+.strip-dot {
+  fill: var(--muted);
+  fill-opacity: 0.45;
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+.strip-dot.is-own {
+  fill: var(--accent);
+  fill-opacity: 1;
+  stroke-width: 2;
+}
+.strip-ring {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.strip-median {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+.strip-median-label {
+  fill: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.strip-label {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.strip tr.is-own > * {
   color: var(--ink);
+  font-weight: 600;
+}
+.headline-caveats {
+  max-width: 75ch;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 13px;
 }
 .tile {
   display: flex;
@@ -842,7 +1091,6 @@ tbody th {
 }
 
 @media (max-width: 900px) {
-  .tiles,
   .trust-figures {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -862,7 +1110,6 @@ tbody th {
   }
 }
 @media (max-width: 560px) {
-  .tiles,
   .trust-figures {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -886,6 +1133,9 @@ tbody th {
   }
   .coordinate {
     flex: 1 1 calc(50% - 3px);
+  }
+  .filters-download {
+    flex: 1 1 100%;
   }
 }
 
@@ -990,17 +1240,88 @@ td.text-cell {
   font-size: 12px;
 }
 
-/* In short: the area in a few sentences from the page's own figures. */
+/* In short: the area in a few lines from the page's own figures, the figure first, each line a link to its card. */
 .in-short h2 {
   margin-bottom: 8px;
 }
+/* One column of figures for all lines (subgrid), the explanation kept under about 75 characters. */
 .in-short ul {
   display: grid;
-  gap: 6px;
+  grid-template-columns: max-content minmax(0, 75ch) auto;
+  justify-content: start;
   margin: 0;
-  padding-left: 18px;
+  padding: 0;
+  list-style: none;
   color: var(--ink);
   font-size: 14px;
+}
+.in-short li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+.in-short li + li {
+  border-top: 1px solid var(--grid);
+}
+.in-short a {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  column-gap: 16px;
+  align-items: baseline;
+  padding: 8px 6px;
+  border-radius: var(--radius-chip);
+  color: inherit;
+  text-decoration: none;
+}
+.in-short-go {
+  color: var(--muted);
+}
+.in-short a:hover .in-short-go {
+  color: var(--accent);
+}
+.in-short-figure {
+  font-size: 17px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.in-short-text {
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.in-short a:hover {
+  background: var(--wash);
+}
+.in-short a:hover .in-short-text {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--axis);
+  text-underline-offset: 3px;
+}
+/* The cards "In short" links to: a little air above when scrolled to, and no ring when focused by a click. */
+#peak-months,
+#burning-per-year,
+#unusual-months {
+  scroll-margin-top: 16px;
+}
+.card[tabindex="-1"]:focus:not(:focus-visible) {
+  outline: none;
+}
+@media (max-width: 600px) {
+  .in-short ul {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .in-short a {
+    row-gap: 2px;
+  }
+  .in-short-text {
+    grid-column: 1;
+  }
+  .in-short-go {
+    grid-column: 2;
+    grid-row: 1;
+  }
 }
 
 /* Unusual months: each a button that shows its year on the calendar. */

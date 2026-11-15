@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   PEAK_SHARE, SEQUENTIAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel,
-  monthSpans, niceTicks, partsOfYear, peakMonths, position, rampColor, rampGradient, recordSpans, valuesByYear,
+  monthRange, monthRank, monthSpans, niceTicks, partsOfYear, peakMonths, position, rampColor, rampGradient, rawRecordParts, recordSpans,
+  recordTimeline, stripLanes, valuesByYear,
 } from "./scale";
 
 describe("position", () => {
@@ -139,6 +140,46 @@ describe("valuesByYear", () => {
   });
 });
 
+describe("monthRank", () => {
+  // Julys of five years and one August that must not count: 2021 and 2023 tie at 50.
+  const months = [
+    { year: 2020, month: 7, value: 10 },
+    { year: 2021, month: 7, value: 50 },
+    { year: 2022, month: 7, value: 30 },
+    { year: 2023, month: 7, value: 50 },
+    { year: 2024, month: 7, value: 0 },
+    { year: 2024, month: 8, value: 999 },
+  ];
+  it("is 1 + the years of that calendar month with more", () => {
+    expect(monthRank(months, 2022, 7)).toEqual({ rank: 3, of: 5 });
+    expect(monthRank(months, 2020, 7)).toEqual({ rank: 4, of: 5 });
+    expect(monthRank(months, 2024, 7)).toEqual({ rank: 5, of: 5 });
+  });
+  it("gives years that tie the better place", () => {
+    expect(monthRank(months, 2021, 7)).toEqual({ rank: 1, of: 5 });
+    expect(monthRank(months, 2023, 7)).toEqual({ rank: 1, of: 5 });
+  });
+  it("is null for a month not in the record, and alone a month is 1st of 1", () => {
+    expect(monthRank(months, 2019, 7)).toBeNull();
+    expect(monthRank(months, 2024, 8)).toEqual({ rank: 1, of: 1 });
+  });
+});
+
+describe("stripLanes", () => {
+  it("keeps dots that are far enough apart on the middle lane", () => {
+    expect(stripLanes([0, 10, 20], 10)).toEqual([0, 0, 0]);
+  });
+  it("moves a dot that would cover the last one to the next free lane: 0, 1, -1, 2", () => {
+    expect(stripLanes([0, 2, 4, 6, 30], 10)).toEqual([0, 1, -1, 2, 0]);
+  });
+  it("works in order of position, whatever the order given, and returns lanes in the order given", () => {
+    expect(stripLanes([6, 30, 2, 0, 4], 10)).toEqual([2, 0, 1, 0, -1]);
+  });
+  it("is empty for no dots", () => {
+    expect(stripLanes([], 10)).toEqual([]);
+  });
+});
+
 describe("brokenLinePath", () => {
   it("joins the points in order", () => {
     expect(brokenLinePath([[0, 10], [20, 5], [40, 8]])).toBe("M0,10 L20,5 L40,8");
@@ -214,5 +255,47 @@ describe("partsOfYear", () => {
     expect(partsOfYear(RECORD, 2012)).toEqual(["MODIS Terra + Aqua (reference)"]);
     expect(partsOfYear(RECORD, 2025)).toEqual(["VIIRS NOAA-20, harmonized"]);
     expect(partsOfYear(RECORD, 1999)).toEqual([]);
+  });
+});
+
+describe("recordTimeline", () => {
+  it("sizes each part by its months, both ends included, and runs an open part to the last month", () => {
+    // 2000-11..2002-06: 2 + 12 + 6 = 20; 2002-07..2021-12: 6 + 19 * 12 = 234; 2022-01..2025-12: 48. All: 302.
+    const parts = recordTimeline(RECORD, "2025-12");
+    expect(parts.map((p) => [p.from, p.to, p.months])).toEqual([
+      ["2000-11", "2002-06", 20],
+      ["2002-07", "2021-12", 234],
+      ["2022-01", "2025-12", 48],
+    ]);
+    expect(parts.map((p) => p.share)).toEqual([20 / 302, 234 / 302, 48 / 302]);
+  });
+  it("drops a part that starts after the record ends", () => {
+    expect(recordTimeline(RECORD, "2021-12").map((p) => p.months)).toEqual([20, 234]);
+  });
+});
+
+describe("rawRecordParts", () => {
+  it("splits the raw record at the sensor switch: MODIS to the month before, VIIRS S-NPP from it", () => {
+    const parts = rawRecordParts("2000-11", "2012-02", "2025-12");
+    expect(parts).toEqual([
+      { sensor: "modis", label: "MODIS", from: "2000-11", to: "2012-01" },
+      { sensor: "viirs_snpp", label: "VIIRS S-NPP", from: "2012-02", to: "2025-12" },
+    ]);
+    // 2000-11..2012-01: 2 + 11 * 12 + 1 = 135; 2012-02..2025-12: 11 + 13 * 12 = 167.
+    expect(recordTimeline(parts, "2025-12").map((p) => p.months)).toEqual([135, 167]);
+  });
+  it("keeps one part when the switch is outside the record", () => {
+    expect(rawRecordParts("2013-01", "2012-02", "2025-12")).toEqual([
+      { sensor: "viirs_snpp", label: "VIIRS S-NPP", from: "2013-01", to: "2025-12" },
+    ]);
+    expect(rawRecordParts("2000-11", "2012-02", "2010-12")).toEqual([
+      { sensor: "modis", label: "MODIS", from: "2000-11", to: "2010-12" },
+    ]);
+  });
+});
+
+describe("monthRange", () => {
+  it("names the first and last month of a part, shortened", () => {
+    expect(monthRange("2000-11", "2002-06")).toBe("Nov 2000 – Jun 2002");
   });
 });
