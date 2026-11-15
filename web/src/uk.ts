@@ -464,6 +464,16 @@ export const UK: Record<string, string> = {
   "See what is missing": "Подивитися, чого бракує",
   "Let the country go": "Прибрати країну",
   "Hotspots on {date}": "Гарячі точки {date}",
+  "{regions}: no hotspot seen yet. Clouds, smoke and the hours between satellite passes hide some fires, so a zero is not proof there was none.":
+    "{regions}: гарячих точок поки не видно. Хмари, дим і години між прольотами супутників приховують частину пожеж, тож нуль не доводить, що їх не було.",
+  "None on that day: on a quiet day the satellites can pass without seeing a fire.":
+    "Того дня жодної: у спокійний день супутники можуть пролетіти й не побачити вогню.",
+  "None in the last hour: a satellite sees a place only a few times a day, so most hours are empty.":
+    "За останню годину жодної: супутник бачить місце лише кілька разів на добу, тож більшість годин порожні.",
+  "No hotspots in these days. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.":
+    "У ці дні гарячих точок немає. Хмари й дим можуть приховати пожежі від супутників, тож це не доводить, що їх не було.",
+  "No hotspots on this day. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.":
+    "Цього дня гарячих точок немає. Хмари й дим можуть приховати пожежі від супутників, тож це не доводить, що їх не було.",
   Day: "День",
   Period: "Період",
   Show: "Показати",

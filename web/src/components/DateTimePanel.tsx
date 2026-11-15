@@ -4,6 +4,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import type { DayHotspots, MonthDays } from "../api";
 import {
   type HourCounts, LAST_MINUTE, dayKey, dotStyle, longDate, longMonth, monthGrid, moveToMonth, parseTimeParam, sensorLabel, shiftMonth, timeLabel,
+  zeroNote,
 } from "../globe";
 
 type Props = {
@@ -163,14 +164,17 @@ export function DateTimePanel({
       "{sensor} was down on {n} days of this span, so its hotspots are missing or incomplete there.",
       { sensor: sensorsLabel(day.sensor) },
     );
-  else if (span && day && day.count === 0) status = t("No hotspots in these days.");
+  else if (span && day && day.count === 0)
+    status = t("No hotspots in these days. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.");
   else if (span) status = null;
   else if (day?.sensor_gap)
     status = t(
       "{sensor} was down on this day, so its hotspots are missing or incomplete: a low count or a zero here is missing data, not a quiet day.",
       { sensor: sensorLabel(day.sensor) },
     );
-  else if (day && day.count === 0) status = t("No hotspots on this day.");
+  else if (day && day.count === 0)
+    status = t("No hotspots on this day. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.");
+  const zero = day && counts ? zeroNote(day.regions, counts, Boolean(span)) : null;
 
   return (
     <section className="dt-panel" aria-label={t("Date and time")}>
@@ -383,14 +387,17 @@ export function DateTimePanel({
               {day.regions.map((name, index) => (
                 <div key={name}>
                   <dt>{t(name)}</dt>
-                  <dd>{formatCount(counts.regions[index]?.throughHour ?? 0)}</dd>
+                  <dd className={(counts.regions[index]?.throughHour ?? 0) === 0 ? "is-zero" : undefined}>
+                    {formatCount(counts.regions[index]?.throughHour ?? 0)}
+                  </dd>
                 </div>
               ))}
               <div>
                 <dt>{span ? t("That day") : t("Last hour")}</dt>
-                <dd>{formatCount(counts.inHour)}</dd>
+                <dd className={counts.inHour === 0 ? "is-zero" : undefined}>{formatCount(counts.inHour)}</dd>
               </div>
             </dl>
+            {zero && <p className="dt-note">{zero}</p>}
             {day.truncated && (
               <p className="dt-status">
                 {span

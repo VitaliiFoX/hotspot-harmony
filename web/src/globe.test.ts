@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
   type Rgba, DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, cellGroups, cellImage, cellSurface, rampRgba, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
-  trendSentence, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
+  trendSentence, zeroNote, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, parseViewParam, flatFillZoom, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
@@ -469,5 +469,23 @@ describe("cellImage", () => {
     const tall = cellImage([{ lon: 0, lat: 0, color: red }, { lon: 0, lat: 60, color: red }], 1, 4)!;
     expect(tall.width).toBe(8);
     expect(tall.height).toBe(314);
+  });
+});
+
+describe("why a figure reads zero", () => {
+  const counts = (through: number[], inHour: number) => ({
+    throughHour: through.reduce((a, b) => a + b, 0), inHour, day: 0,
+    regions: through.map((n) => ({ throughHour: n, inHour: 0, day: n })),
+  });
+  it("names the regions with no hotspot yet and says a zero is no proof", () => {
+    expect(zeroNote(["Argentina", "Ukraine"], counts([527, 0], 3), false)).toMatch(/^Ukraine: no hotspot seen yet\. .*not proof/);
+  });
+  it("explains an empty hour, or an empty day of a span", () => {
+    expect(zeroNote(["Argentina"], counts([12], 0), false)).toMatch(/^None in the last hour/);
+    expect(zeroNote(["Argentina"], counts([12], 0), true)).toMatch(/^None on that day/);
+  });
+  it("says nothing when no figure is zero, or when the whole day is (the panel says that itself)", () => {
+    expect(zeroNote(["Argentina"], counts([12], 2), false)).toBeNull();
+    expect(zeroNote(["Argentina"], counts([0], 0), false)).toBeNull();
   });
 });

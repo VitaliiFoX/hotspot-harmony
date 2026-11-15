@@ -156,6 +156,26 @@ export function countHotspots(hotspots: DayHotspot[], time: number, regionCount:
   return { ...total, regions };
 }
 
+/**
+ * Why a figure reads zero, so it is not taken for an error or for proof that nothing burned: a region with no
+ * hotspot yet, or an empty hour (a satellite sees a place only a few times a day). Null when nothing is zero.
+ */
+export function zeroNote(regions: readonly string[], counts: HourCounts, span: boolean): string | null {
+  const quiet = regions.filter((_, index) => (counts.regions[index]?.throughHour ?? 0) === 0).map((name) => t(name));
+  if (quiet.length > 0 && counts.throughHour > 0) {
+    return t(
+      "{regions}: no hotspot seen yet. Clouds, smoke and the hours between satellite passes hide some fires, so a zero is not proof there was none.",
+      { regions: quiet.join(t(" and ")) },
+    );
+  }
+  if (counts.inHour === 0 && counts.throughHour > 0) {
+    return span
+      ? t("None on that day: on a quiet day the satellites can pass without seeing a fire.")
+      : t("None in the last hour: a satellite sees a place only a few times a day, so most hours are empty.");
+  }
+  return null;
+}
+
 /** Size in px and opacity of a day's dot in the calendar, by the square root of its share of the month's maximum. */
 export function dotStyle(value: number, monthMax: number): { size: number; opacity: number } | null {
   if (value <= 0 || monthMax <= 0) return null;
