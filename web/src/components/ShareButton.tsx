@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { currentLink, showLinkInAddress } from "../address";
 import { t } from "../i18n";
 
 /** Copy text without the async clipboard API, which needs a secure context (plain http on a LAN address has none). */
@@ -15,7 +16,10 @@ function copyByHand(text: string): boolean {
   return copied;
 }
 
-/** Share the view on screen: the address already holds all of it. A phone opens its share sheet; elsewhere the link is copied. */
+/**
+ * Share the view on screen. The address bar stays clean (see address.ts), so the link is written here. A phone opens
+ * its share sheet; elsewhere the link is copied, and where nothing can copy it is put into the address bar.
+ */
 export function ShareButton({ className }: { className?: string }) {
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
@@ -25,7 +29,7 @@ export function ShareButton({ className }: { className?: string }) {
   }, [note]);
 
   async function share() {
-    const url = window.location.href;
+    const url = currentLink();
     const touch = window.matchMedia("(pointer: coarse)").matches;
     if (touch && navigator.share) {
       try {
@@ -39,7 +43,12 @@ export function ShareButton({ className }: { className?: string }) {
       await navigator.clipboard.writeText(url);
       setNote(t("Link copied"));
     } catch {
-      setNote(copyByHand(url) ? t("Link copied") : t("Copy the address from the browser bar"));
+      if (copyByHand(url)) {
+        setNote(t("Link copied"));
+      } else {
+        showLinkInAddress();
+        setNote(t("Copy the address from the browser bar"));
+      }
     }
   }
 
