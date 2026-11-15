@@ -778,7 +778,6 @@ export function App() {
                   climatology={calendar.climatology}
                   unit={unit}
                   mode={scaleMode}
-                  dark={dark}
                   highlightYear={year}
                   onHighlightYear={setHighlightYear}
                   shownMonths={date ? spanMonths(date, span) : []}

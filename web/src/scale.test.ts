@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  PEAK_SHARE, SEQUENTIAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel,
+  PEAK_SHARE, THERMAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel,
   monthRange, monthRank, monthSpans, niceTicks, partsOfYear, peakMonths, position, rampColor, rampGradient, rawRecordParts, recordSpans,
   recordTimeline, seasonSpan, stripLanes, valuesByYear,
 } from "./scale";
@@ -25,55 +25,47 @@ describe("position", () => {
 
 describe("cellColor", () => {
   it("gives zero its own neutral fill", () => {
-    expect(cellColor(0, 1, 100, "linear", false)).toBe(ZERO_FILL.light);
-    expect(cellColor(0, 1, 100, "linear", true)).toBe(ZERO_FILL.dark);
+    expect(cellColor(0, 1, 100, "linear")).toBe(ZERO_FILL);
   });
-  it("runs from the lightest stop to the darkest on a light surface", () => {
-    expect(cellColor(1, 1, 1000, "log", false)).toBe(SEQUENTIAL[0]);
-    expect(cellColor(1000, 1, 1000, "linear", false)).toBe(SEQUENTIAL[12]);
-  });
-  it("runs the other way on a dark surface", () => {
-    expect(cellColor(1, 1, 1000, "log", true)).toBe(SEQUENTIAL[12]);
-    expect(cellColor(1000, 1, 1000, "linear", true)).toBe(SEQUENTIAL[0]);
+  it("runs from the coldest stop to the hottest, the colours of the map", () => {
+    expect(cellColor(1, 1, 1000, "log")).toBe(THERMAL[0]); // dark violet
+    expect(cellColor(1000, 1, 1000, "linear")).toBe(THERMAL[4]); // near white
   });
   it("gives two values that differ a little two colours that differ a little", () => {
-    // 300 and 310 of 1200 fell into one step of thirteen; now 300 is a stop itself (3 of 12) and 310 is a tenth
-    // of the way to the next: 134 - 2.5 = 132, 182 - 1.5 = 181, 239 - 0.3 = 239.
-    expect(cellColor(300, 1, 1200, "linear", false)).toBe(SEQUENTIAL[3]);
-    expect(cellColor(310, 1, 1200, "linear", false)).toBe("#84b5ef");
+    // 300 of 1200 is a quarter of the ramp, the stop #fd369b (253, 54, 155). 310 is a thirtieth of the way to
+    // the next stop, #fe8915 (254, 137, 21): 253 + 0.03 = 253, 54 + 2.77 = 57, 155 - 4.47 = 151.
+    expect(cellColor(300, 1, 1200, "linear")).toBe(THERMAL[1]);
+    expect(cellColor(310, 1, 1200, "linear")).toBe("#fd3997");
   });
   it("puts the middle of the range in the middle of the ramp", () => {
-    expect(cellColor(500, 1, 1000, "linear", false)).toBe(SEQUENTIAL[6]);
-    expect(cellColor(100, 10, 1000, "log", false)).toBe(SEQUENTIAL[6]);
+    expect(cellColor(500, 1, 1000, "linear")).toBe(THERMAL[2]);
+    expect(cellColor(100, 10, 1000, "log")).toBe(THERMAL[2]);
   });
-  it("starts the log scale at the lightest step even when every month burned a lot", () => {
-    expect(cellColor(3000, 3000, 105000, "log", false)).toBe(SEQUENTIAL[0]);
+  it("starts the log scale at the coldest stop even when every month burned a lot", () => {
+    expect(cellColor(3000, 3000, 105000, "log")).toBe(THERMAL[0]);
   });
 });
 
 describe("rampColor", () => {
-  it("is a stop at each twelfth of the ramp", () => {
-    expect(rampColor(0, false)).toBe("#cde2fb");
-    expect(rampColor(3 / 12, false)).toBe("#86b6ef");
-    expect(rampColor(1, false)).toBe("#0d366b");
+  it("is a stop at each quarter of the ramp", () => {
+    expect(rampColor(0)).toBe("#2c0352");
+    expect(rampColor(1 / 4)).toBe("#fd369b");
+    expect(rampColor(1)).toBe("#fefbec");
   });
   it("mixes the two stops around a place between them", () => {
-    // 0.4 of the way from #cde2fb to #b7d3f6: 205 - 8.8 = 196, 226 - 6 = 220, 251 - 2 = 249.
-    expect(rampColor(0.4 / 12, false)).toBe("#c4dcf9");
-    // The same place from the other end on a dark surface: 0.4 of the way from #0d366b to #104281.
-    // 13 + 1.2 = 14, 54 + 4.8 = 59, 107 + 8.8 = 116.
-    expect(rampColor(0.4 / 12, true)).toBe("#0e3b74");
+    // 0.1 is four tenths of the way from #2c0352 (44, 3, 82) to #fd369b (253, 54, 155):
+    // 44 + 83.6 = 128, 3 + 20.4 = 23, 82 + 29.2 = 111.
+    expect(rampColor(0.1)).toBe("#80176f");
   });
-  it("stays on the ramp for a place outside it", () => {
-    expect(rampColor(-1, false)).toBe("#cde2fb");
-    expect(rampColor(2, false)).toBe("#0d366b");
+  it("stays on the ramp outside it", () => {
+    expect(rampColor(-1)).toBe("#2c0352");
+    expect(rampColor(2)).toBe("#fefbec");
   });
 });
 
 describe("rampGradient", () => {
-  it("runs through every stop, light to dark, and the other way on a dark surface", () => {
-    expect(rampGradient(false)).toBe(`linear-gradient(90deg, ${SEQUENTIAL.join(", ")})`);
-    expect(rampGradient(true)).toBe(`linear-gradient(90deg, ${[...SEQUENTIAL].reverse().join(", ")})`);
+  it("runs through every stop, cold to hot", () => {
+    expect(rampGradient()).toBe("linear-gradient(90deg, #2c0352, #fd369b, #fe8915, #ffb60d, #fefbec)");
   });
 });
 

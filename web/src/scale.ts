@@ -2,13 +2,14 @@
 
 import { monthOfYear, monthShort, numberLocale, t } from "./i18n";
 
-/** One blue hue, light to dark: the stops of the sequential ramp for "how much burning". */
-export const SEQUENTIAL = [
-  "#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5",
-  "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b",
-];
-// "No burning" recedes towards the surface in both modes, further than the lowest step of the ramp.
-export const ZERO_FILL = { light: "#f0efec", dark: "#2c2c2a" };
+/**
+ * The colours of a thermal camera, cold to hot: dark violet, pink, orange, amber, near white. The one ramp of
+ * "how much burning", on the map ("Where it burns") and in the calendar, so a colour reads the same in both.
+ * As --thermal-0 .. --thermal-4 in globe.css.
+ */
+export const THERMAL = ["#2c0352", "#fd369b", "#fe8915", "#ffb60d", "#fefbec"] as const;
+// "No burning": a neutral grey that recedes into the calendar's dark plate, apart from the ramp's own violet.
+export const ZERO_FILL = "#2c2c2a";
 
 export type ScaleMode = "linear" | "log";
 
@@ -23,9 +24,9 @@ export function position(value: number, min: number, max: number, mode: ScaleMod
   return Math.max(0, Math.min(1, Math.log(value / min) / Math.log(max / min)));
 }
 
-/** The stops of the ramp in the order a surface needs them: reversed on a dark one, so more is further from it. */
-export function rampStops(dark: boolean): string[] {
-  return dark ? [...SEQUENTIAL].reverse() : [...SEQUENTIAL];
+/** The stops of the ramp, cold to hot. */
+export function rampStops(): string[] {
+  return [...THERMAL];
 }
 
 function channels(hex: string): [number, number, number] {
@@ -36,8 +37,8 @@ function channels(hex: string): [number, number, number] {
  * The colour at a place on the ramp, from 0 (its first stop) to 1 (its last). Between two stops the colour is
  * mixed from both, so the ramp has no steps: two months that differ a little differ a little in colour.
  */
-export function rampColor(place: number, dark: boolean): string {
-  const stops = rampStops(dark);
+export function rampColor(place: number): string {
+  const stops = rampStops();
   const at = Math.max(0, Math.min(1, place)) * (stops.length - 1);
   const below = Math.floor(at);
   const from = channels(stops[below]);
@@ -47,18 +48,18 @@ export function rampColor(place: number, dark: boolean): string {
 }
 
 /** The whole ramp as a CSS gradient, left to right: the legend of the calendar. */
-export function rampGradient(dark: boolean): string {
-  return `linear-gradient(90deg, ${rampStops(dark).join(", ")})`;
+export function rampGradient(): string {
+  return `linear-gradient(90deg, ${rampStops().join(", ")})`;
 }
 
 /**
  * Fill for a calendar cell. Exactly zero gets a neutral grey so "no burning" never
- * looks like "a little burning". Above zero the colour follows the value without steps.
- * On a dark surface the ramp runs the other way, so that more is always further from the surface.
+ * looks like "a little burning". Above zero the colour follows the value without steps, cold to hot.
+ * The calendar sits on a dark plate in both themes, as the map does, so the same colour is the same amount.
  */
-export function cellColor(value: number, min: number, max: number, mode: ScaleMode, dark: boolean): string {
-  if (value <= 0) return dark ? ZERO_FILL.dark : ZERO_FILL.light;
-  return rampColor(position(value, min, max, mode), dark);
+export function cellColor(value: number, min: number, max: number, mode: ScaleMode): string {
+  if (value <= 0) return ZERO_FILL;
+  return rampColor(position(value, min, max, mode));
 }
 
 /** Round axis ticks from zero up to at least `max`: steps of 1, 2 or 5 times a power of ten. */
