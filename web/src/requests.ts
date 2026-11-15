@@ -34,8 +34,8 @@ export function delayFor(previous: View | null, next: View): number {
   return boxEdited && restSame ? TYPING_PAUSE_MS : 0;
 }
 
-export function requestKey(body: CalendarBody): string {
-  return [body.series, body.start, body.end, JSON.stringify(body.geometry.coordinates)].join("|");
+export function requestKey(body: CalendarBody, areaKey?: string): string {
+  return [body.series, body.start, body.end, areaKey ?? JSON.stringify(body.geometry.coordinates)].join("|");
 }
 
 /** The record the viewer is not looking at, if the API serves it: fetched ahead so the switch is instant. */
@@ -49,12 +49,12 @@ export class CalendarCache {
 
   constructor(private readonly limit = 40) {}
 
-  get(body: CalendarBody): Calendar | undefined {
-    return this.entries.get(requestKey(body));
+  get(body: CalendarBody, areaKey?: string): Calendar | undefined {
+    return this.entries.get(requestKey(body, areaKey));
   }
 
-  set(body: CalendarBody, calendar: Calendar): void {
-    const key = requestKey(body);
+  set(body: CalendarBody, calendar: Calendar, areaKey?: string): void {
+    const key = requestKey(body, areaKey);
     this.entries.delete(key);
     this.entries.set(key, calendar);
     while (this.entries.size > this.limit) {
