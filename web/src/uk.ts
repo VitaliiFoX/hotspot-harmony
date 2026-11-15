@@ -471,38 +471,14 @@ export const UK: Record<string, string> = {
     "Де горіло найбільше, {month}, {record}: {unit}, клітинки {deg}°",
   "Where it burned in {month}: {unit} per 100 km², {record}": "Де горіло, {month}: {unit} на 100 км², {record}",
   "About {amount} {unit} in {month} ({perArea} per 100 km²).": "{month}: близько {amount} {unit} ({perArea} на 100 км²).",
+  "In the month": "За місяць",
+  "Whole period": "Весь період",
+  "One month has no change to show: choose the whole period.": "За один місяць зміни не показати: виберіть весь період.",
   "click to see where it burned on the map": "клацніть, щоб побачити на мапі, де горіло",
   "Press Enter to see where it burned that month on the map.": "Натисніть Enter, щоб побачити на мапі, де горіло того місяця.",
   "Outlined: {month}, the month on the map above. Click any month to see where it burned.":
     "Обведено: {month}, місяць на мапі вгорі. Клацніть будь-який місяць, щоб побачити, де горіло.",
   "Click a month to see where it burned on the map above.": "Клацніть місяць, щоб побачити на мапі вгорі, де горіло.",
-  "Outlined: {from} to {to}, the months on the map above. Click any month to see where it burned.":
-    "Обведено: {from} – {to}, місяці на мапі вгорі. Клацніть будь-який місяць, щоб побачити, де горіло.",
-  "What the map shows": "Що показує мапа",
-  Day: "День",
-  "7 days": "7 днів",
-  "Fire season": "Пожежний сезон",
-  "Hotspots of the {n} days through the chosen day, at every time of day": "Гарячі точки за {n} днів до вибраного дня включно, за будь-якої пори доби",
-  "The fire season of the area: its peak months in this year. The map shows where it burned in them.":
-    "Пожежний сезон області: її пікові місяці цього року. Мапа показує, де горіло в ці місяці.",
-  "The fire season comes from the area's calendar below, which is not loaded.":
-    "Пожежний сезон береться з календаря області нижче, а його не завантажено.",
-  "The map shows where it burned in this month. Pick a day to see its hotspots.":
-    "Мапа показує, де горіло цього місяця. Виберіть день, щоб побачити його гарячі точки.",
-  "The map shows where it burns over the period of the filters.": "Мапа показує, де горить за період із фільтрів.",
-  "Loading the hotspots of these days...": "Завантаження гарячих точок цих днів...",
-  "Cannot load these days: {error}": "Не вдалося завантажити ці дні: {error}",
-  "{sensor} was down on some of these days, so their hotspots are missing or incomplete.":
-    "{sensor} не працював частину цих днів, тож їхніх гарячих точок бракує або їх неповно.",
-  "No hotspots on these days.": "Цими днями гарячих точок немає.",
-  "{unit} in these {n} days": "{unit} за ці {n} днів",
-  "Some of these days are cut, so the figures are lower than the full record.":
-    "Частину цих днів обрізано, тож цифри менші, ніж у повному записі.",
-  "Hotspots of the 7 days through {date}": "Гарячі точки за 7 днів до {date} включно",
-  "Hotspots of the 7 days, at every time of day": "Гарячі точки за 7 днів, за будь-якої пори доби",
-  "In all": "Усього",
-  "A month or a season has no change to show: choose the whole period.":
-    "За місяць чи сезон зміни не показати: виберіть весь період.",
   "{late} against {early}": "{late} проти {early}",
   "No record for {country} yet": "Для країни {country} ряду ще немає",
   "This build holds the hotspots of {regions}. Once the record of {country} is loaded, its burning activity calendar, peak months, yearly totals and unusual months appear here, counted inside its border.":

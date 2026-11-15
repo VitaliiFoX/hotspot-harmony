@@ -16,8 +16,8 @@ import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
 import {
-  DEFAULT_TIME, type GlobeLayer, LAST_MINUTE, type MapView, clampDate, countHotspots, defaultDate, mergeDays, moveToMonth, parseDateParam,
-  parseLayerParam, parseTimeParam, parseViewParam, shownMonths, timeLabel, weekDays,
+  DEFAULT_TIME, type GlobeLayer, type MapView, clampDate, countHotspots, defaultDate, moveToMonth, parseDateParam, parseLayerParam,
+  parseTimeParam, parseViewParam, shownMonth, timeLabel,
 } from "./globe";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { RecordTimeline } from "./components/RecordTimeline";
@@ -33,7 +33,7 @@ import { LANGUAGES, type Lang, formatCount, language, t, tn } from "./i18n";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
 import { monthError, sameMonthRatio } from "./trust";
-import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths, seasonSpan } from "./scale";
+import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
 function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } {
@@ -272,45 +272,8 @@ export function App() {
     return () => controller.abort();
   }, [date]);
 
-  // The week layer: the hotspots of the seven days through the date, as one set, at every time of day.
-  const [week, setWeek] = useState<DayHotspots | null>(null);
-  const [weekLoading, setWeekLoading] = useState(false);
-  const [weekError, setWeekError] = useState<string | null>(null);
-  useEffect(() => {
-    if (layer !== "week" || !date || !firstDay) return;
-    const controller = new AbortController();
-    setWeekLoading(true);
-    setWeekError(null);
-    Promise.all(weekDays(date, firstDay).map((d) => fetchDayHotspots(d, controller.signal)))
-      .then((days) => setWeek(mergeDays(days)))
-      .catch((reason: Error) => {
-        if (reason.name === "AbortError") return;
-        setWeek(null);
-        setWeekError(reason.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setWeekLoading(false);
-      });
-    return () => controller.abort();
-  }, [layer, date, firstDay]);
-  const isWeek = layer === "week";
-  const shownDay = isWeek ? week : day;
-  const shownTime = isWeek ? LAST_MINUTE : time;
-
   // Changing the hour only filters the day already loaded.
-  const counts = useMemo(
-    () => (shownDay ? countHotspots(shownDay.hotspots, shownTime, shownDay.regions.length) : null),
-    [shownDay, shownTime],
-  );
-
-  // The area's fire season in the year of the date: the heaviest run of its peak months, for the season layer.
-  const season = useMemo(
-    () =>
-      calendar && date && meta?.first_month && meta.last_month
-        ? seasonSpan(calendar.climatology, date.slice(0, 7), meta.first_month, meta.last_month)
-        : null,
-    [calendar, date, meta],
-  );
+  const counts = useMemo(() => (day ? countHotspots(day.hotspots, time, day.regions.length) : null), [day, time]);
 
   /** Take the country double-clicked on the globe as the area of interest, or go back to the region's box. */
   function pickCountry(name: string | null) {
@@ -561,8 +524,8 @@ export function App() {
       <Globe
         regions={meta?.regions ?? []}
         date={date}
-        time={shownTime}
-        day={shownDay}
+        time={time}
+        day={day}
         counts={counts}
         focusRegion={filters?.region ?? null}
         dark={dark}
@@ -579,7 +542,6 @@ export function App() {
         period={filters ? { start: filters.start, end: filters.end } : null}
         layer={layer}
         onLayerChange={setLayer}
-        season={season}
         focus={globeFocus}
         series={filters?.series}
         trendError={
@@ -593,13 +555,10 @@ export function App() {
               firstDay={firstDay}
               lastDay={finalDay}
               monthDays={monthDays}
-              day={shownDay}
+              day={day}
               counts={counts}
-              loading={isWeek ? weekLoading : dayLoading}
-              error={isWeek ? weekError : dayError}
-              layer={layer}
-              onLayer={setLayer}
-              season={season}
+              loading={dayLoading}
+              error={dayError}
               onDate={setDate}
               onTime={setTime}
             />
@@ -750,7 +709,7 @@ export function App() {
                   dark={dark}
                   highlightYear={year}
                   onHighlightYear={setHighlightYear}
-                  shownMonths={shownMonths(layer, date, season)}
+                  shownMonth={shownMonth(layer, date)}
                   onShowMonth={date ? showMonthOnGlobe : undefined}
                 />
               }

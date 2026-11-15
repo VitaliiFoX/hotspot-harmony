@@ -592,21 +592,6 @@ html {
   opacity: 0.3;
   cursor: default;
 }
-/* The other days of the 7-day span, so the week reads as a run ending on the chosen day. */
-.stage .dt-day.is-in-span {
-  background: var(--glass-button);
-}
-/* Months and seasons show cells, not hotspots: the readout stays in the page for screen readers but takes no room. */
-.dt-readout.is-hidden {
-  display: none;
-}
-.dt-spans {
-  display: flex;
-  margin: 12px 0 4px;
-}
-.dt-spans button {
-  flex: 1 1 0;
-}
 .stage .dt-day[aria-pressed="true"],
 .stage .dt-day[aria-pressed="true"]:hover:not(:disabled) {
   background: var(--selected-bg);

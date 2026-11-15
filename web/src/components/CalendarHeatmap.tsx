@@ -12,8 +12,8 @@ type Props = {
   dark: boolean;
   highlightYear: number;
   onHighlightYear: (year: number) => void;
-  /** The months the map at the top of the page is on, "YYYY-MM", outlined here; none while it shows the whole period. */
-  shownMonths?: string[];
+  /** The month the map at the top of the page is on, "YYYY-MM", outlined here; null while it shows the whole period. */
+  shownMonth?: string | null;
   /** Called with a month, "YYYY-MM", clicked here (or chosen with Enter): the map shows where it burned in it. */
   onShowMonth?: (month: string) => void;
 };
@@ -33,7 +33,7 @@ const SENSOR_NAMES: Record<string, string> = {
 
 /** Years down, months across, one cell per month coloured by how much burned. */
 export function CalendarHeatmap({
-  months, climatology, unit, mode, dark, highlightYear, onHighlightYear, shownMonths = [], onShowMonth,
+  months, climatology, unit, mode, dark, highlightYear, onHighlightYear, shownMonth = null, onShowMonth,
 }: Props) {
   const [tip, setTip] = useState<Tip | null>(null);
   const [active, setActive] = useState<string | null>(null);
@@ -84,9 +84,6 @@ export function CalendarHeatmap({
   }
 
   const steps = dark ? [...SEQUENTIAL].reverse() : SEQUENTIAL;
-  // The outlined months the calendar holds, in order.
-  const outlined = shownMonths.filter((m) => byKey.has(`${Number(m.slice(0, 4))}-${Number(m.slice(5, 7))}`)).sort();
-  const readMonth = (m: string) => `${monthTitle(Number(m.slice(5, 7)))} ${m.slice(0, 4)}`;
   return (
     <div className="calendar">
       <div
@@ -125,7 +122,7 @@ export function CalendarHeatmap({
             {MONTHS.map((_, index) => {
               const key = `${year}-${index + 1}`;
               const cell = byKey.get(key);
-              const shown = shownMonths.includes(monthOfKey(key));
+              const shown = monthOfKey(key) === shownMonth;
               return (
                 <span
                   key={key}
@@ -158,16 +155,11 @@ export function CalendarHeatmap({
       </div>
       {onShowMonth && (
         <p className="calendar-note">
-          {outlined.length === 0
-            ? t("Click a month to see where it burned on the map above.")
-            : outlined.length === 1
-              ? t("Outlined: {month}, the month on the map above. Click any month to see where it burned.", {
-                  month: readMonth(outlined[0]),
-                })
-              : t("Outlined: {from} to {to}, the months on the map above. Click any month to see where it burned.", {
-                  from: readMonth(outlined[0]),
-                  to: readMonth(outlined[outlined.length - 1]),
-                })}
+          {shownMonth && byKey.has(`${Number(shownMonth.slice(0, 4))}-${Number(shownMonth.slice(5, 7))}`)
+            ? t("Outlined: {month}, the month on the map above. Click any month to see where it burned.", {
+                month: `${monthTitle(Number(shownMonth.slice(5, 7)))} ${shownMonth.slice(0, 4)}`,
+              })
+            : t("Click a month to see where it burned on the map above.")}
         </p>
       )}
       <Tooltip tip={tip} />
