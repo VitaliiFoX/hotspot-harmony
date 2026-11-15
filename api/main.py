@@ -12,10 +12,14 @@
 
 Run locally:  make api   (needs `make data` first)
 Settings: HH_DATA_DIR (default ./data), HH_CONFIG (default config/regions.yaml),
-          HH_CORS_ORIGINS (comma-separated, default the Vite dev server).
+          HH_CORS_ORIGINS (comma-separated, default the Vite dev server),
+          HH_CSV_LIMIT (most rows of one hotspot download, default 500000),
+          HH_DUCKDB_MEMORY (for example 150MB) and HH_DUCKDB_THREADS: on a host with little memory they make
+          DuckDB sort a large download on disk instead of in memory. See docs/DEPLOY.md.
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -30,6 +34,9 @@ from pipeline.config import DEFAULT_CONFIG, DEFAULT_DATA, load_config
 
 MONTH = r"^\d{4}-(0[1-9]|1[0-2])$"
 DAY = r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
+# Most rows of one hotspot download; the answer says when it was cut short. About 37 MB of CSV at this size.
+CSV_LIMIT = 500_000
+MEMORY = r"\d+(\.\d+)?\s*(KB|MB|GB|KiB|MiB|GiB)"
 
 
 class CalendarRequest(BaseModel):
@@ -56,12 +63,23 @@ class HotspotsRequest(BaseModel):
 def create_app(
     data_dir: Path | None = None,
     config_path: Path | None = None,
-    csv_limit: int = 500_000,
+    csv_limit: int | None = None,
     day_limit: int = 50_000,
 ) -> FastAPI:
+    if csv_limit is None:
+        csv_limit = int(os.environ.get("HH_CSV_LIMIT") or CSV_LIMIT)
     data_dir = Path(data_dir or os.environ.get("HH_DATA_DIR") or DEFAULT_DATA)
     config_path = Path(config_path or os.environ.get("HH_CONFIG") or DEFAULT_CONFIG)
     store = Store(data_dir, load_config(config_path), csv_limit)
+    # DuckDB takes 80% of the machine's memory by default, which a small container does not have.
+    memory = os.environ.get("HH_DUCKDB_MEMORY")
+    if memory:
+        if not re.fullmatch(MEMORY, memory):
+            raise ValueError(f"HH_DUCKDB_MEMORY must look like 150MB or 1GB, not {memory!r}")
+        store.con.execute(f"set memory_limit = '{memory}'")
+    threads = os.environ.get("HH_DUCKDB_THREADS")
+    if threads:
+        store.con.execute(f"set threads = {int(threads)}")
     app = FastAPI(title="hotspot-harmony", description=__doc__.splitlines()[0])
     origins = os.environ.get("HH_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
     app.add_middleware(

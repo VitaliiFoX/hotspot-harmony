@@ -1,0 +1,9 @@
+# The image needs the API, the pipeline code it imports and the region config; the record comes from DATA_URL.
+*
+!pyproject.toml
+!uv.lock
+!api
+!pipeline
+!config
+**/__pycache__
+**/tests

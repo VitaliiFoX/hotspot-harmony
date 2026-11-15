@@ -364,6 +364,33 @@ def test_csv_export_stops_at_the_row_limit_and_says_so(tmp_path):
     assert len(list(csv.DictReader(io.StringIO(r.text)))) == 1
 
 
+def test_csv_export_takes_its_row_limit_from_the_environment(tmp_path, monkeypatch):
+    # A host with little memory lowers the limit without a code change.
+    config = build_data(tmp_path)
+    monkeypatch.setenv("HH_CSV_LIMIT", "1")
+    client = TestClient(create_app(data_dir=tmp_path, config_path=config))
+    r = client.post("/api/hotspots.csv", json={"geometry": AREA, "start": "2013-08-01", "end": "2013-08-31"})
+    assert r.headers["x-truncated"] == "true"
+    assert len(list(csv.DictReader(io.StringIO(r.text)))) == 1
+
+
+def test_duckdb_takes_its_memory_and_threads_from_the_environment(tmp_path, monkeypatch):
+    config = build_data(tmp_path)
+    monkeypatch.setenv("HH_DUCKDB_MEMORY", "150MB")
+    monkeypatch.setenv("HH_DUCKDB_THREADS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, config_path=config))
+    # The settings are in force and the API still answers.
+    r = client.post("/api/hotspots.csv", json={"geometry": AREA, "start": "2013-08-01", "end": "2013-08-31"})
+    assert r.status_code == 200 and len(list(csv.DictReader(io.StringIO(r.text)))) > 0
+
+
+def test_a_memory_setting_that_is_not_a_size_is_refused(tmp_path, monkeypatch):
+    config = build_data(tmp_path)
+    monkeypatch.setenv("HH_DUCKDB_MEMORY", "lots")
+    with pytest.raises(ValueError, match="HH_DUCKDB_MEMORY"):
+        create_app(data_dir=tmp_path, config_path=config)
+
+
 def test_meta_gives_the_first_and_last_day_of_the_record(client):
     meta = client.get("/api/meta").json()
     assert (meta["first_day"], meta["last_day"]) == ("2010-08-01", "2013-08-31")
