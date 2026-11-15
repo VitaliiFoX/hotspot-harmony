@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  MERCATOR_LIMIT, countHotspots, dayKey, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
+  MERCATOR_LIMIT, cellAreaKm2, cellSentence, cellSquares, cellStops, countHotspots, dayKey, stopLabel, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
@@ -201,5 +201,62 @@ describe("labels", () => {
     expect(longDate("2001-01-05")).toBe("5 January 2001");
     expect(sensorLabel("viirs_snpp")).toBe("VIIRS S-NPP");
     expect(sensorLabel("modis")).toBe("MODIS");
+  });
+});
+
+describe("cellSquares", () => {
+  it("draws each cell as a square of the grid around its centre, with what the map colours and the hover reads", () => {
+    const squares = cellSquares([{ lat: 48.125, lon: 37.625, per_year: 62, years_burning: 25, peak_month: 8 }], 0.25);
+    expect(squares.features).toHaveLength(1);
+    expect(squares.features[0].geometry.coordinates[0]).toEqual([
+      [37.5, 48], [37.75, 48], [37.75, 48.25], [37.5, 48.25], [37.5, 48],
+    ]);
+    // 0.25 degree at 48.125 N: 27.83 km north-south by 27.83 * cos(48.125) = 18.57 km, 516.8 km2; 62 / 5.168 = 12.0.
+    expect(squares.features[0].properties).toEqual({
+      lat: 48.125, lon: 37.625, per_year: 62, years_burning: 25, peak_month: 8, density: 12,
+    });
+  });
+});
+
+describe("cellStops", () => {
+  it("puts the colour steps at the median, the upper quartile, the 90th and the 98th percentile of the cells", () => {
+    const values = Array.from({ length: 100 }, (_, i) => i + 1); // 1 .. 100
+    expect(cellStops(values)).toEqual([50.5, 75.25, 90.1, 98.02]);
+  });
+  it("keeps the steps strictly rising, so the map's interpolation accepts them", () => {
+    expect(cellStops([5, 5, 5, 5])).toEqual([5, 5.001, 5.002, 5.003]);
+    expect(cellStops([])).toEqual([1, 1.001, 1.002, 1.003]);
+  });
+});
+
+describe("cellAreaKm2", () => {
+  it("shrinks with the cosine of the latitude, so a cell in Ukraine is smaller than one in northern Argentina", () => {
+    expect(Math.round(cellAreaKm2(48.125, 0.25))).toBe(517);
+    expect(Math.round(cellAreaKm2(-25.125, 0.25))).toBe(701);
+    expect(Math.round(cellAreaKm2(0, 1))).toBe(12392);
+  });
+});
+
+describe("stopLabel", () => {
+  it("rounds a colour step for the legend", () => {
+    expect(stopLabel(7.634)).toBe("7.6");
+    expect(stopLabel(45.83)).toBe("46");
+    expect(stopLabel(0.04)).toBe("0.04");
+  });
+});
+
+describe("cellSentence", () => {
+  it("says how often, how much and when a cell burns, and the same per 100 km2", () => {
+    const cell = { lat: 48.375, lon: 38.875, per_year: 54.2, years_burning: 24, peak_month: 8 };
+    expect(cellSentence(cell, 25, "MODIS-equivalent fire cell-days", 0.25)).toBe(
+      // 54.2 over 514.5 km2 at 48.375 N is 10.53 per 100 km2, printed whole from 10.
+      "Burns in 24 of 25 years, about 54 MODIS-equivalent fire cell-days a year (11 per 100 km²), most in August.",
+    );
+  });
+  it("keeps one decimal for a small cell and says when it burned in one year only", () => {
+    const cell = { lat: 0.5, lon: 1.5, per_year: 1.04, years_burning: 1, peak_month: 3 };
+    expect(cellSentence(cell, 4, "fire cell-days", 1)).toBe(
+      "Burned in 1 of 4 years, about 1.0 fire cell-days a year (0.01 per 100 km²), most in March.",
+    );
   });
 });

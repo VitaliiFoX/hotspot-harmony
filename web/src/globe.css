@@ -993,3 +993,43 @@ html {
     justify-content: flex-start;
   }
 }
+
+/* "Where it burns": the legend's ramp, the same steps as the cells on the map (CELL_RAMP in Globe.tsx). */
+.stage {
+  --cell-0: #ffe08a;
+  --cell-1: #ffb347;
+  --cell-2: #ff7a2f;
+  --cell-3: #e2361f;
+  --cell-4: #9e0f16;
+}
+.legend-cells {
+  display: grid;
+  gap: 6px;
+}
+.legend-title {
+  font-weight: 600;
+}
+.legend-ramp {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--cell-0), var(--cell-1) 25%, var(--cell-2) 50%, var(--cell-3) 75%, var(--cell-4));
+}
+.legend-ramp-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.cell-popup .maplibregl-popup-content {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--glass-solid);
+  color: var(--stage-ink);
+  font: inherit;
+  font-size: 13px;
+  box-shadow: var(--glass-shadow);
+}
+.cell-popup .maplibregl-popup-tip {
+  display: none;
+}

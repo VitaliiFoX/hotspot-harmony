@@ -252,3 +252,74 @@ function toDeg(radians: number): number {
 function round(value: number): number {
   return Math.round(value * 1e4) / 1e4;
 }
+
+/** One grid cell of /api/cells: where and when it burns over the chosen period. */
+export type BurnCell = { lat: number; lon: number; per_year: number; years_burning: number; peak_month: number };
+
+const KM_PER_DEGREE = 111.32;
+
+/** Area of a grid cell, km2: a degree of longitude shrinks with the cosine of the latitude. */
+export function cellAreaKm2(lat: number, cellDeg: number): number {
+  return (cellDeg * KM_PER_DEGREE) ** 2 * Math.cos((lat * Math.PI) / 180);
+}
+
+/** Burning per year per 100 km2, to one decimal: what the map colours, so cells compare across latitudes. */
+function density(cell: BurnCell, cellDeg: number): number {
+  return Math.round((cell.per_year / cellAreaKm2(cell.lat, cellDeg)) * 100 * 10) / 10;
+}
+
+/** The cells as squares of the grid around their centres, carrying what the map colours and the hover reads. */
+export function cellSquares(cells: readonly BurnCell[], cellDeg: number) {
+  const half = cellDeg / 2;
+  return {
+    type: "FeatureCollection" as const,
+    features: cells.map((cell) => ({
+      type: "Feature" as const,
+      properties: {
+        lat: cell.lat, lon: cell.lon, per_year: cell.per_year, years_burning: cell.years_burning, peak_month: cell.peak_month,
+        density: density(cell, cellDeg),
+      },
+      geometry: {
+        type: "Polygon" as const,
+        coordinates: [[
+          [cell.lon - half, cell.lat - half], [cell.lon + half, cell.lat - half], [cell.lon + half, cell.lat + half],
+          [cell.lon - half, cell.lat + half], [cell.lon - half, cell.lat - half],
+        ]],
+      },
+    })),
+  };
+}
+
+/** A colour step as the legend prints it: whole numbers from 10, one decimal below, two below 0.1. */
+export function stopLabel(value: number): string {
+  if (value >= 10) return String(Math.round(value));
+  if (value >= 0.1) return value.toFixed(1);
+  return value.toFixed(2);
+}
+
+function quantile(sorted: number[], q: number): number {
+  const position = (sorted.length - 1) * q;
+  const low = Math.floor(position);
+  const high = Math.ceil(position);
+  return sorted[low] + (sorted[high] - sorted[low]) * (position - low);
+}
+
+/**
+ * Where the colour of the cells steps up: the median, the upper quartile, the 90th and the 98th percentile of their
+ * burning per year, so a few extreme cells do not wash the rest out. Strictly rising, as the map requires.
+ */
+export function cellStops(values: readonly number[]): [number, number, number, number] {
+  const sorted = [...values].sort((a, b) => a - b);
+  const raw = sorted.length ? [0.5, 0.75, 0.9, 0.98].map((q) => Math.round(quantile(sorted, q) * 100) / 100) : [1, 1, 1, 1];
+  const stops = [raw[0]];
+  for (const value of raw.slice(1)) stops.push(Math.max(value, Math.round((stops[stops.length - 1] + 0.001) * 1000) / 1000));
+  return stops as [number, number, number, number];
+}
+
+/** What the hover over a cell says: how often, how much (also per 100 km2) and when it burns. */
+export function cellSentence(cell: BurnCell, years: number, unit: string, cellDeg: number): string {
+  const amount = cell.per_year >= 10 ? Math.round(cell.per_year).toLocaleString("en-US") : cell.per_year.toFixed(1);
+  const perArea = stopLabel((cell.per_year / cellAreaKm2(cell.lat, cellDeg)) * 100);
+  const verb = cell.years_burning === 1 ? "Burned" : "Burns";
+  return `${verb} in ${cell.years_burning} of ${years} years, about ${amount} ${unit} a year (${perArea} per 100 km²), most in ${MONTH_NAMES[cell.peak_month - 1]}.`;
+}

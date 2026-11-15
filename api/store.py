@@ -298,6 +298,54 @@ class Store:
             "yearly": yearly,
         }
 
+    def cells(self, start: str | None, end: str | None, series: str | None) -> dict:
+        """Where and when it burns: for each cell over the chosen period (cut to the record), the value per calendar
+        year the period touches, the number of those years with any burning, and the calendar month with the most."""
+        name = self.pick_series(series)
+        record = self.spans[name]
+        asked = Span(Span.parse(start) if start else record.first, Span.parse(end) if end else record.last)
+        if asked.first > asked.last:
+            raise ApiError(400, "start is after end")
+        chosen = Span(max(asked.first, record.first), min(asked.last, record.last))
+        if chosen.first > chosen.last:
+            raise ApiError(
+                400, f"the record covers {Span.label(record.first)} to {Span.label(record.last)}; nothing to show"
+            )
+        years = chosen.last // 12 - chosen.first // 12 + 1
+        rows = self.con.cursor().execute(
+            f"""with t as (select cell_lat, cell_lon, ym, value from {name} where ym between ? and ?),
+                by_year as (select cell_lat, cell_lon, ym // 12 as y, sum(value) as v from t group by all),
+                by_month as (select cell_lat, cell_lon, ym % 12 + 1 as m, sum(value) as v from t group by all),
+                cell as (select cell_lat, cell_lon, sum(v) as total, count(*) filter (where v > 0) as burning
+                         from by_year group by all),
+                peak as (select cell_lat, cell_lon, m from (
+                           select *, row_number() over (partition by cell_lat, cell_lon order by v desc, m) as k
+                           from by_month) where k = 1)
+                select cell_lat, cell_lon, total, burning, m
+                from cell join peak using (cell_lat, cell_lon)
+                where total > 0
+                order by cell_lat, cell_lon""",
+            [chosen.first, chosen.last],
+        ).fetchall()
+        return {
+            "series": name,
+            "unit": self.units[name],
+            "start": Span.label(chosen.first),
+            "end": Span.label(chosen.last),
+            "years": years,
+            "cell_deg": self.cfg.cell_deg,
+            "cells": [
+                {
+                    "lat": float(lat),
+                    "lon": float(lon),
+                    "per_year": round(float(total) / years, 3),
+                    "years_burning": int(burning),
+                    "peak_month": int(month),
+                }
+                for lat, lon, total, burning, month in rows
+            ],
+        }
+
     def hotspots_csv(self, geometry: dict, start: str, end: str) -> tuple[str, bool]:
         """CSV text of the hotspots inside the area between two dates (inclusive), and whether it was cut short."""
         if not self.has_points:

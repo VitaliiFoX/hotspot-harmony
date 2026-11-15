@@ -577,3 +577,33 @@ def test_validation_without_a_jump_check_or_extra_checks_leaves_them_out(tmp_pat
     testland = TestClient(create_app(data_dir=tmp_path, config_path=config)).get("/api/validation").json()
     assert testland["countries"]["Testland"]["sensor_jump"] is None
     assert set(testland["countries"]["Testland"]["checks"]) == {"harmonized", "single_factor", "raw_viirs"}
+
+
+def test_cells_tell_where_and_when_it_burns_over_the_chosen_period(client_harmonized):
+    # The harmonized paper record runs 2010-08 .. 2013-08, so the period asked is cut to it: four calendar years.
+    # A has 30.5 in 2010-08 and 60.0 in 2013-08, B 0.0 and 4.0, C 500.0 in 2013-08; per year is the total over 4.
+    r = client_harmonized.get("/api/cells?start=2010-01&end=2013-12")
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["series"], body["start"], body["end"], body["years"], body["cell_deg"]) == (
+        "harmonized", "2010-08", "2013-08", 4, 1.0,
+    )
+    assert body["unit"] == "MODIS-equivalent fire cell-days"
+    cells = {(c["lat"], c["lon"]): c for c in body["cells"]}
+    assert cells[(0.5, 0.5)] == {"lat": 0.5, "lon": 0.5, "per_year": 22.625, "years_burning": 2, "peak_month": 8}
+    assert cells[(0.5, 1.5)] == {"lat": 0.5, "lon": 1.5, "per_year": 1.0, "years_burning": 1, "peak_month": 8}
+    assert cells[(5.5, 5.5)]["per_year"] == 125.0
+
+
+def test_cells_keep_to_the_record_and_the_period(client_harmonized):
+    # 2013 alone: A 60.0, B 4.0, C 500.0, one year each; the record ends in 2013-08, so the period does too.
+    body = client_harmonized.get("/api/cells?start=2013-01&end=2013-12").json()
+    assert (body["start"], body["end"], body["years"]) == ("2013-01", "2013-08", 1)
+    per_year = {(c["lat"], c["lon"]): c["per_year"] for c in body["cells"]}
+    assert per_year == {(0.5, 0.5): 60.0, (0.5, 1.5): 4.0, (5.5, 5.5): 500.0}
+    assert client_harmonized.get("/api/cells?start=2011-01&end=2011-12").json()["cells"] == []  # nothing burned
+
+
+def test_cells_reject_a_period_outside_the_record(client_harmonized):
+    r = client_harmonized.get("/api/cells?start=2020-01&end=2020-12")
+    assert r.status_code == 400 and "record covers" in r.json()["detail"]
