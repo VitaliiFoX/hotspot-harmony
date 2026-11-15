@@ -31,8 +31,8 @@ on which satellite was flying.
 | Fire cell-days on a 1 km grid, local solar day | done |
 | Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
 | API (FastAPI): calendar, anomaly, CSV export, daily hotspots | done; serves the raw and the harmonized series in fire cell-days, plus daily hotspot counts and coordinates |
-| Web app: 3D satellite globe, date/hour picker, filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done; region boxes can be picked on the globe or typed in degrees; downloads: calendar data as CSV, every chart as PNG |
-| Drawn polygon on the map | not started |
+| Web app: 3D satellite globe, date/hour picker, filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done; a region can be picked on the globe, a box typed in degrees; downloads: calendar data as CSV, every chart as PNG |
+| Area of interest drawn on the globe | done; "Draw an area" places the corners of a polygon by click, and the calendar, the charts and both CSV downloads then count what is inside its outline; the area travels in the link (`&area=lon,lat;...`). Only inside the regions that have data |
 
 ## Run it
 

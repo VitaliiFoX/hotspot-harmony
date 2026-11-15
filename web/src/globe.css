@@ -1,5 +1,6 @@
 /* The globe stage has its own colour roles: a starry night sky in dark mode, a pale daytime sky in light mode. */
 .stage {
+  --panel-width: 372px;
   --hotspot: #ff8a3d;
   --space: #03050b;
   --stage-ink: #fff;
@@ -164,7 +165,7 @@
   display: grid;
   justify-items: start;
   gap: 4px;
-  max-width: calc(100% - 372px - 72px);
+  max-width: calc(100% - var(--panel-width) - 72px);
   padding: 16px 20px 18px;
   border: 1px solid var(--glass-border);
   border-radius: 24px;
@@ -244,7 +245,7 @@ html {
   position: absolute;
   top: 180px;
   left: 24px;
-  right: 420px;
+  right: calc(var(--panel-width) + 48px);
   max-height: calc(100% - 340px);
   overflow: auto;
   padding: 20px;
@@ -329,7 +330,7 @@ html {
   top: 24px;
   right: 24px;
   z-index: 3;
-  width: 372px;
+  width: var(--panel-width);
   max-width: 100%;
   display: grid;
   gap: 16px;
@@ -662,13 +663,14 @@ html {
    (under 900 px) keep the larger sizes and 44 px targets. */
 @media (min-width: 900px) {
   .stage {
+    --panel-width: 360px;
     min-height: 640px;
   }
   .stage-head {
     top: 20px;
     left: 20px;
     gap: 2px;
-    max-width: calc(100% - 300px - 64px);
+    max-width: calc(100% - var(--panel-width) - 64px);
     padding: 12px 16px 14px;
     border-radius: 18px;
   }
@@ -709,7 +711,7 @@ html {
   .dt-panel {
     top: 20px;
     right: 20px;
-    width: 300px;
+    width: var(--panel-width);
     gap: 10px;
     padding: 14px;
     border-radius: 22px;
@@ -909,4 +911,70 @@ html {
 }
 :root[data-theme="light"] .stage .maplibregl-ctrl-group .maplibregl-ctrl-icon {
   filter: none;
+}
+
+/* Drawing an area of interest: what to do next, and the buttons to finish or give up, under the globe's centre. */
+.stage-draw {
+  position: absolute;
+  left: 380px;
+  /* Clear of the date panel and its 20 px margin, whatever width the panel has. */
+  right: calc(var(--panel-width, 300px) + 40px);
+  bottom: 20px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 10px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-solid);
+  box-shadow: var(--glass-shadow);
+  color: var(--stage-ink);
+  font-size: 13px;
+}
+.stage-draw p {
+  flex: 1 1 220px;
+  max-width: 420px;
+}
+.stage-draw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.stage-draw .stage-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.stage .stage-toggle.is-strong {
+  border-color: transparent;
+  background: var(--stage-ink);
+  color: var(--space);
+}
+.stage .stage-toggle.is-strong:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.stage .stage-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.stage .stage-toggle[aria-pressed="true"] {
+  background: var(--selected-bg);
+  color: var(--selected-ink);
+}
+@media (max-width: 899px) {
+  .stage-draw {
+    position: relative;
+    inset: auto;
+    width: auto;
+    margin: 0;
+    justify-content: flex-start;
+  }
 }

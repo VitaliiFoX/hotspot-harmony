@@ -15,7 +15,6 @@ a row.
   numbers is still in progress.
 - Not done yet:
   - a public demo (README still says "not deployed yet");
-  - drawing an area on the map;
   - critical periods: the challenge asks when burning is usually at its highest in an area, and the
     app only shows it indirectly, through the seasonal chart;
   - a calendar by day and by week: the challenge asks for days, weeks and months, and the calendar
@@ -65,7 +64,7 @@ JSON for the two countries and no API.
 | 5 | "How far to trust this" block: held-out error, the two baselines, where the numbers come from (`harmonization_report.json`) | 1.5 h | Validity, where we lead every competitor we read | | [ ] |
 | 6 | The raw record as a thin line over the harmonized bars on the yearly chart, so the 2012 jump is visible without the switch | 1 h | It answers the challenge at first glance | | [ ] |
 | 7 | Log scale for the calendar by default. The headline figure shows the peak of the last season instead of December | 1 h | Today the calendar looks washed out and the headline figure is a quiet month | | [ ] |
-| 8 | Draw a rectangle on the globe and feed it into the `box` filter | 2-3 h | Every strong competitor has it; the README promises it | | [ ] |
+| 8 | Draw an area on the globe (done as a polygon, sent to the API as its geometry; the `box` filter shows its bounds) | 2-3 h | Every strong competitor has it; the README promises it | vovikLXUS | [x] |
 | 8a | "Peak burning months" card for the chosen area: the fewest months that together hold 60% of a typical year (the sum of the monthly medians in `climatology`), with a table view. Web only: a pure function in `web/src/scale.ts` under test, and the term in `GLOSSARY.md`. Call it burning activity, not risk: we do not measure risk | 1.5 h | The challenge asks for critical periods by name, and the API already returns what the card needs | | [ ] |
 
 **Feature freeze at 14:00.** After that, only fixes and packaging.
