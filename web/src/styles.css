@@ -777,3 +777,27 @@ button.download {
   height: 30px;
   font-size: 13px;
 }
+
+/* Peak burning months: the months in words first, then each month's share of a typical year. */
+.peak-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.peak-months {
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.column.is-quiet {
+  fill: var(--axis);
+}
+.peak-label {
+  fill: var(--ink-2);
+  font-weight: 600;
+}

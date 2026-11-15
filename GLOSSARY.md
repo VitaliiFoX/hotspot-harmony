@@ -101,6 +101,14 @@ _Avoid_: benchmark, naive model
 
 ### Product
 
+**Typical year**:
+The twelve monthly medians of an area over every year of the record, added up. Its total is not any real year's: each month is typical on its own.
+_Avoid_: average year, normal year
+
+**Peak burning months**:
+The fewest calendar months that together hold 60% of a typical year of an area, largest monthly median first. The app's answer to the challenge's "critical periods". It describes burning activity, not fire risk.
+_Avoid_: fire season, risk period, critical months
+
 **Burning activity calendar**:
 A grid of years by months showing how much burning the harmonized record holds for an area of interest.
 _Avoid_: heatmap (that is only its drawing), fire calendar

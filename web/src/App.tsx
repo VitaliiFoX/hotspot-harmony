@@ -15,12 +15,13 @@ import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
 import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
+import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { TrustBlock } from "./components/TrustBlock";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
-import { type ScaleMode, lastDay, monthLabel } from "./scale";
+import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
 function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } {
@@ -438,6 +439,24 @@ export function App() {
                   Download calendar data (CSV)
                 </button>
               }
+            />
+
+            <ChartCard
+              title="Peak burning months"
+              subtitle={`The fewest months that together hold ${Math.round(PEAK_SHARE * 100)}% of a typical year, where a typical year adds up each month's median over every year of the record. Burning activity, not fire risk.${calendar.series === "raw" ? " Counted on the raw record, which jumps in 2012; the harmonized record compares the years fairly." : ""}`}
+              chart={
+                <>
+                  <PeakMonthsSummary climatology={calendar.climatology} />
+                  <PeakMonthsChart climatology={calendar.climatology} unit={unit} />
+                </>
+              }
+              table={
+                <>
+                  <PeakMonthsSummary climatology={calendar.climatology} />
+                  <PeakMonthsTable climatology={calendar.climatology} unit={unit} />
+                </>
+              }
+              pngName={exportName(["peak-burning-months", ...fileParts], "png")}
             />
 
             <div className="pair">

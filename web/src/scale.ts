@@ -116,3 +116,53 @@ export function brokenLinePath(points: readonly ([x: number, y: number] | null)[
   }
   return parts.join(" ");
 }
+
+/** The share of a typical year that the peak burning months hold together. */
+export const PEAK_SHARE = 0.6;
+
+type MonthMedian = { month: number; median: number };
+
+/**
+ * Peak burning months: the fewest calendar months that together hold `share` of a typical year, where a typical
+ * year is the sum of the twelve monthly medians over the record. Largest medians first, a tie to the earlier
+ * month; the result lists the months in calendar order, with the share they hold and the typical year's total.
+ */
+export function peakMonths(
+  climatology: readonly MonthMedian[],
+  share = PEAK_SHARE,
+): { months: number[]; held: number; total: number } {
+  const total = climatology.reduce((sum, c) => sum + c.median, 0);
+  if (total <= 0) return { months: [], held: 0, total: 0 };
+  const ranked = [...climatology].filter((c) => c.median > 0).sort((a, b) => b.median - a.median || a.month - b.month);
+  const months: number[] = [];
+  let held = 0;
+  for (const c of ranked) {
+    if (held >= share * total) break;
+    months.push(c.month);
+    held += c.median;
+  }
+  return { months: months.sort((a, b) => a - b), held: Math.round((held / total) * 1e6) / 1e6, total };
+}
+
+/** Months (1-12) as spans read aloud: [3, 4, 8] is "Mar–Apr and Aug"; a span can run across the new year. */
+export function monthSpans(months: readonly number[]): string {
+  const inSet = new Set(months);
+  if (inSet.size === 0) return "";
+  if (inSet.size === 12) return "all year";
+  // Start scanning right after a month that is not in the set, so no span is cut at December.
+  let start = 1;
+  while (inSet.has(start)) start += 1;
+  const spans: [number, number][] = [];
+  for (let step = 1; step <= 12; step++) {
+    const month = ((start - 1 + step) % 12) + 1;
+    if (!inSet.has(month)) continue;
+    const last = spans[spans.length - 1];
+    const previous = ((month + 10) % 12) + 1;
+    if (last && last[1] === previous) last[1] = month;
+    else spans.push([month, month]);
+  }
+  const names = spans
+    .sort((a, b) => a[0] - b[0])
+    .map(([first, last]) => (first === last ? MONTHS[first - 1] : `${MONTHS[first - 1]}–${MONTHS[last - 1]}`));
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
