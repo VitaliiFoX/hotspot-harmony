@@ -618,7 +618,7 @@ export function Globe({
     const corners = draw.current.corners;
     const problem = areaProblem(corners);
     if (problem) {
-      setDrawNote(problem);
+      setDrawNote(t(problem));
       return;
     }
     areaRef.current = corners; // shown at once, before the page answers with the same corners

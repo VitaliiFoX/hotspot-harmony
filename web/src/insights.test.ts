@@ -54,6 +54,10 @@ describe("summaryLines", () => {
       { figure: "1 month", text: "Stands out from its own history: July 2009, 6.00× its median.", target: "unusual-months" },
     ]);
   });
+  it("on a record with no method error, says nothing stands out without naming an error", () => {
+    const lines = summaryLines({ ...base, unusual: [], yearError: null });
+    expect(lines[lines.length - 1].text).toBe("Stand out from their own history.");
+  });
   it("calls a change inside the method's error what it is, and says when nothing stands out", () => {
     // Halves 2001-2003 (100) and 2004-2006 (103.3): +3%, inside the 10% error.
     const lines = summaryLines({ ...base, yearly: yearly([100, 100, 100, 100, 105, 105]), unusual: [] });

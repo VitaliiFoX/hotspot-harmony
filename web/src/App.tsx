@@ -30,7 +30,7 @@ import { RecordSkeleton } from "./components/Skeleton";
 import { ShareButton } from "./components/ShareButton";
 import { TopPlaces } from "./components/TopPlaces";
 import { UnusualMonths } from "./components/UnusualMonths";
-import { summaryLines, unusualMonths } from "./insights";
+import { summaryLines, unusualMonths, UNUSUAL_SHOWN } from "./insights";
 import { TrustBlock } from "./components/TrustBlock";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
@@ -394,7 +394,8 @@ export function App() {
     const read = readBox(filters.box);
     if ("problem" in read) return read;
     return { bbox: read.bbox, geometry: boxPolygon(read.bbox), wkt: cornersWkt(boxCorners(read.bbox)) };
-  }, [filters, countries, picked, pickedRegion]);
+    // Built from the area's own parts: the record switch must not rebuild it, or every request after it repeats.
+  }, [filters?.area, filters?.country, filters?.box, countries, picked, pickedRegion]);
   const problem = area && "problem" in area ? area.problem : null;
 
   // Ask the API as little and as early as possible: a view seen before comes from the cache, only a box
@@ -437,7 +438,11 @@ export function App() {
           show(result);
         })
         .catch((reason: Error) => {
-          if (reason.name !== "AbortError") setError(reason.message);
+          if (reason.name === "AbortError") return;
+          // The figures of the last view must not stay under filters they no longer match.
+          setCalendar(null);
+          setOtherCalendar(null);
+          setError(reason.message);
         })
         .finally(() => {
           if (!controller.signal.aborted) setLoading(false);
@@ -537,13 +542,19 @@ export function App() {
   const headlineRaw = rawSame && rawSame.sensor?.startsWith("viirs") ? { ratio: rawSame.ratio } : null;
   // Unusual months and the area in words, from what the page computes; the raw record has no method error.
   const harmonizedTrust = calendar?.series === "harmonized" ? trusted : undefined;
-  const unusual = useMemo(
+  // Every unusual month, for the count "In short" gives; the card lists the largest of them.
+  const allUnusual = useMemo(
     () =>
       calendar
-        ? unusualMonths(calendar.months, (sensor) => (harmonizedTrust ? monthError(harmonizedTrust, sensor, wholeRegion) : null))
+        ? unusualMonths(
+            calendar.months,
+            (sensor) => (harmonizedTrust ? monthError(harmonizedTrust, sensor, wholeRegion) : null),
+            Number.POSITIVE_INFINITY,
+          )
         : [],
     [calendar, harmonizedTrust, wholeRegion],
   );
+  const unusual = useMemo(() => allUnusual.slice(0, UNUSUAL_SHOWN), [allUnusual]);
   const inShort = calendar
     ? summaryLines({
         peak: (() => {
@@ -552,7 +563,7 @@ export function App() {
         })(),
         yearly: calendar.yearly,
         unit,
-        unusual,
+        unusual: allUnusual,
         yearError: harmonizedTrust ? harmonizedTrust.checks.harmonized[wholeRegion ? "country_year" : "tile_year"] : null,
       })
     : [];
@@ -795,6 +806,7 @@ export function App() {
 
             <UnusualMonths
               unusual={unusual}
+              total={allUnusual.length}
               unit={unit}
               raw={calendar.series === "raw"}
               onShow={showYearOnCalendar}

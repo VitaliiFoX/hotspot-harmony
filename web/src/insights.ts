@@ -20,6 +20,8 @@ export type Unusual = {
 
 /** Robust z at or beyond which a month is unusual, as in robust outlier tests (Iglewicz and Hoaglin). */
 export const UNUSUAL_Z = 3.5;
+/** How many unusual months the card lists, largest first; "In short" counts them all. */
+export const UNUSUAL_SHOWN = 8;
 /** Fewer other years than this and a month's history is too short to call it unusual. */
 const MIN_HISTORY = 5;
 
@@ -165,7 +167,11 @@ export function summaryLines(input: {
   } else {
     lines.push({
       figure: tn(0, "{n} month", "{n} months"),
-      text: t("Stand out from their own history by more than the method's error."),
+      // The raw record has no method error to be beyond: say only what was tested.
+      text:
+        yearError === null
+          ? t("Stand out from their own history.")
+          : t("Stand out from their own history by more than the method's error."),
       target: "unusual-months",
     });
   }
