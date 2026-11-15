@@ -1,4 +1,5 @@
 import { formatCount, t } from "../i18n";
+import { ReadoutSkeleton } from "./Skeleton";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { DayHotspots, MonthDays } from "../api";
 import {
@@ -277,7 +278,8 @@ export function DateTimePanel({
       </div>
 
       <div className="dt-readout" aria-live="polite">
-        {status && <p className="dt-status">{status}</p>}
+        {status && <p className={loading ? "dt-hidden" : "dt-status"}>{status}</p>}
+        {loading && <ReadoutSkeleton />}
         {!loading && !error && day && counts && day.count > 0 && (
           <>
             <p className="dt-big">{formatCount(counts.throughHour)}</p>

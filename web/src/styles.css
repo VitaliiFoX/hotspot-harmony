@@ -587,6 +587,45 @@ fieldset > legend {
   opacity: 0.55;
 }
 
+/* Loading: grey bars in the shape of what is coming, with a slow sheen across them; still when motion is reduced. */
+.skeleton-card {
+  display: grid;
+  gap: 12px;
+}
+.skeleton-bar,
+.skeleton-block {
+  display: block;
+  max-width: 100%;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, transparent 0, color-mix(in srgb, currentColor 10%, transparent) 50%, transparent 100%) 0 0 / 200% 100%,
+    color-mix(in srgb, currentColor 9%, transparent);
+  animation: skeleton-sheen 1.6s ease-in-out infinite;
+}
+.skeleton-block {
+  height: 260px;
+  border-radius: 12px;
+}
+.skeleton-readout {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0;
+}
+@keyframes skeleton-sheen {
+  from {
+    background-position: 100% 0, 0 0;
+  }
+  to {
+    background-position: -100% 0, 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar,
+  .skeleton-block {
+    animation: none;
+  }
+}
+
 /* The headline: one card with the verdict, the ratio, what the raw record would say, the place among the years and
    a strip of those years. Its lines stay short enough to read (about 75 characters). */
 .headline {

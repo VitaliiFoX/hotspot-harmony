@@ -22,6 +22,7 @@ import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./component
 import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { InShort } from "./components/InShort";
+import { RecordSkeleton } from "./components/Skeleton";
 import { TopPlaces } from "./components/TopPlaces";
 import { UnusualMonths } from "./components/UnusualMonths";
 import { summaryLines, unusualMonths } from "./insights";
@@ -640,7 +641,7 @@ export function App() {
           <RecordTimeline meta={meta} series={calendar.series} unit={unit} trusted={Boolean(trusted)} />
         )}
 
-        {!noData && !calendar && !error && <p className="notice">{t("Loading the record...")}</p>}
+        {!noData && !calendar && !error && <RecordSkeleton />}
 
         {!noData && calendar && (
           <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
