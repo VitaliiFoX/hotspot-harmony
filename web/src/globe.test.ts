@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  MERCATOR_LIMIT, cellAreaKm2, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
+  MERCATOR_LIMIT, cellAreaKm2, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  trendSentence, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
@@ -206,14 +207,16 @@ describe("labels", () => {
 
 describe("cellSquares", () => {
   it("draws each cell as a square of the grid around its centre, with what the map colours and the hover reads", () => {
-    const squares = cellSquares([{ lat: 48.125, lon: 37.625, per_year: 62, years_burning: 25, peak_month: 8 }], 0.25);
+    const squares = cellSquares(
+      [{ lat: 48.125, lon: 37.625, per_year: 62, years_burning: 25, peak_month: 8, early: 40, late: 80, trend: 2 }], 0.25, 0.14,
+    );
     expect(squares.features).toHaveLength(1);
     expect(squares.features[0].geometry.coordinates[0]).toEqual([
       [37.5, 48], [37.75, 48], [37.75, 48.25], [37.5, 48.25], [37.5, 48],
     ]);
     // 0.25 degree at 48.125 N: 27.83 km north-south by 27.83 * cos(48.125) = 18.57 km, 516.8 km2; 62 / 5.168 = 12.0.
     expect(squares.features[0].properties).toEqual({
-      lat: 48.125, lon: 37.625, per_year: 62, years_burning: 25, peak_month: 8, density: 12,
+      lat: 48.125, lon: 37.625, per_year: 62, years_burning: 25, peak_month: 8, density: 12, early: 40, late: 80, trend: 2, change: 1,
     });
   });
 });
@@ -265,5 +268,37 @@ describe("latLonLabel", () => {
   it("names a cell centre with hemispheres, two decimals", () => {
     expect(latLonLabel(48.125, 37.625)).toBe("48.13° N, 37.63° E");
     expect(latLonLabel(-27.125, -65.375)).toBe("27.13° S, 65.38° W");
+  });
+});
+
+describe("trendChange", () => {
+  it("is the change in doublings, zero inside the error of the method, and capped at four times either way", () => {
+    expect(trendChange(2, 0.14)).toBe(1); // doubled
+    expect(trendChange(0.5, 0.14)).toBe(-1); // halved
+    expect(trendChange(1.1, 0.14)).toBe(0); // +10% is within 14%
+    expect(trendChange(0.9, 0.14)).toBe(0);
+    expect(trendChange(16, 0.14)).toBe(2); // 4x and more look the same
+    expect(trendChange(1.5, 0)).toBeCloseTo(0.585, 3); // without an error any change counts
+  });
+  it("is null where the first half did not burn, so there is no ratio", () => {
+    expect(trendChange(null, 0.14)).toBeNull();
+  });
+});
+
+describe("trendSentence", () => {
+  const halves = { early: "2001-2012", late: "2014-2025" };
+  it("says how the second half compares with the first", () => {
+    expect(trendSentence({ early: 10, late: 14, trend: 1.4 }, halves, 0.14)).toBe(
+      "2014–2025 against 2001–2012: +40% (1.40×).",
+    );
+    expect(trendSentence({ early: 10, late: 5, trend: 0.5 }, halves, 0.14)).toBe("2014–2025 against 2001–2012: −50% (0.50×).");
+  });
+  it("says when a change is inside the error, and when there is nothing to compare with", () => {
+    expect(trendSentence({ early: 10, late: 11, trend: 1.1 }, halves, 0.14)).toBe(
+      "2014–2025 against 2001–2012: +10%, within the method's error of ±14%.",
+    );
+    expect(trendSentence({ early: 0, late: 2.5, trend: null }, halves, 0.14)).toBe(
+      "No burning in 2001–2012, so no change can be given; about 2.5 a year in 2014–2025.",
+    );
   });
 });

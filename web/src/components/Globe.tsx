@@ -6,11 +6,11 @@ import {
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { type Bbox, type DayHotspots, type Region, fetchCells } from "../api";
+import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import {
   type BurnCell, type HourCounts, MERCATOR_LIMIT, boxRing, cellSentence, cellSquares, cellStops, hourFilters, hourInstant, longDate,
-  stopLabel, timeLabel, nightPolygon, regionAt, terminatorLine, regionsCenter,
+  stopLabel, timeLabel, nightPolygon, regionAt, terminatorLine, regionsCenter, trendSentence,
 } from "../globe";
 
 type Props = {
@@ -35,6 +35,10 @@ type Props = {
   period: { start: string; end: string } | null;
   /** A cell to fly to in "Where it burns"; `n` changes with every request, so the same cell can be asked twice. */
   focus?: { lat: number; lon: number; n: number } | null;
+  /** The record of the filters: the trend map on the raw record shows the change the 2012 sensor switch fakes. */
+  series?: SeriesName;
+  /** The method's error for a 1-degree tile and a year (a share): a smaller change reads as no change. */
+  trendError?: number;
   /** The date and time panel, floated in the stage's top right corner. */
   panel: ReactNode;
 };
@@ -47,6 +51,10 @@ const HOTSPOT = "#ff8a3d";
 // "Where it burns": cells of the harmonized record from little to much burning a year, pale yellow to deep red, so the
 // mode reads as a different thing from the day's orange hotspots (which it hides). As --cell-0 .. --cell-4 in globe.css.
 const CELL_RAMP = ["#ffe08a", "#ffb347", "#ff7a2f", "#e2361f", "#9e0f16"] as const;
+// "How it changed": second half of the period against the first, in doublings from -2 (a quarter) to +2 (four
+// times); less burning in blue, more in red, a change within the method's error neutral. As --trend-* in globe.css.
+const TREND_RAMP = ["#2166ac", "#67a9cf", "#f4f1ea", "#ef8a62", "#b2182b"] as const;
+const TREND_NONE = "rgba(150, 150, 150, 0.35)";
 // Where hotspots crowd, the heat layer runs from HOTSPOT to this red (as --hotspot-dense in globe.css).
 const HOTSPOT_DENSE = "#e0281f";
 // Below HEAT_FADE_FROM the heat layer carries the picture; by HEAT_FADE_TO single dots have taken over.
@@ -414,7 +422,8 @@ function CalendarIcon() {
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
 export function Globe({
-  regions, date, time, day, counts, focusRegion, dark, onPickRegion, area, onDrawArea, areaError, period, focus = null, panel,
+  regions, date, time, day, counts, focusRegion, dark, onPickRegion, area, onDrawArea, areaError, period, focus = null,
+  series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -433,9 +442,16 @@ export function Globe({
   const [showTable, setShowTable] = useState(false);
   // "Where it burns": the cells of the harmonized record over the period, instead of the day's hotspots.
   const [showCells, setShowCells] = useState(false);
-  const [cells, setCells] = useState<
-    { years: number; unit: string; start: string; end: string; stops: number[]; cellDeg: number } | null
-  >(null);
+  const [cells, setCells] = useState<{
+    years: number; unit: string; start: string; end: string; stops: number[]; cellDeg: number;
+    halves: { early: string; late: string } | null; series: SeriesName; error: number;
+  } | null>(null);
+  // What the cells show (how much, or how it changed) and their size: 1-degree tiles by default, the scale the
+  // method's error was measured on; 0.25-degree cells on request, finer than that.
+  const [cellView, setCellView] = useState<"amount" | "change">("amount");
+  const [tileDeg, setTileDeg] = useState<1 | 0.25>(1);
+  const cellViewRef = useRef(cellView);
+  cellViewRef.current = cellView;
   const [cellsError, setCellsError] = useState<string | null>(null);
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
@@ -627,7 +643,11 @@ export function Globe({
       const feature = event.features?.[0];
       if (!info || !feature || draw.current.active) return;
       const cell = feature.properties as BurnCell;
-      popup.setLngLat(event.lngLat).setText(`${cellSentence(cell, info.years, info.unit, info.cellDeg)} Click to make it your area.`).addTo(map);
+      const text =
+        cellViewRef.current === "change" && info.halves
+          ? trendSentence(cell, info.halves, info.error)
+          : cellSentence(cell, info.years, info.unit, info.cellDeg);
+      popup.setLngLat(event.lngLat).setText(`${text} Click to make it your area.`).addTo(map);
     });
     map.on("mouseleave", "cells-fill", () => popup.remove());
     mapRef.current = map;
@@ -711,23 +731,38 @@ export function Globe({
     if (!showCells || !period) return;
     const controller = new AbortController();
     setCellsError(null);
-    fetchCells(period.start, period.end, controller.signal)
+    // The raw record has no method error to fall inside: any change counts there.
+    const error = series === "harmonized" ? trendError : 0;
+    fetchCells(period.start, period.end, controller.signal, { deg: tileDeg, series })
       .then((answer) => {
-        const squares = cellSquares(answer.cells, answer.cell_deg);
+        const squares = cellSquares(answer.cells, answer.cell_deg, error);
         const stops = cellStops(squares.features.map((f) => f.properties.density));
         (map.getSource("cells") as GeoJSONSource).setData(squares);
-        // Coloured per 100 km2: a 0.25-degree cell is about a quarter smaller in Ukraine than in northern Argentina.
-        map.setPaintProperty("cells-fill", "fill-color", [
-          "interpolate", ["linear"], ["get", "density"],
-          0, CELL_RAMP[0], stops[0], CELL_RAMP[1], stops[1], CELL_RAMP[2], stops[2], CELL_RAMP[3], stops[3], CELL_RAMP[4],
-        ]);
-        setCells({ years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg });
+        map.setPaintProperty(
+          "cells-fill",
+          "fill-color",
+          cellView === "change"
+            ? [
+                "case", ["==", ["get", "change"], null], TREND_NONE,
+                ["interpolate", ["linear"], ["get", "change"],
+                  -2, TREND_RAMP[0], -1, TREND_RAMP[1], 0, TREND_RAMP[2], 1, TREND_RAMP[3], 2, TREND_RAMP[4]],
+              ]
+            : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
+              [
+                "interpolate", ["linear"], ["get", "density"],
+                0, CELL_RAMP[0], stops[0], CELL_RAMP[1], stops[1], CELL_RAMP[2], stops[2], CELL_RAMP[3], stops[3], CELL_RAMP[4],
+              ],
+        );
+        setCells({
+          years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
+          halves: answer.halves, series: answer.series, error,
+        });
       })
       .catch((reason: Error) => {
         if (reason.name !== "AbortError") setCellsError(reason.message);
       });
     return () => controller.abort();
-  }, [ready, showCells, period?.start, period?.end]);
+  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError]);
 
   // "Show on the globe" from the list of busiest cells: switch to where it burns and fly there.
   useEffect(() => {
@@ -849,6 +884,26 @@ export function Globe({
         )}
       </div>
 
+      {showCells && !drawing && (
+        <div className="stage-draw stage-cells" role="group" aria-label="What the cells show">
+          <div className="segmented">
+            <button type="button" aria-pressed={cellView === "amount"} onClick={() => setCellView("amount")}>
+              How much
+            </button>
+            <button type="button" aria-pressed={cellView === "change"} onClick={() => setCellView("change")}>
+              How it changed
+            </button>
+          </div>
+          <div className="segmented">
+            <button type="button" aria-pressed={tileDeg === 1} onClick={() => setTileDeg(1)}>
+              1° tiles
+            </button>
+            <button type="button" aria-pressed={tileDeg === 0.25} onClick={() => setTileDeg(0.25)}>
+              0.25° cells
+            </button>
+          </div>
+        </div>
+      )}
       {drawing && (
         <div className="stage-draw">
           <p role="status">
@@ -900,13 +955,17 @@ export function Globe({
         {showCells ? (
           <div className="legend-cells">
             <p className="legend-title">
-              {cells
-                ? `Where it burns, ${cells.start} to ${cells.end}: ${cells.unit} a year per 100 km², harmonized record`
-                : cellsError
+              {!cells
+                ? cellsError
                   ? `Cannot load the cells: ${cellsError}`
-                  : "Loading where it burns..."}
+                  : "Loading where it burns..."
+                : cellView === "change"
+                  ? cells.halves
+                    ? `How burning changed, ${cells.halves.late.replace("-", "–")} against ${cells.halves.early.replace("-", "–")}, ${cells.series} record`
+                    : "The period has fewer than two full years: choose a longer one to see a change"
+                  : `Where it burns, ${cells.start} to ${cells.end}: ${cells.unit} a year per 100 km², ${cells.series} record`}
             </p>
-            {cells && (
+            {cells && cellView === "amount" && (
               <>
                 <i className="legend-ramp" aria-hidden="true" />
                 <div className="legend-ramp-ticks" aria-hidden="true">
@@ -915,11 +974,31 @@ export function Globe({
                   <span>{stopLabel(cells.stops[2])}</span>
                   <span>{`${stopLabel(cells.stops[3])}+`}</span>
                 </div>
+              </>
+            )}
+            {cells && cellView === "change" && cells.halves && (
+              <>
+                <i className="legend-ramp is-trend" aria-hidden="true" />
+                <div className="legend-ramp-ticks" aria-hidden="true">
+                  <span>¼×</span>
+                  <span>½×</span>
+                  <span>{cells.error ? `±${Math.round(cells.error * 100)}%` : "1×"}</span>
+                  <span>2×</span>
+                  <span>4×</span>
+                </div>
                 <p className="legend-hint">
-                  Point at a cell for how often it burns and in which month most; click it to make it your area. The
-                  error of the method was measured on 1-degree tiles, about 16 of these cells.
+                  {cells.series === "raw"
+                    ? "The raw record switches from MODIS to VIIRS in 2012, so much of this rise is the sensor, not the fire: switch the record to harmonized to see the change that is real."
+                    : `A change within the method's error for a 1-degree tile and a year (±${Math.round(cells.error * 100)}%) is shown as none. Grey: no burning in the first half. From 2022 the record also holds the fires of the war in the east and south.`}
                 </p>
               </>
+            )}
+            {cells && (
+              <p className="legend-hint">
+                {cells.cellDeg >= 1
+                  ? "Point at a tile for its figures; click it to make it your area. 1-degree tiles are the scale the method's error was measured on."
+                  : "Point at a cell for its figures; click it to make it your area. 0.25-degree cells are finer than the 1-degree tiles the method's error was measured on."}
+              </p>
             )}
           </div>
         ) : (

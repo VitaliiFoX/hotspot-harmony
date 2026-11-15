@@ -115,8 +115,9 @@ def create_app(
         start: Annotated[str | None, Query(pattern=MONTH, description="first month, YYYY-MM")] = None,
         end: Annotated[str | None, Query(pattern=MONTH, description="last month, YYYY-MM")] = None,
         series: Literal["raw", "harmonized"] | None = None,
+        deg: Annotated[float | None, Query(description="tile size in degrees, a multiple of the grid")] = None,
     ) -> dict:
-        return store.cells(start, end, series)
+        return store.cells(start, end, series, deg)
 
     @app.post("/api/cells/top")
     def top_cells(body: TopCellsRequest) -> dict:
