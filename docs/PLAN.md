@@ -9,21 +9,23 @@ a row.
 
 ## Where we are
 
-Updated on Sunday 2026-11-15 at 09:50 Kyiv time.
+Updated on Sunday 2026-11-15 at 10:40 Kyiv time.
 
 - Merged to `main`: pipeline, harmonization with five methods chosen per country, validation (#18, the
   method chosen again for every held-out year), API, the dashboard, the globe with the daily hotspot
   explorer, CSV/PNG downloads, a drawn area of interest (#25, #26), "How far to trust this" (#27), the
   raw record over the harmonized years (#28), peak burning months (#29), the season's peak in the
   headline and the log scale (#30), the sensor behind each year (#31), sensor gap days on the globe
-  (#32), example areas for Ukraine (#33), and the README for submission (#34).
-- Rows 1 and 5-12 are done.
+  (#32), example areas for Ukraine (#33), the README for submission (#34), crowded hotspots turning
+  red (#36), the sensor jump in the trust block (#38), a verdict that knows the method's error and the
+  raw record's answer beside it (#39), where and when it burns on the globe (#40), and the busiest
+  cells of the area (#41).
+- Rows 1 and 5-12, 8b-8f are done.
 - Not done yet:
   - a public demo, rows 2-4 (README still says "not deployed yet"). The host must get the
-    `harmonization_report.json` of `make validate NESTED=1`, or the trust block shows other figures than
-    `docs/VALIDATION.md`;
-  - a calendar by day and by week: the challenge asks for days, weeks and months, and the calendar
-    is by month only (single days are on the globe; row 11a, optional);
+    `harmonization_report.json` of `make validate NESTED=1`, or the trust block and the verdict show
+    other figures than `docs/VALIDATION.md`;
+  - a calendar by day and by week (row 11a, optional; single days are on the globe);
   - the video or slides;
   - the project page.
 
@@ -70,11 +72,11 @@ JSON for the two countries and no API.
 | 7 | Log scale for the calendar by default. The headline figure shows the peak of the last season instead of December | 1 h | Today the calendar looks washed out and the headline figure is a quiet month | VitaliiFoX | [x] |
 | 8 | Draw an area on the globe (done as a polygon, sent to the API as its geometry; the `box` filter shows its bounds) | 2-3 h | Every strong competitor has it; the README promises it | vovikLXUS | [x] |
 | 8a | "Peak burning months" card for the chosen area: the fewest months that together hold 60% of a typical year (the sum of the monthly medians in `climatology`), with a table view. Web only: a pure function in `web/src/scale.ts` under test, and the term in `GLOSSARY.md`. Call it burning activity, not risk: we do not measure risk | 1.5 h | The challenge asks for critical periods by name, and the API already returns what the card needs | VitaliiFoX | [x] |
-| 8b | Sensor jump in the trust block: `/api/validation` serves `sensor_jump` from the report, and the block shows it per country (Ukraine raw 2.00x, harmonized 0.90x: "twice as much burning" against "slightly less") | 30 min | The strongest example of what harmonization changes, so far only in `docs/VALIDATION.md` | VitaliiFoX | [ ] |
-| 8c | The verdict knows the method's error: the headline calls a month unusual only when it is further from its median than the harmonization error at that scale (country or 1-degree tile, per month); otherwise "within the error of the method". MODIS months (2002-2021) carry no harmonization error; NOAA-20 months use the larger of the held-out and the NOAA-20 checks. Labelled a rough threshold, not a confidence interval | 45 min | Validity: no entry we read separates an anomaly from the error of its own method | VitaliiFoX | [ ] |
-| 8d | The raw record's verdict beside it ("without harmonization: N x a typical July"), from the raw calendar the page already fetches ahead; and one line in the app that the record ends in December 2025 | 30 min | Shows in five seconds why the harmonized record is needed; names the missing "now" instead of hiding it | VitaliiFoX | [ ] |
-| 8e | Where and when it burns: `/api/cells` gives, for each grid cell over the chosen period, harmonized fire cell-days a year, the years with burning and the peak month; a switch on the globe colours the cells by fire cell-days a year, and a cell reads "burns in 24 of 25 years, about 54 a year, mostly in August" | 2 h | Asked in the team chat: critical places and their season. It turns the globe from raw hotspots of one sensor into the harmonized record | VitaliiFoX | [ ] |
-| 8f | Optional, the first row to drop: the five busiest cells of the chosen area with their peak month, each a click that flies the globe there | 45 min | A short answer for a fire manager or a farmer: where in my area, and when | | [ ] |
+| 8b | Sensor jump in the trust block: `/api/validation` serves `sensor_jump` from the report, and the block shows it per country (Ukraine raw 2.00x, harmonized 0.90x: "twice as much burning" against "slightly less") | 30 min | The strongest example of what harmonization changes, so far only in `docs/VALIDATION.md` | VitaliiFoX | [x] |
+| 8c | The verdict knows the method's error: the headline calls a month unusual only when it is further from its median than the harmonization error at that scale (country or 1-degree tile, per month); otherwise "within the error of the method". MODIS months (2002-2021) carry no harmonization error; NOAA-20 months use the larger of the held-out and the NOAA-20 checks. Labelled a rough threshold, not a confidence interval | 45 min | Validity: no entry we read separates an anomaly from the error of its own method | VitaliiFoX | [x] |
+| 8d | The raw record's verdict beside it ("without harmonization: N x a typical July"), from the raw calendar the page already fetches ahead; and one line in the app that the record ends in December 2025 | 30 min | Shows in five seconds why the harmonized record is needed; names the missing "now" instead of hiding it | VitaliiFoX | [x] |
+| 8e | Where and when it burns: `/api/cells` gives, for each grid cell over the chosen period, harmonized fire cell-days a year, the years with burning and the peak month; a switch on the globe colours the cells by fire cell-days a year, and a cell reads "burns in 24 of 25 years, about 54 a year, mostly in August" | 2 h | Asked in the team chat: critical places and their season. It turns the globe from raw hotspots of one sensor into the harmonized record | VitaliiFoX | [x] |
+| 8f | Optional, the first row to drop: the five busiest cells of the chosen area with their peak month, each a click that flies the globe there | 45 min | A short answer for a fire manager or a farmer: where in my area, and when | VitaliiFoX | [x] |
 
 Not doing from the same review: moving the globe below the analytics (8e makes it a tool instead; ask Vlad before moving it) and a rectangle-only area (the polygon is merged, #25).
 
