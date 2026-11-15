@@ -77,7 +77,7 @@ JSON for the two countries and no API.
 | 10 | Hatch sensor gap days in the calendar so that "no data" never reads as zero. Done on the globe's day calendar, where the zero shows: the harmonized monthly record has no gap days (they are taken from MODIS) | 1 h | VitaliiFoX | [x] |
 | 11 | Ukraine presets: Chornobyl exclusion zone (April 2020), the southern steppe | 1 h | VitaliiFoX | [x] |
 | 11a | Optional, the first row to drop: a calendar of the days of one chosen year for the area, with weeks as sums of the same days. Needs a new API endpoint over `data/points`, because `/api/hotspots/days` counts the whole record, not the area. `harmonized.parquet` is monthly, so this view is in hotspots of one sensor and must say so; comparing years stays on the monthly harmonized calendar. If it is dropped, say in the README that single days are on the globe | 3-4 h | | [ ] |
-| 12 | README: the Status table, "Use of AI tools", full NASA GIBS credit, links to METHOD and VALIDATION | 1 h | | [ ] |
+| 12 | README: the Status table, "Use of AI tools", full NASA GIBS credit, links to METHOD and VALIDATION | 1 h | VitaliiFoX | [x] |
 
 ### Sunday 18:00-21:00: submission
 
