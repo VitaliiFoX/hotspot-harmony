@@ -2,6 +2,7 @@
 .stage {
   --panel-width: 372px;
   --hotspot: #ff8a3d;
+  --hotspot-dense: #e0281f;
   --space: #03050b;
   --stage-ink: #fff;
   --stage-ink-2: rgba(255, 255, 255, 0.78);
@@ -323,6 +324,12 @@ html {
 .legend-dot.is-ringed {
   outline: 1.5px solid var(--stage-ink);
   outline-offset: 0;
+}
+.legend-heat {
+  width: 22px;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(255, 138, 61, 0.4), var(--hotspot) 30%, var(--hotspot-dense) 75%, #b8121a);
 }
 
 .dt-panel {
