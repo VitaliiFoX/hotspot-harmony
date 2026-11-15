@@ -110,6 +110,23 @@ h2 {
 .content > * {
   min-width: 0;
 }
+/* The country picked on the globe, over everything the page says about it. */
+.place {
+  margin-top: 2px;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+/* A picked country no record is loaded for: what will be here, and how to load it. */
+.no-data {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.no-data p {
+  max-width: 70ch;
+  color: var(--ink-2);
+}
 .top {
   display: flex;
   justify-content: space-between;

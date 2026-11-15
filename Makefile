@@ -1,4 +1,4 @@
-.PHONY: data ingest normalize aggregate harmonize validate day-points json api web test lint
+.PHONY: data ingest normalize aggregate harmonize validate day-points json api web test lint borders
 
 # Limit to one country with: make data COUNTRY=Ukraine
 # Whole world with: make data CONFIG=config/world.yaml (and make api CONFIG=config/world.yaml)
@@ -45,6 +45,10 @@ web:
 test:
 	uv run pytest -q
 	cd web && npm test
+
+# writes web/public/countries.geojson, the borders a country is picked by on the globe (Natural Earth)
+borders:
+	uv run python scripts/build_countries.py
 
 lint:
 	uv run ruff check .

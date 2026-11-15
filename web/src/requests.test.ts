@@ -39,6 +39,14 @@ describe("delayFor", () => {
     expect(delayFor(drawn, { ...view, area: null })).toBe(0);
   });
 
+  it("does not wait for a country picked on the globe, or for the box that comes back when it is let go", () => {
+    // The box fields are read-only while a country is picked, as with a drawn area.
+    const picked = { ...view, box: ["22.13", "44.38", "40.16", "52.37"], country: "Ukraine" };
+    expect(delayFor(view, picked)).toBe(0);
+    expect(delayFor(picked, { ...picked, region: "Argentina", box: ["-73.57", "-55.05", "-53.66", "-21.79"], country: "Argentina" })).toBe(0);
+    expect(delayFor(picked, { ...view, country: null })).toBe(0);
+  });
+
   it("waits again for the box typed once the drawn area is gone", () => {
     const removed = { ...view, area: null };
     expect(delayFor(removed, { ...removed, box: ["22", "44", "40.3", "5"] })).toBe(TYPING_PAUSE_MS);
