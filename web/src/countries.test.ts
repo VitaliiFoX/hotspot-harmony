@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Region } from "./api";
 import {
   DOUBLE_TAP_MS, DOUBLE_TAP_PX, countryAt, countryBoxText, findCountry, insideCountry, isDoubleTap, namesCountry, readCountries,
+  searchPlaces,
   regionOfCountry,
 } from "./countries";
 
@@ -120,5 +121,57 @@ describe("isDoubleTap", () => {
   it("refuses a second tap somewhere else", () => {
     // 3-4-5 triangle scaled by 7: 21 across and 28 down are 35 px away.
     expect(isDoubleTap(first, { time: 1100, x: 121, y: 128 })).toBe(false);
+  });
+});
+
+describe("searchPlaces", () => {
+  const ringRegion: Region = { name: "Ringland", bbox: [0, 0, 22, 10] };
+  const world: Region = { name: "World", bbox: [-180, -90, 180, 90] };
+  const more = readCountries({
+    features: ["Olingar", "Garland", "Holia"].map((name) => ({
+      properties: { name, aliases: name === "Garland" ? ["Rep. of Gar"] : [], iso: name.slice(0, 3).toUpperCase(), view: [0, 0, 1, 1] },
+      geometry: { type: "MultiPolygon" as const, coordinates: [[square(0, 0, 1, 1)]] },
+    })),
+  });
+  const all = [ringland, ...more];
+  const names = (query: string, regions = [ringRegion]) => searchPlaces(regions, all, query).map((place) => place.name);
+
+  it("lists the regions first, then every other country by name, when nothing is typed", () => {
+    expect(searchPlaces([ringRegion], all, "")).toEqual([
+      { name: "Ringland", kind: "region", hasData: true },
+      { name: "Garland", kind: "country", hasData: false },
+      { name: "Holia", kind: "country", hasData: false },
+      { name: "Olingar", kind: "country", hasData: false },
+    ]);
+  });
+
+  it("does not list a country twice when it is a region", () => {
+    expect(names("ring")).toEqual(["Ringland"]);
+  });
+
+  it("puts a name that starts with the text before one that only holds it", () => {
+    // "gar" starts Garland and sits inside Olingar; "lin" is only inside Olingar.
+    expect(names("gar")).toEqual(["Garland", "Olingar"]);
+    expect(names("LIN")).toEqual(["Olingar"]);
+  });
+
+  it("finds a country by an alias or its code", () => {
+    expect(names("rep of")).toEqual(["Garland"]);
+    expect(names("hol")).toEqual(["Holia"]);
+  });
+
+  it("finds a place by the name the page shows for it in another language", () => {
+    const shown = (name: string) => (name === "Ringland" ? "Kiltseland" : name === "Holia" ? "Dirkia" : name);
+    expect(searchPlaces([ringRegion], all, "kilts", shown).map((place) => place.name)).toEqual(["Ringland"]);
+    expect(searchPlaces([ringRegion], all, "dirk", shown).map((place) => place.name)).toEqual(["Holia"]);
+    expect(searchPlaces([ringRegion], all, "kilts").map((place) => place.name)).toEqual([]);
+  });
+
+  it("finds nothing for a text no name holds", () => {
+    expect(names("zzz")).toEqual([]);
+  });
+
+  it("marks every country as having a record when a region spans the globe", () => {
+    expect(searchPlaces([world], all, "holia")).toEqual([{ name: "Holia", kind: "country", hasData: true }]);
   });
 });

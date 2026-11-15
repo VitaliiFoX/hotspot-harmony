@@ -461,4 +461,11 @@ export const UK: Record<string, string> = {
   "Back to {region}": "Назад до регіону {region}",
   "Counted inside the border of {country}: a grid cell belongs to the country when its centre is inside the border, so a cell on the border counts in full or not at all. Border: Natural Earth, simplified to about 2 km.":
     "Пораховано в межах кордону країни {country}: клітинка сітки належить країні, якщо її центр усередині кордону, тож клітинка на кордоні рахується повністю або зовсім ні. Кордон: Natural Earth, спрощено приблизно до 2 км.",
+
+  "Search a region or a country": "Знайти регіон або країну",
+  "Search a country": "Знайти країну",
+  "Regions and countries": "Регіони та країни",
+  "record loaded": "ряд завантажено",
+  "no record yet": "ряду ще немає",
+  "No country matches": "Жодна країна не підходить",
 };
