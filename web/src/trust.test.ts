@@ -104,6 +104,8 @@ describe("verdictKind", () => {
   it("has no threshold without an error, and nothing to say without a ratio", () => {
     expect(verdictKind(1.01, null)).toBe("above");
     expect(verdictKind(0.99, null)).toBe("below");
+    expect(verdictKind(1, null)).toBe("same"); // a MODIS month right on its median is not "more"
+    expect(verdictKind(1, 0.06)).toBe("within");
     expect(verdictKind(null, 0.06)).toBe("none");
   });
 });

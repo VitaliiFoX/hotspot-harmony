@@ -31,9 +31,11 @@ export function AnomalyTiles({ anomaly, climatology, unit, busiest = false, erro
         : `No burning, as usual for ${month}`
       : kind === "within"
         ? `${month} ${anomaly.year} is within the method's error of a typical ${month}`
-        : kind === "above"
-          ? `${month} ${anomaly.year} burned more than a typical ${month}`
-          : `${month} ${anomaly.year} burned less than a typical ${month}`;
+        : kind === "same"
+          ? `${month} ${anomaly.year} burned as much as a typical ${month}`
+          : kind === "above"
+            ? `${month} ${anomaly.year} burned more than a typical ${month}`
+            : `${month} ${anomaly.year} burned less than a typical ${month}`;
   const heroNote =
     anomaly.ratio === null
       ? `the ${month} median is zero, so there is no ratio`
