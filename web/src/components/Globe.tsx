@@ -40,6 +40,11 @@ setWorkerUrl(workerUrl);
 
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 const HOTSPOT = "#ff8a3d";
+// Where hotspots crowd, the heat layer runs from HOTSPOT to this red (as --hotspot-dense in globe.css).
+const HOTSPOT_DENSE = "#e0281f";
+// Below HEAT_FADE_FROM the heat layer carries the picture; by HEAT_FADE_TO single dots have taken over.
+const HEAT_FADE_FROM = 5;
+const HEAT_FADE_TO = 8;
 // The drawn area of interest: white on a dark casing, so it reads on the imagery and on the street map.
 const AREA_INK = "#ffffff";
 const AREA_CASING = "rgba(3, 5, 11, 0.75)";
@@ -207,6 +212,30 @@ const STYLE: StyleSpecification = {
       paint: { "line-color": AREA_INK, "line-width": 2.2, "line-dasharray": [2, 1.5] },
     },
     {
+      // Hotspots that crowd together merge into one warm patch that turns red where they are densest, so a busy
+      // day reads as where it burned most, not as a carpet of dots. Single dots take over as the map zooms in.
+      id: "hotspot-heat",
+      type: "heatmap",
+      source: "hotspots",
+      maxzoom: HEAT_FADE_TO + 1,
+      paint: {
+        // One hotspot alone peaks at the intensity (about 0.3, plain orange); only overlapping ones add up to red.
+        "heatmap-weight": 1,
+        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 1, 0.25, HEAT_FADE_FROM, 0.3, HEAT_FADE_TO, 0.35],
+        "heatmap-radius": ["interpolate", ["exponential", 2], ["zoom"], 1, 4, HEAT_FADE_FROM, 9, HEAT_FADE_TO, 18],
+        "heatmap-color": [
+          "interpolate", ["linear"], ["heatmap-density"],
+          0, "rgba(255, 138, 61, 0)",
+          0.08, "rgba(255, 138, 61, 0.4)",
+          0.28, HOTSPOT,
+          0.5, "#f2552c",
+          0.75, HOTSPOT_DENSE,
+          1, "#b8121a",
+        ],
+        "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], HEAT_FADE_FROM, 0.9, HEAT_FADE_TO, 0],
+      },
+    },
+    {
       id: "hotspot-glow",
       type: "circle",
       source: "hotspots",
@@ -214,7 +243,8 @@ const STYLE: StyleSpecification = {
         "circle-color": HOTSPOT,
         "circle-radius": ["interpolate", ["exponential", 2], ["zoom"], 1, 4, 5, 9, 9, 22],
         "circle-blur": 1,
-        "circle-opacity": 0.35,
+        // The heat layer stands in for the glow while the map is zoomed out.
+        "circle-opacity": ["interpolate", ["linear"], ["zoom"], HEAT_FADE_FROM, 0, HEAT_FADE_TO, 0.35],
         "circle-pitch-alignment": "map",
       },
     },
@@ -225,7 +255,8 @@ const STYLE: StyleSpecification = {
       paint: {
         "circle-color": HOTSPOT,
         "circle-radius": ["interpolate", ["exponential", 2], ["zoom"], 1, 1.4, 5, 3, 9, 7],
-        "circle-opacity": 0.95,
+        // Faint while the heat layer carries the picture, so the red of a dense patch is not hidden under dots.
+        "circle-opacity": ["interpolate", ["linear"], ["zoom"], 1, 0.1, 4, 0.25, HEAT_FADE_FROM, 0.5, HEAT_FADE_TO, 0.95],
         "circle-pitch-alignment": "map",
       },
     },
@@ -608,6 +639,7 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
     const map = mapRef.current;
     if (!ready || !map) return;
     const { through, inHour } = hourFilters(time);
+    map.setFilter("hotspot-heat", through);
     map.setFilter("hotspot-glow", through);
     map.setFilter("hotspot", through);
     map.setFilter("hotspot-hour", inHour);
@@ -783,6 +815,10 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
           <li>
             <i className="legend-dot is-ringed" aria-hidden="true" />
             Detected in the hour up to it
+          </li>
+          <li>
+            <i className="legend-heat" aria-hidden="true" />
+            Where hotspots crowd, orange turns red
           </li>
         </ul>
         <p className="legend-hint">{`${ZOOM_KEY} + scroll zooms the globe; scroll alone moves down the page.`}</p>
