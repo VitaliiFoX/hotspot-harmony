@@ -102,6 +102,11 @@ const OSM_ATTRIBUTION =
 const STREET_ZOOM = 8;
 /** Zoomed in past this, the date panel and the legend fold into small buttons to leave the map clear. */
 const CARD_ZOOM = 4;
+/** The globe turns on its own while it is shown whole: one turn in two minutes, west to east. */
+const SPIN_DEG_PER_S = 3;
+const SPIN_MAX_ZOOM = 3;
+/** After the user moves the globe it holds still this long before it starts turning again. */
+const SPIN_RESUME_MS = 30_000;
 const LABEL_FONT = ["Noto Sans Regular"];
 const NAME = ["coalesce", ["get", "name:en"], ["get", "name"]] as unknown as string;
 
@@ -707,6 +712,43 @@ export function Globe({
     };
   }, []);
 
+  // The globe turns slowly on its own. It holds still while the user drags, zooms or types on it (and for
+  // SPIN_RESUME_MS after), while a flight to a region runs, while an outline is being drawn, when zoomed in,
+  // when the tab is hidden, and always for users who ask for reduced motion.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || reducedMotion()) return;
+    const element = map.getContainer();
+    let touchedAt = -Infinity;
+    const touch = () => {
+      touchedAt = performance.now();
+    };
+    const events = ["pointerdown", "wheel", "keydown", "touchstart"] as const;
+    events.forEach((name) => element.addEventListener(name, touch, { passive: true }));
+    let frame = 0;
+    let last = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(now - last, 100) / 1000; // no leap after a pause or a slow frame
+      last = now;
+      const still =
+        document.hidden ||
+        map.isMoving() ||
+        draw.current.active ||
+        map.getZoom() > SPIN_MAX_ZOOM ||
+        now - touchedAt < SPIN_RESUME_MS;
+      if (!still) {
+        const center = map.getCenter();
+        map.jumpTo({ center: [center.lng - SPIN_DEG_PER_S * dt, center.lat] });
+      }
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(frame);
+      events.forEach((name) => element.removeEventListener(name, touch));
+    };
+  }, [ready]);
+
   // The map is made before the regions arrive; centre it on them once they do.
   const centred = useRef(false);
   useEffect(() => {
@@ -1122,7 +1164,7 @@ export function Globe({
           {t("Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Map:")}{" "}
           <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" "}
           <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">© OpenMapTiles</a>, {t("data")}{" "}
-          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{t("© OpenStreetMap contributors")}</a>.
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{t("© OpenStreetMap contributors")}</a>.{" "}
           {t("Borders a country is picked by:")}{" "}
           <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>.
         </p>
