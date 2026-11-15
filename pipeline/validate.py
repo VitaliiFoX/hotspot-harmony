@@ -126,11 +126,24 @@ def interval_by_size(d: pd.DataFrame) -> list[dict]:
     return rows
 
 
+def yearly_records(df: pd.DataFrame) -> pd.DataFrame:
+    """Yearly total of the raw and of the harmonized record (columns `raw`, `harmonized`, indexed by year)."""
+    parts = {
+        name: (df.assign(v=value)[mask]).groupby("y").v.sum()
+        for name, mask, value in (("raw", df.in_raw, 1.0), ("harmonized", df.in_series, df.weight))
+    }
+    return pd.concat(parts, axis=1)
+
+
 def sensor_jump(df: pd.DataFrame) -> dict | None:
     """Mean yearly total in the five years before and after 2012, raw record vs harmonized record."""
+    return jump_of(yearly_records(df))
+
+
+def jump_of(yearly_totals: pd.DataFrame) -> dict | None:
     out = {}
-    for name, mask, value in (("raw", df.in_raw, 1.0), ("harmonized", df.in_series, df.weight)):
-        yearly = (df.assign(v=value)[mask]).groupby("y").v.sum()
+    for name in ("raw", "harmonized"):
+        yearly = yearly_totals[name].dropna()
         before = yearly.reindex(range(hz.JUMP_BEFORE[0], hz.JUMP_BEFORE[1] + 1)).mean()
         after = yearly.reindex(range(hz.JUMP_AFTER[0], hz.JUMP_AFTER[1] + 1)).mean()
         if not (before > 0 and after > 0):
@@ -140,14 +153,18 @@ def sensor_jump(df: pd.DataFrame) -> dict | None:
     return out
 
 
-def validate_country(df: pd.DataFrame, par: dict, nested: bool = False) -> dict:
-    """`nested`: choose the method again for every held-out year (needs the choice to have been automatic)."""
+def comparisons(
+    df: pd.DataFrame, par: dict, nested: bool = False, gaps: dict[str, pd.DatetimeIndex] | None = None
+) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+    """Every check of one country as a `compare` table (prediction and truth per year, month and 1-degree tile),
+    keyed as in the report, and the held-out rows. `gaps`: sensor gap days found elsewhere, as in `hz.calibrate`.
+
+    The tables of the parts of a country, stacked, are the tables of the country: a tile lies in one part."""
     s, d = df.stream, df.local_date
-    nested = nested and bool(par.get("method_held_out_month_error"))  # a method forced by flag has no choice
     # a day the sensor did not observe says nothing about the method: it is left out of fit and comparison,
     # and the same check on every day is reported next to it
     fit_all = d.between(*hz.FIT)
-    snpp_gaps = hz.gap_days(df, "viirs_snpp")
+    snpp_gaps = hz.gap_days(df, "viirs_snpp") if gaps is None else gaps["viirs_snpp"]
     fit = fit_all & ~d.isin(snpp_gaps)
     viirs, modis = df[fit & (s == "viirs_snpp")], df[fit & (s == "modis")]
     viirs_all, modis_all = df[fit_all & (s == "viirs_snpp")], df[fit_all & (s == "modis")]
@@ -160,16 +177,15 @@ def validate_country(df: pd.DataFrame, par: dict, nested: bool = False) -> dict:
     held_out, held_out_all = leave_one_year_out(
         viirs, modis, loyo_par, context, also=viirs_all, also_context=context_all
     )
-    loyo, with_gaps = compare(held_out, modis), compare(held_out_all, modis_all)
     out = {
-        "viirs_to_modis_leave_one_year_out": scores(loyo),
-        "viirs_to_modis_sensor_gap_days_included": scores(with_gaps),
-        "baseline_raw_viirs": scores(compare(viirs.assign(w=1.0), modis)),
-        "baseline_single_factor": scores(compare(viirs.assign(w=len(modis) / len(viirs)), modis)),
+        "viirs_to_modis_leave_one_year_out": compare(held_out, modis),
+        "viirs_to_modis_sensor_gap_days_included": compare(held_out_all, modis_all),
+        "baseline_raw_viirs": compare(viirs.assign(w=1.0), modis),
+        "baseline_single_factor": compare(viirs.assign(w=len(modis) / len(viirs)), modis),
     }
     if par["method"] != "bins":  # the same check with the plain table by fire power, to show what the models add
-        out["table_by_fire_power_only"] = scores(compare(leave_one_year_out(viirs, modis, TABLE_ONLY)[0], modis))
-    n20_gaps = hz.gap_days(df, "viirs_noaa20")
+        out["table_by_fire_power_only"] = compare(leave_one_year_out(viirs, modis, TABLE_ONLY)[0], modis)
+    n20_gaps = hz.gap_days(df, "viirs_noaa20") if gaps is None else gaps["viirs_noaa20"]
     chk = d.between(hz.N20_START, hz.FIT[1]) & ~d.isin(n20_gaps)
     if (chk & (s == "viirs_noaa20")).any():  # NOAA-20 never took part in fitting any of the models
         share = par["context_share"]
@@ -180,7 +196,7 @@ def validate_country(df: pd.DataFrame, par: dict, nested: bool = False) -> dict:
             ctx = ctx[ctx.local_date.between(hz.N20_START, hz.FIT[1]) & ~ctx.local_date.isin(n20_gaps)]
             value = hz.context_values(par["context"], ctx) * (par["n20_to_snpp"] or 1.0) * share
             parts.append(ctx[KEYS].assign(w=value))
-        out["noaa20_independent"] = scores(compare(pd.concat(parts), df[chk & (s == "modis")]))
+        out["noaa20_independent"] = compare(pd.concat(parts), df[chk & (s == "modis")])
     tf = d.between(*hz.TERRA_FIT)
     terra, both = df[tf & (s == "modis_terra")], df[tf & (s == "modis")]
     if len(terra):
@@ -189,7 +205,17 @@ def validate_country(df: pd.DataFrame, par: dict, nested: bool = False) -> dict:
             t_m = hz.fit_terra(terra[terra.y != year], both[both.y != year])
             test = terra[terra.y == year]
             folds.append(test.assign(w=test.m.map(t_m).fillna(1.0)))
-        out["terra_only_leave_one_year_out"] = scores(compare(pd.concat(folds), both))
+        out["terra_only_leave_one_year_out"] = compare(pd.concat(folds), both)
+    return out, held_out
+
+
+def validate_country(df: pd.DataFrame, par: dict, nested: bool = False) -> dict:
+    """`nested`: choose the method again for every held-out year (needs the choice to have been automatic)."""
+    d = df.local_date
+    nested = nested and bool(par.get("method_held_out_month_error"))  # a method forced by flag has no choice
+    tables, held_out = comparisons(df, par, nested)
+    out = {check: scores(table) for check, table in tables.items()}
+    loyo = tables["viirs_to_modis_leave_one_year_out"]
 
     # MODIS orbits drift after 2021 (Terra earlier, Aqua later): compare with VIIRS-equivalent per year
     since = df[d >= hz.FIT[0]]

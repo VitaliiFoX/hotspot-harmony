@@ -1,4 +1,4 @@
-.PHONY: data ingest normalize aggregate harmonize validate day-points json api web test lint borders
+.PHONY: data ingest normalize aggregate harmonize validate day-points world json api web test lint borders
 
 # Limit to one country with: make data COUNTRY=Ukraine
 # Whole world with: make data CONFIG=config/world.yaml (and make api CONFIG=config/world.yaml)
@@ -29,6 +29,16 @@ validate:
 day-points:
 	uv run python -m pipeline.ingest --config config/world.yaml --zips-only
 	uv run python -m pipeline.day_points --config config/world.yaml
+
+# Harmonize and validate every country into data/world/ (points about 6 GB, cell-days, the record), from the same
+# world zips, one zip and one country at a time. The pilot countries are copied from data/agg/: run
+# `make harmonize validate NESTED=1` first. Writes docs/VALIDATION_WORLD.md.
+world:
+	uv run python -m pipeline.ingest --config config/world.yaml --zips-only
+	mkdir -p data/world/raw && ln -sfn ../../raw/zips data/world/raw/zips
+	uv run python -m pipeline.normalize --config config/world.yaml --data data/world --from-zips
+	uv run python -m pipeline.aggregate --config config/world.yaml --data data/world
+	uv run python -m pipeline.world --data data/world --pilot data
 
 # Export downloaded CSV files as JSON, e.g.: make json COUNTRY=Ukraine YEAR=2024 FORMAT=geojson
 json:

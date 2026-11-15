@@ -1,0 +1,10 @@
+country,calibration,units,viirs_fit_celldays,country_year,country_month,tile_year,tile_month
+Ukraine,country,1,519877,0.0337,0.0652,0.1063,0.1956
+Ukraine,sq10,4,519877,0.0375,0.0681,0.1051,0.1938
+Ukraine,sq5,8,519877,0.0372,0.0681,0.1058,0.1948
+Argentina,country,1,1083413,0.0537,0.0735,0.1572,0.2474
+Argentina,sq10,6,1083413,0.0552,0.0729,0.1544,0.2462
+Argentina,sq5,14,1083413,0.0555,0.0706,0.1514,0.2462
+Russian_Federation,country,1,4410987,0.0259,0.0526,0.1602,0.2274
+Russian_Federation,sq10,31,4410987,0.0239,0.0479,0.1519,0.2142
+Russian_Federation,sq5,95,4410987,0.0273,0.0483,0.1486,0.2122

@@ -102,6 +102,44 @@ the context model helps in both.
 In the record the chosen method fills the VIIRS era (from 2022). Where the context model takes part,
 its value for a cell and month is added to the weighted cell-days, each counted by its share.
 
+## Every country
+
+`make world` runs the same method for every country in the FIRMS archive, into `data/world/`. The
+figures of this section are in [VALIDATION_WORLD.md](VALIDATION_WORLD.md), which `pipeline.world`
+generates.
+
+- **The table by fire power, not the five methods.** Scoring five methods with boosted models is
+  affordable for two countries, not for 235. Ukraine and Argentina are not refitted: their rows and
+  their checks are copied from their own run, so they keep the method chosen there.
+- **One country at a time, the archive one zip at a time.** The 50 GB of CSV are never extracted
+  together and the 360 million fire cell-days of the world are never in memory together: the run
+  peaks at about 23 GB and takes 7 minutes after the downloads.
+- **The calibration unit is chosen on held-out years.** A large country holds more than one fire
+  regime. So every country is also fitted by 10-degree squares: a square with enough overlap of its
+  own (5,000 VIIRS and 2,500 MODIS fire cell-days in the fit period) gets its own table, scale and
+  season factor, and the other squares are fitted together. Each year is predicted from the other
+  years both ways. The squares are used only where they lower the error per 1-degree tile and month
+  by more than 0.2 points and do not raise the error per country and month by more than that: 45
+  of the 78 countries that have a second square to stand on. There they lower the error per tile
+  and month by 1.3 points on average (Canada 37.1% to 30.6%, India 30.1% to 24.0%, Russia 22.7% to
+  21.4%). In 20 of the other 33 the squares are worse than the whole country, which is why this is
+  measured and not assumed. Sensor gap days stay those of the whole country.
+- **Too little overlap.** 107 countries, mostly islands and small states with 0.18% of the world's
+  fire cell-days, have under 5,000 VIIRS fire cell-days in the fit period. They borrow a calibration
+  fitted on the 83 smallest countries that have their own, and are not checked.
+- **A month after the archive ends is dropped.** Local solar days run ahead of UTC in the east, so
+  the last UTC evening of 2025 falls into January 2026 there; one evening must not read as a month.
+
+What it gives: 128 countries with 99.8% of the fire cell-days are checked on held-out years. The
+error per country and month is under 10% in 54 of them, which hold 93.0% of the fire cell-days;
+the median country is at 11.5%, because most countries are small and a small count is noisy. The
+sensor jump of the whole world goes from 2.58x in the raw record to 0.94x in the harmonized one.
+
+Two caveats. The choice between the country and its squares was made once on all years, so for the
+45 countries on squares the error has seen its held-out year in that one step; the error of the
+whole-country fit, which involves no choice, is printed beside it. And the app does not serve
+`data/world/` yet: its checks and its "Where it burns" layer are still built for two countries.
+
 ## How we know it works
 
 - **Leave-one-year-out.** Each overlap year is predicted from VIIRS by weights fitted on the other
@@ -163,6 +201,12 @@ data with gap days left out, so compare with 6.5% for the table and 6.1% for the
 The cell-day model and the blends were measured on Ukraine only; they are not in the pipeline until
 they are checked on a second country. Averaging the two VIIRS sensors is the next candidate.
 
+**Calibration by squares** (`research/calibration_units/compare.py`, adopted in `pipeline.world` only):
+with the table, 10-degree squares change nothing in Ukraine (19.6% to 19.4% per 1-degree tile and
+month) and Argentina (24.7% to 24.6%) and help in Russia (22.7% to 21.4%); 5-degree squares gain no
+more (21.2%) and lose per year. So the squares are a per-country choice in the world run, and the two
+pilot countries stay whole.
+
 **Rejected earlier** (`research/experiments/`, measured against the 8.0% version): neighbouring cells
 as features for the weight (8.7%, clusters get over-counted), a model on area totals (9.0%), a
 correction by 1-degree tile (no change), no seasonal factor at all (10.5%).
@@ -182,6 +226,9 @@ is small.
   switches to VIIRS in 2022 as a precaution.
 - The method is validated where the full archive was processed. A country with too little overlap
   borrows the pooled calibration and is marked as such in the app.
+- A calibration unit is a country or a 10-degree square, an administrative and a geometric line.
+  Fire regimes follow biomes, so a unit can still mix two of them; calibrating by biome is not tried.
+  Where two units meet, neighbouring cells get slightly different weights.
 - Near-real-time data carry no `type` field; current-year ingest is not built yet.
 
 Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m), <https://firms.modaps.eosdis.nasa.gov/>.

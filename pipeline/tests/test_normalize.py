@@ -101,3 +101,29 @@ def test_raw_files_for_listed_countries_or_all(tmp_path, raw):
     folder = tmp_path / "raw" / "modis"
     assert [f.name for f in raw_files(folder, "modis", ["Ukraine"])] == ["modis_2024_Ukraine.csv"]
     assert len(raw_files(folder, "modis", None)) == 3
+
+
+def test_a_global_zip_is_normalized_like_its_csv_files(tmp_path, raw):
+    import zipfile
+
+    from pipeline.config import Sensor
+    from pipeline.normalize import normalize_zips
+
+    rows = [
+        "48.461,38.7808,311.1,1.9,1.3,2024-01-01,0035,Aqua,MODIS,82,61.03,271.2,40.5,N,2",
+        "-10.5,-51.5,305.8,1.1,1,2024-01-03,1129,Terra,MODIS,30,61.03,280.3,11.1,D,0",
+    ]
+    f = raw("modis", "modis_2024_Ukraine.csv", MODIS_HEADER, rows[:1])
+    g = raw("modis", "modis_2024_Brazil.csv", MODIS_HEADER, rows[1:])
+    normalize_sensor(duckdb.connect(), [g, f], "modis", tmp_path / "from_csv" / "points")
+    world = tmp_path / "world"
+    (world / "raw" / "zips").mkdir(parents=True)
+    with zipfile.ZipFile(world / "raw" / "zips" / "modis_2024_all_countries.zip", "w") as z:
+        z.write(f, "modis/2024/modis_2024_Ukraine.csv")
+        z.write(g, "modis/2024/modis_2024_Brazil.csv")
+
+    done = normalize_zips(duckdb.connect(), world, [Sensor("modis", "modis", 2000)])
+
+    assert done == {"modis_2024_all_countries.zip": 2}
+    assert read_points(world / "points").equals(read_points(tmp_path / "from_csv" / "points"))
+    assert not list((world / "raw").glob("unzipped_*"))  # the extracted CSV files are gone
