@@ -223,6 +223,46 @@ export function peakMonths(
   return { months: months.sort((a, b) => a - b), held: Math.round((held / total) * 1e6) / 1e6, total };
 }
 
+/**
+ * The fire season of an area as months, for the map: the run of peak months (`peakMonths`) that holds the most of a
+ * typical year, placed in the year of `month` ("YYYY-MM"). A season that runs across the new year and holds `month`
+ * started the year before. Cut to the record (`first` to `last`); null without a peak or outside the record.
+ */
+export function seasonSpan(
+  climatology: readonly MonthMedian[],
+  month: string,
+  first: string,
+  last: string,
+): { start: string; end: string } | null {
+  const peak = new Set(peakMonths(climatology).months);
+  if (peak.size === 0) return null;
+  const medians = new Map(climatology.map((c) => [c.month, c.median]));
+  // Runs of consecutive peak months, scanned from just after a month outside them so none is cut at December.
+  let from = 1;
+  while (peak.has(from) && from < 12) from += 1;
+  const runs: { months: number[]; weight: number }[] = [];
+  for (let step = 1; step <= 12; step++) {
+    const m = ((from - 1 + step) % 12) + 1;
+    if (!peak.has(m)) continue;
+    const run = runs[runs.length - 1];
+    if (run && run.months[run.months.length - 1] === ((m + 10) % 12) + 1) run.months.push(m);
+    else runs.push({ months: [m], weight: 0 });
+    runs[runs.length - 1].weight += medians.get(m) ?? 0;
+  }
+  const heaviest = runs.reduce((best, run) => (run.weight > best.weight ? run : best));
+  const head = heaviest.months[0];
+  const tail = heaviest.months[heaviest.months.length - 1];
+  const year = Number(month.slice(0, 4));
+  const inTail = head > tail && Number(month.slice(5, 7)) <= tail;
+  const startIndex = (inTail ? year - 1 : year) * 12 + head - 1;
+  const label = (index: number) => `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+  const start = label(startIndex);
+  const end = label(startIndex + heaviest.months.length - 1);
+  const cutStart = start < first ? first : start;
+  const cutEnd = end > last ? last : end;
+  return cutStart <= cutEnd ? { start: cutStart, end: cutEnd } : null;
+}
+
 /** Months (1-12) as spans read aloud: [3, 4, 8] is "Mar–Apr and Aug"; a span can run across the new year. */
 export function monthSpans(months: readonly number[]): string {
   const inSet = new Set(months);

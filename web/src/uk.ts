@@ -483,6 +483,20 @@ export const UK: Record<string, string> = {
   "Loading the hotspots of these days...": "Завантаження гарячих точок за ці дні...",
   "Cannot load these days: {error}": "Не вдалося завантажити ці дні: {error}",
   "No hotspots in these days.": "У ці дні гарячих точок немає.",
+  "click to see its hotspots on the map": "клацніть, щоб побачити його гарячі точки на мапі",
+  "Press Enter to see the hotspots of that month on the map.": "Натисніть Enter, щоб побачити гарячі точки цього місяця на мапі.",
+  "Click a month to see its hotspots on the map above.": "Клацніть місяць, щоб побачити його гарячі точки на мапі вгорі.",
+  "Outlined: {month}, the month on the map above. Click any month to see its hotspots.":
+    "Обведено: {month}, місяць на мапі вгорі. Клацніть будь-який місяць, щоб побачити його гарячі точки.",
+  "Outlined: {from} to {to}, the months on the map above. Click any month to see its hotspots.":
+    "Обведено: {from} – {to}, місяці на мапі вгорі. Клацніть будь-який місяць, щоб побачити його гарячі точки.",
+  "Quick periods": "Швидкі періоди",
+  "Last 7 days": "Останні 7 днів",
+  "This month": "Цей місяць",
+  "Fire season": "Пожежний сезон",
+  "The area's peak burning months: {span}": "Пікові місяці горіння в області: {span}",
+  "The fire season comes from the calendar of the area below, once it has loaded.":
+    "Пожежний сезон береться з календаря області нижче, щойно він завантажиться.",
   "Now click the last day; Esc starts over.": "Тепер клацніть останній день; Esc — почати спочатку.",
   "Click a first and a last day to pick another.": "Клацніть перший і останній день, щоб вибрати інший.",
   "Through the day": "До дня",

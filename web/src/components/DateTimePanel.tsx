@@ -1,5 +1,5 @@
 import { formatCount, t, tn } from "../i18n";
-import { type Span, type View, cursorLabel, inSpan, makeSpan, monthLabel, spanDays, spanLabel, spanNote } from "../period";
+import { type Quick, type Span, type View, cursorLabel, inSpan, makeSpan, monthLabel, spanDays, spanLabel, spanNote } from "../period";
 import { ReadoutSkeleton } from "./Skeleton";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { DayHotspots, MonthDays } from "../api";
@@ -30,7 +30,17 @@ type Props = {
   onView: (view: View) => void;
   onPeriod: (span: Span) => void;
   onCursor: (day: number) => void;
+  /** The area's fire season around the day on screen, as days; null while the calendar below is not loaded. */
+  season: Span | null;
+  /** One click for the 7 days up to the day on screen, its month or the fire season, instead of two dates. */
+  onQuick: (quick: Quick) => void;
 };
+
+const QUICKS: readonly { quick: Quick; label: string }[] = [
+  { quick: "week", label: "Last 7 days" },
+  { quick: "month", label: "This month" },
+  { quick: "season", label: "Fire season" },
+];
 
 const VIEWS: readonly { view: View; label: string }[] = [
   { view: "day", label: "Day" },
@@ -67,7 +77,7 @@ const PLAY_TICK_MS = 80;
 /** The floating glass panel that picks the UTC day and minute the globe shows, plays the day, and reads out its hotspots. */
 export function DateTimePanel({
   date, time, firstDay, lastDay, monthDays, day, counts, loading, error, onDate, onTime,
-  view, span, cursor, onView, onPeriod, onCursor,
+  view, span, cursor, onView, onPeriod, onCursor, season, onQuick,
 }: Props) {
   const [playing, setPlaying] = useState(false);
   const days = span ? spanDays(span) : 0;
@@ -200,6 +210,36 @@ export function DateTimePanel({
                 ? `${spanNote(view, span)}. ${t("Click a first and a last day to pick another.")}`
                 : spanNote(view, span)}
         </p>
+      </div>
+
+      <div className="dt-quick" role="group" aria-label={t("Quick periods")}>
+        {QUICKS.map(({ quick, label }) => {
+          const pressed =
+            quick === "month"
+              ? view === "month"
+              : view === "period" && span !== null && (quick === "week"
+                ? spanDays(span) === 7 && span.end === date
+                : season !== null && span.start === season.start && span.end === season.end);
+          const off = quick === "season" && !season;
+          return (
+            <button
+              key={quick}
+              type="button"
+              aria-pressed={pressed}
+              disabled={off}
+              title={
+                quick === "season"
+                  ? season
+                    ? t("The area's peak burning months: {span}", { span: spanLabel(season) })
+                    : t("The fire season comes from the calendar of the area below, once it has loaded.")
+                  : undefined
+              }
+              onClick={() => onQuick(quick)}
+            >
+              {t(label)}
+            </button>
+          );
+        })}
       </div>
 
       <div className="dt-month">

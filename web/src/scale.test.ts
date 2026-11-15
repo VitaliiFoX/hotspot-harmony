@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PEAK_SHARE, SEQUENTIAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel,
   monthRange, monthRank, monthSpans, niceTicks, partsOfYear, peakMonths, position, rampColor, rampGradient, rawRecordParts, recordSpans,
-  recordTimeline, stripLanes, valuesByYear,
+  recordTimeline, seasonSpan, stripLanes, valuesByYear,
 } from "./scale";
 
 describe("position", () => {
@@ -195,6 +195,26 @@ describe("brokenLinePath", () => {
 // Monthly medians that add up to 100, so every share is the median itself in percent.
 const MEDIANS = [0, 0, 30, 20, 5, 5, 10, 15, 10, 5, 0, 0];
 const climatology = MEDIANS.map((median, i) => ({ month: i + 1, median, p25: 0, p75: median, years: 25 }));
+
+describe("seasonSpan", () => {
+  const climatology = (medians: number[]) => medians.map((median, index) => ({ month: index + 1, median }));
+  // Peak months Mar, Jul and Aug: Jul-Aug holds more than Mar, so it is the season.
+  const twoPeaks = climatology([1, 2, 20, 18, 2, 3, 25, 30, 4, 2, 1, 1]);
+  it("is the heaviest run of the peak months in the year of the date", () => {
+    expect(seasonSpan(twoPeaks, "2020-02", "2000-11", "2025-12")).toEqual({ start: "2020-07", end: "2020-08" });
+  });
+  it("is the season the date falls in when it runs across the new year", () => {
+    const southern = climatology([25, 25, 2, 1, 1, 1, 1, 1, 1, 2, 3, 25]);
+    expect(seasonSpan(southern, "2020-01", "2000-11", "2025-12")).toEqual({ start: "2019-12", end: "2020-02" });
+    expect(seasonSpan(southern, "2020-06", "2000-11", "2025-12")).toEqual({ start: "2020-12", end: "2021-02" });
+  });
+  it("is cut to the record, and nothing without a peak or past the record", () => {
+    const southern = climatology([25, 25, 2, 1, 1, 1, 1, 1, 1, 2, 3, 25]);
+    expect(seasonSpan(southern, "2025-06", "2000-11", "2025-12")).toEqual({ start: "2025-12", end: "2025-12" });
+    expect(seasonSpan(climatology(new Array(12).fill(0)), "2020-06", "2000-11", "2025-12")).toBeNull();
+    expect(seasonSpan(twoPeaks, "2026-06", "2000-11", "2025-12")).toBeNull();
+  });
+});
 
 describe("peakMonths", () => {
   it("takes the fewest months that hold 60% of a typical year, largest first, and lists them in calendar order", () => {

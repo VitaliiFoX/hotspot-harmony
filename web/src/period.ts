@@ -3,6 +3,8 @@
 import { dayInWords, monthTitle, tn } from "./i18n";
 
 export type View = "day" | "month" | "period";
+/** The quick buttons of the date panel: the 7 days up to the day on screen, its month, the area's fire season. */
+export type Quick = "week" | "month" | "season";
 /** First and last UTC day, "YYYY-MM-DD", both included. */
 export type Span = { start: string; end: string };
 
@@ -97,4 +99,17 @@ export function spanNote(view: View, span: Span): string {
   return view === "month"
     ? tn(days, "Hotspots of the whole month, {n} day", "Hotspots of the whole month, {n} days")
     : tn(days, "Hotspots from the first day through the last, {n} day", "Hotspots from the first day through the last, {n} days");
+}
+
+/** A fire season given in months ("YYYY-MM", see `seasonSpan` in scale.ts) as the period of its days, cut to the record. */
+export function seasonDays(season: { start: string; end: string }, first: string, last: string): Span {
+  return makeSpan(`${season.start}-01`, addDays(`${nextMonth(season.end)}-01`, -1), first, last);
+}
+
+/** The months the globe is on, "YYYY-MM", which the burning calendar outlines: the day's month, or every month of the span. */
+export function spanMonths(date: string, span: Span | null): string[] {
+  if (!span) return [date.slice(0, 7)];
+  const months: string[] = [];
+  for (let month = span.start.slice(0, 7); month <= span.end.slice(0, 7); month = nextMonth(month)) months.push(month);
+  return months;
 }
