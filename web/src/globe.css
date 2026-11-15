@@ -226,6 +226,7 @@ html {
   font-size: 15px;
 }
 .stage-toggle,
+.stage-view,
 .stage .dt-round,
 .stage-legend {
   -webkit-backdrop-filter: blur(18px) saturate(160%);
@@ -245,6 +246,35 @@ html {
 }
 .stage .stage-toggle:hover {
   background: var(--glass-button-hover);
+}
+/* Globe or flat map: two joined buttons in one pill of the same glass as the toggles. */
+.stage-view {
+  display: inline-flex;
+  min-height: 44px;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: var(--glass-button);
+}
+.stage .stage-view > button {
+  height: auto;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 19px;
+  background: transparent;
+  color: var(--stage-ink);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.stage .stage-view > button:hover {
+  background: var(--glass-button-hover);
+}
+.stage .stage-view > button[aria-pressed="true"] {
+  background: var(--selected-bg);
+  color: var(--selected-ink);
 }
 
 .stage-table {
@@ -421,6 +451,7 @@ html {
   .stage-head,
   .stage-legend,
   .stage-toggle,
+  .stage-view,
   .stage .dt-round {
     background: var(--glass-solid);
     -webkit-backdrop-filter: none;
@@ -780,6 +811,16 @@ html {
     padding: 0 14px;
     border-radius: 17px;
     font-size: 13px;
+  }
+  .stage-view {
+    min-height: 34px;
+    padding: 2px;
+    border-radius: 17px;
+    font-size: 13px;
+  }
+  .stage .stage-view > button {
+    padding: 0 11px;
+    border-radius: 15px;
   }
   .stage .maplibregl-ctrl-top-left {
     top: 152px;

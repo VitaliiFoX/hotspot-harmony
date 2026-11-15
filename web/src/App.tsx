@@ -15,7 +15,9 @@ import { DateTimePanel } from "./components/DateTimePanel";
 import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
-import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
+import {
+  DEFAULT_TIME, type MapView, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, parseViewParam, timeLabel,
+} from "./globe";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
@@ -80,7 +82,7 @@ export function App() {
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   // The same view in the record not on screen, from the look-ahead: the raw line over the harmonized years.
   const [otherCalendar, setOtherCalendar] = useState<Calendar | null>(null);
-  // The busiest grid cells of the area, and the one the globe should fly to ("Show on the globe").
+  // The busiest grid cells of the area, and the one the globe should fly to ("Show on the map").
   const [topCells, setTopCells] = useState<Cells | null>(null);
   const [globeFocus, setGlobeFocus] = useState<{ lat: number; lon: number; n: number } | null>(null);
   const [date, setDate] = useState<string | null>(null);
@@ -89,6 +91,8 @@ export function App() {
     const query = new URLSearchParams(window.location.search);
     return parseTimeParam(query.get("time"), query.get("hour")) ?? DEFAULT_TIME;
   });
+  // The map at the top of the page: the 3D globe, or the flat world map.
+  const [view, setView] = useState<MapView>(() => parseViewParam(new URLSearchParams(window.location.search).get("view")));
   const [monthDays, setMonthDays] = useState<MonthDays | null>(null);
   const [day, setDay] = useState<DayHotspots | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
@@ -216,6 +220,15 @@ export function App() {
     query.set("time", timeLabel(time));
     writeAddress(query);
   }, [date, time]);
+
+  // Only the flat map is written, so a link to the globe stays what it was.
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if ((query.get("view") === "flat") === (view === "flat")) return;
+    if (view === "flat") query.set("view", "flat");
+    else query.delete("view");
+    writeAddress(query);
+  }, [view]);
 
   const month = date?.slice(0, 7) ?? null;
   useEffect(() => {
@@ -479,6 +492,12 @@ export function App() {
     downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
   }
 
+  // What an example link keeps of the current view: the theme, the language and the flat map. The view is taken from
+  // state, as the address catches up with it only after this render.
+  const presetView = new URLSearchParams(window.location.search);
+  if (view === "flat") presetView.set("view", "flat");
+  else presetView.delete("view");
+
   return (
     <>
       <GlobeBoundary>
@@ -495,6 +514,8 @@ export function App() {
         country={picked}
         countryHasData={!noData}
         onPickCountry={pickCountry}
+        view={view}
+        onViewChange={setView}
         area={filters?.area ?? null}
         onDrawArea={drawArea}
         areaError={filters?.area || picked ? error : null}
@@ -569,7 +590,7 @@ export function App() {
               {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
                 <a
                   key={preset.name}
-                  href={presetHref(preset, new URLSearchParams(window.location.search))}
+                  href={presetHref(preset, presetView)}
                   title={t(preset.note)}
                 >
                   {t(preset.name)}

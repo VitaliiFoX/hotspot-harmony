@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  DEFAULT_TIME, MERCATOR_LIMIT, busiestCells, cellAreaKm2, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
   trendSentence, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
-  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
+  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, parseViewParam, flatFillZoom, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
 describe("monthGrid", () => {
@@ -303,6 +303,36 @@ describe("trendSentence", () => {
     expect(trendSentence({ early: 0, late: 2.5, trend: null }, halves, 0.14)).toBe(
       "No burning in 2001–2012, so no change can be given; about 2.5 a year in 2014–2025.",
     );
+  });
+});
+
+describe("parseViewParam", () => {
+  it("reads the flat map and the globe by name", () => {
+    expect(parseViewParam("flat")).toBe("flat");
+    expect(parseViewParam("globe")).toBe("globe");
+  });
+  it("opens the globe when the address says nothing or something unknown", () => {
+    expect(DEFAULT_VIEW).toBe("globe");
+    expect(parseViewParam(null)).toBe("globe");
+    expect(parseViewParam("")).toBe("globe");
+    expect(parseViewParam("Flat")).toBe("globe");
+    expect(parseViewParam("mercator")).toBe("globe");
+  });
+});
+
+describe("flatFillZoom", () => {
+  it("is the zoom at which the 512 px world is as wide as the map", () => {
+    expect(flatFillZoom(512, 512)).toBe(0);
+    expect(flatFillZoom(1024, 600)).toBe(1); // 1024 / 512 = 2, one doubling; the height needs less
+  });
+  it("follows the height when the map is taller than wide, so no sky shows above or below", () => {
+    expect(flatFillZoom(600, 2048)).toBe(2); // 2048 / 512 = 4, two doublings
+  });
+  it("never shrinks the world below its zoom 0 size on a map smaller than it", () => {
+    expect(flatFillZoom(256, 128)).toBe(-1); // 256 / 512 = 1/2: the world still fills the wider side
+  });
+  it("falls back to zoom 0 for a map with no size yet", () => {
+    expect(flatFillZoom(0, 0)).toBe(0);
   });
 });
 
