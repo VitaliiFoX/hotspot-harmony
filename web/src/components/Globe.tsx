@@ -14,7 +14,7 @@ import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells }
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
-  type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops,
+  type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops, openingTileDeg,
   changeLabel, flatFillZoom, hourFilters, hourInstant, zeroNote, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
   regionsCenter, trendSentence,
   type PaintedCell, type Rgba, cellGroups, cellImage, rampRgba,
@@ -69,22 +69,17 @@ setWorkerUrl(workerUrl);
 
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 const HOTSPOT = "#ff8a3d";
-// "Where it burns" on the globe: cells of the harmonized record from little to much burning a year, pale yellow to
-// deep red, so the mode reads as a different thing from the day's orange hotspots (which it hides). As --cell-0 ..
-// --cell-4 in globe.css.
-const CELL_RAMP = ["#ffe08a", "#ffb347", "#ff7a2f", "#e2361f", "#9e0f16"] as const;
-// The same on the flat map, where the cells are drawn as one surface with no steps, in the colours of a thermal
-// camera: dark violet where it is cold, through pink, orange and amber to near white where it is hottest.
-// As --thermal-0 .. --thermal-4 in globe.css.
+// "Where it burns", on the globe and on the flat map: the cells of the record from little to much burning a year,
+// drawn as one surface with no steps in the colours of a thermal camera, dark violet where it is cold, through
+// pink, orange and amber to near white where it is hottest, so the mode reads as a different thing from the day's
+// orange hotspots (which it hides). As --thermal-0 .. --thermal-4 in globe.css.
 const THERMAL_RAMP = ["#2c0352", "#fd369b", "#fe8915", "#ffb60d", "#fefbec"] as const;
 // "How it changed": second half of the period against the first, in doublings from -2 (a quarter) to +2 (four
 // times); less burning in blue, more in red, a change within the method's error neutral. As --trend-* in globe.css.
 const TREND_RAMP = ["#2166ac", "#67a9cf", "#f4f1ea", "#ef8a62", "#b2182b"] as const;
 // A cell with no burning in the first half has no change to show: faint grey.
 const TREND_NONE: Rgba = [150, 150, 150, 0.35];
-const TREND_NONE_CSS = `rgba(${TREND_NONE.join(", ")})`;
-// How much of the map shows through the cells of "Where it burns": the squares on the globe, the surface on the flat map.
-const CELLS_OPACITY = 0.72;
+// How much of the map shows through the surface of "Where it burns".
 const SURFACE_OPACITY = 0.85;
 // Where hotspots crowd, the heat layer runs from HOTSPOT to this red (as --hotspot-dense in globe.css).
 const HOTSPOT_DENSE = "#e0281f";
@@ -235,14 +230,14 @@ const STYLE: StyleSpecification = {
       paint: { "line-color": "rgba(255,255,255,0.6)", "line-width": 1.2 },
     },
     {
-      // Where it burns over the chosen period; the colour steps are set from the cells when they arrive. On the
-      // flat map the squares are not seen (opacity 0) and only answer the pointer and a click: what is seen there
-      // is one surface with no steps, laid under this layer as images (see `cellImage` in globe.ts).
+      // Where it burns over the chosen period. The squares are not seen (opacity 0) and only answer the pointer
+      // and a click: what is seen is one surface with no steps, laid under this layer as images (see `cellImage`
+      // in globe.ts).
       id: "cells-fill",
       type: "fill",
       source: "cells",
       layout: { visibility: "none" },
-      paint: { "fill-color": CELL_RAMP[2], "fill-opacity": CELLS_OPACITY, "fill-antialias": false },
+      paint: { "fill-color": THERMAL_RAMP[2], "fill-opacity": 0, "fill-antialias": false },
     },
     {
       // The border of the picked country, in the ink of a drawn area: both are the area the calendar counts.
@@ -540,15 +535,18 @@ export function Globe({
   // What the cells show (how much, or how it changed) and their size: 1-degree tiles by default, the scale the
   // method's error was measured on; 0.25-degree cells on request, finer than that.
   const [cellView, setCellView] = useState<"amount" | "change">("amount");
-  // "How much" opens on the grid's own cells; "How it changed" on 1-degree tiles, the scale its error threshold was
-  // measured on. Either can be switched by hand afterwards.
-  const [tileDeg, setTileDeg] = useState<1 | 0.25>(0.25);
-  const showCellView = (view: "amount" | "change") => {
-    setCellView(view);
-    setTileDeg(view === "change" ? 1 : 0.25);
-  };
   const cellViewRef = useRef(cellView);
   cellViewRef.current = cellView;
+  // The size each view opens on is `openingTileDeg`; either can be switched by hand afterwards.
+  const [tileDeg, setTileDeg] = useState<1 | 0.25>(() => openingTileDeg(regions, "amount"));
+  const showCellView = (view: "amount" | "change") => {
+    setCellView(view);
+    setTileDeg(openingTileDeg(regions, view));
+  };
+  // The regions arrive after the map is made: a wide record then opens on 1-degree tiles.
+  useEffect(() => {
+    setTileDeg(openingTileDeg(regions, cellViewRef.current));
+  }, [regions]);
   const [cellsError, setCellsError] = useState<string | null>(null);
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
@@ -888,10 +886,6 @@ export function Globe({
       }
       cellImages.current = [];
     };
-    // The flat map shows the cells as one surface; the globe keeps a square per cell.
-    const surface = view === "flat";
-    map.setPaintProperty("cells-fill", "fill-opacity", surface ? 0 : CELLS_OPACITY);
-    if (!surface) clearImages();
     if (!showCells || !period) return clearImages();
     const controller = new AbortController();
     setCellsError(null);
@@ -906,24 +900,6 @@ export function Globe({
           years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
           halves: answer.halves, series: answer.series, error, busiest: busiestCells(answer.cells),
         });
-        if (!surface) {
-          map.setPaintProperty(
-            "cells-fill",
-            "fill-color",
-            cellView === "change"
-              ? [
-                  "case", ["==", ["get", "change"], null], TREND_NONE_CSS,
-                  ["interpolate", ["linear"], ["get", "change"],
-                    -2, TREND_RAMP[0], -1, TREND_RAMP[1], 0, TREND_RAMP[2], 1, TREND_RAMP[3], 2, TREND_RAMP[4]],
-                ]
-              : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
-                [
-                  "interpolate", ["linear"], ["get", "density"],
-                  0, CELL_RAMP[0], stops[0], CELL_RAMP[1], stops[1], CELL_RAMP[2], stops[2], CELL_RAMP[3], stops[3], CELL_RAMP[4],
-                ],
-          );
-          return;
-        }
         // Each cell gets the colour of its value, and the colours are spread into one surface with no steps.
         const painted: PaintedCell[] = squares.features.map(({ properties: cell }) => ({
           lat: cell.lat,
@@ -959,7 +935,7 @@ export function Globe({
         if (reason.name !== "AbortError") setCellsError(reason.message);
       });
     return () => controller.abort();
-  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError, view]);
+  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError]);
 
   /** Leave the table for the globe and fly to a cell, its neighbours around it. */
   function flyToCell(cell: { lat: number; lon: number }) {
@@ -1350,7 +1326,7 @@ export function Globe({
             </p>
             {cells && cellView === "amount" && (
               <>
-                <i className={view === "flat" ? "legend-ramp is-thermal" : "legend-ramp"} aria-hidden="true" />
+                <i className="legend-ramp is-thermal" aria-hidden="true" />
                 <div className="legend-ramp-ticks" aria-hidden="true">
                   <span>0</span>
                   <span>{stopLabel(cells.stops[0])}</span>

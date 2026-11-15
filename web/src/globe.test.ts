@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  type Rgba, DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, cellGroups, cellImage, cellSurface, rampRgba, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  type Rgba, DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, cellGroups, cellImage, cellSurface, openingTileDeg, rampRgba, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
   trendSentence, zeroNote, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, parseViewParam, flatFillZoom, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
@@ -432,6 +432,27 @@ describe("cellGroups", () => {
   });
   it("has no group without cells", () => {
     expect(cellGroups([])).toEqual([]);
+  });
+});
+
+describe("openingTileDeg", () => {
+  const argentina = { name: "Argentina", bbox: [-73.6, -55.1, -53.6, -21.7] as [number, number, number, number] };
+  const ukraine = { name: "Ukraine", bbox: [22, 44, 40.3, 52.5] as [number, number, number, number] };
+  const world = { name: "World", bbox: [-180, -90, 180, 90] as [number, number, number, number] };
+
+  it("opens how much on the grid's cells for a few countries", () => {
+    // 20 x 33.4 + 18.3 x 8.5 = 823.55 square degrees
+    expect(openingTileDeg([argentina, ukraine], "amount")).toBe(0.25);
+  });
+  it("opens how much on 1-degree tiles for the world", () => {
+    expect(openingTileDeg([world], "amount")).toBe(1); // 64,800 square degrees
+  });
+  it("opens how it changed on 1-degree tiles whatever the record", () => {
+    expect(openingTileDeg([ukraine], "change")).toBe(1);
+    expect(openingTileDeg([world], "change")).toBe(1);
+  });
+  it("opens on the grid's cells before the regions arrive", () => {
+    expect(openingTileDeg([], "amount")).toBe(0.25);
   });
 });
 

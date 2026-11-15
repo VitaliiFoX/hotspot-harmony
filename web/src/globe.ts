@@ -196,6 +196,21 @@ export function regionAt(regions: Region[], lon: number, lat: number): Region | 
   return regions.find(({ bbox: [w, s, e, n] }) => lon >= w && lon <= e && lat >= s && lat <= n) ?? null;
 }
 
+/** Square degrees of the regions' boxes above which the record counts as wide: a continent, or every country. */
+export const WIDE_RECORD_DEG2 = 5000;
+
+/**
+ * The tile size "Where it burns" opens on. "How it changed" opens on 1-degree tiles, the scale its error
+ * threshold was measured on. "How much" opens on the grid's own 0.25-degree cells, unless the record is wide:
+ * every cell of the world is 186,604 squares, which neither the request nor one image holds well, and seen from
+ * that far 1-degree tiles are the smoother picture. Either can be switched by hand afterwards.
+ */
+export function openingTileDeg(regions: Region[], cellView: "amount" | "change"): 1 | 0.25 {
+  if (cellView === "change") return 1;
+  const area = regions.reduce((sum, { bbox }) => sum + (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]), 0);
+  return area > WIDE_RECORD_DEG2 ? 1 : 0.25;
+}
+
 /** The point on the sphere halfway between the regions' box centres, so a globe centred there shows them all if it can. */
 export function regionsCenter(regions: Region[]): { lon: number; lat: number } {
   if (regions.length === 0) return { lon: 0, lat: 20 };
