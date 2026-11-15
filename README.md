@@ -8,9 +8,13 @@ Built during the 2026 NASA Space Apps Challenge for the challenge
 
 **Demo:** not deployed yet.
 
-![The dashboard on the harmonized record for Ukraine](docs/screenshots/dashboard-harmonized-ukraine.png)
+![The globe on 8 April 2020, with an area drawn around the Chornobyl exclusion zone](docs/screenshots/globe-chornobyl-2020-04-08.png)
 
-*The harmonized record for Ukraine. Switch to "Raw" and the yearly totals double from 2012, when VIIRS replaces MODIS; harmonized, they do not.*
+*One click on "Chornobyl exclusion zone, April 2020": the hotspots of 8 April 2020 on the globe, the area drawn around the zone, and below it the burning activity calendar of that area since 2000.*
+
+![The yearly chart for Ukraine: harmonized columns, the raw record as a line](docs/screenshots/dashboard-harmonized-ukraine.png)
+
+*Ukraine per year. The line is the raw record: it doubles from 2012, when VIIRS replaces MODIS. The columns, harmonized, do not. The strip on top says where each year comes from: MODIS as reported up to 2021, VIIRS NOAA-20 harmonized to MODIS from 2022.*
 
 ## Why
 
@@ -30,12 +34,38 @@ on which satellite was flying.
 | Aggregate to grid cell x month x sensor | done |
 | Fire cell-days on a 1 km grid, local solar day | done |
 | Harmonize the sensors and validate on held-out years | done, see [docs/METHOD.md](docs/METHOD.md) and [docs/VALIDATION.md](docs/VALIDATION.md) (generated) |
-| API (FastAPI): calendar, anomaly, CSV export, daily hotspots, validation | done; serves the raw and the harmonized series in fire cell-days, daily hotspot counts and coordinates, and the held-out error with its two baselines from `harmonization_report.json` |
-| Example areas | done; links under the filters open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
-| Peak burning months (critical periods) | done; a card under the calendar names the fewest months that hold 60% of a typical year of the area, with each month's share, a table view and arrow-key reading |
-| "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
-| Web app: 3D satellite globe, date/hour picker, filters, anomaly figures, calendar, seasonal and yearly charts, CSV export | done; a region can be picked on the globe, a box typed in degrees; the yearly chart draws the raw record as a line over the harmonized columns, so the 2012 sensor jump shows without switching; downloads: calendar data as CSV, every chart as PNG |
+| API (FastAPI): calendar, anomaly, CSV export, daily hotspots, validation | done; serves the raw and the harmonized series in fire cell-days, daily hotspot counts and coordinates with the days a sensor was down, and the held-out error with its two baselines from `harmonization_report.json` |
+| Web app: 3D satellite globe, date and time picker, filters, calendar, charts, downloads | done; a region can be picked on the globe or a box typed in degrees; the calendar opens on the log scale; downloads: calendar data as CSV, every chart as PNG |
 | Area of interest drawn on the globe | done; "Draw an area" places the corners of a polygon by click, and the calendar, the charts and both CSV downloads then count what is inside its outline; the area travels in the link (`&area=lon,lat;...`). Only inside the regions that have data |
+| Headline: the season's peak against its history | done; the busiest of the last 12 months of the period, against the same month in every year of the record |
+| Peak burning months (critical periods) | done; a card under the calendar names the fewest months that hold 60% of a typical year of the area, with each month's share, a table view and arrow-key reading |
+| The sensor jump on the yearly chart | done; the raw record is a line over the harmonized columns, and a strip names the sensor behind each year |
+| Sensor gap days on the globe | done; days a sensor was down are hatched in the date panel and called missing data, not a quiet day |
+| Example areas | done; links under the filters open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
+| "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
+| Public demo | not deployed yet |
+
+## How far to trust it
+
+Every year of 2012-2021, the years the method is fitted on, was left out in turn: the method was fitted on
+the other years, and its harmonized VIIRS for the left-out year was compared with what MODIS reported.
+The error is the sum of the misses over the sum of what MODIS reported (WAPE). From
+[docs/VALIDATION.md](docs/VALIDATION.md), written by `make validate NESTED=1` on 2026-11-14 21:50 UTC,
+where the method itself was also chosen again for every left-out year:
+
+| | Ukraine | Argentina |
+|---|---|---|
+| Country, per year | 2.7% | 4.8% |
+| Country, per month | 5.8% | 6.6% |
+| 1-degree tile, per month | 18.9% | 22.8% |
+| Sensor jump, mean yearly total 2012-2016 over 2007-2011: raw record | 2.00x | 1.32x |
+| The same, harmonized record | 0.90x | 0.66x |
+
+Up to 2021 the harmonized record is MODIS as reported, so the 0.66x in Argentina is what MODIS itself
+saw in 2012-2016, not something the harmonization did. Where the method loses: per year in Argentina
+one scaling factor for the whole country does better (3.5%), and that factor was fitted on all years,
+the scored one included. The method, the options that were tried and left out, and why, are in
+[docs/METHOD.md](docs/METHOD.md) and [ADR 0001](docs/adr/0001-harmonize-to-modis-equivalent-fire-cell-days.md).
 
 ## Run it
 
@@ -46,7 +76,7 @@ make data                  # download, normalize, aggregate, harmonize, validate
 make data COUNTRY=Ukraine  # one country only
 make api                   # serve the API on http://localhost:8000 (endpoints listed at /docs)
 make web                   # serve the web app on http://localhost:5173 (needs `make api` running, and Node 24)
-make test                  # pytest
+make test                  # pytest and the web tests (run `npm install` in web/ once)
 make lint                  # ruff + English-only check
 ```
 
@@ -103,9 +133,9 @@ The repo is set up so that a coding agent can start work without a briefing:
 The agent picks up every skill except the last two on its own. Update the copies with
 `npx skills update`; `skills-lock.json` records where each one came from.
 
-## Data
+## Data and credits
 
-All data come from NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m):
+The fire data come from NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m):
 <https://firms.modaps.eosdis.nasa.gov/>
 
 - MODIS on Terra and Aqua, from November 2000
@@ -116,6 +146,16 @@ The record ends in December 2025, the last year in the FIRMS country archive. 20
 
 By default the pipeline keeps presumed vegetation fires (FIRMS `type = 0`) and drops
 low-confidence detections. Both filters are set in `config/regions.yaml`.
+
+The globe in the web app shows:
+
+- Imagery: NASA GIBS (Blue Marble). We acknowledge the use of imagery provided by services from
+  NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information
+  System (ESDIS).
+- Borders, place labels and the street map: [OpenFreeMap](https://openfreemap.org/),
+  [OpenMapTiles](https://openmaptiles.org/), data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+
+The same credits are in the globe's legend.
 
 ## Contributing
 
@@ -128,11 +168,17 @@ low-confidence detections. Both filters are set in `config/regions.yaml`.
 
 ## Use of AI tools
 
-An AI coding assistant (Claude Code by Anthropic) is used to write the code, tests and
-documentation in this repository: the data pipeline, the API and the web app. No language
-model and no pretrained model runs inside the product. The harmonization fits its own small
-regression model (gradient boosting, scikit-learn) to the FIRMS data where that beats a plain table
-on held-out years; anomalies are plain statistics.
+- **Writing the code, tests and docs.** An AI coding assistant (Claude Code by Anthropic) was used to write
+  the code, tests and documentation in this repository: the data pipeline, the API and the web app,
+  under the team's direction and review. The rules it works by are in [`CLAUDE.md`](CLAUDE.md).
+- **Code review.** Pull requests were also reviewed with the same assistant, and its findings were
+  fixed in follow-up pull requests.
+- **Competitor scan.** The assistant read the public repositories of other entries to this challenge
+  (their README files and code) and summarised their methods, validation and demos, so that we could
+  see where this project stands. Ideas only: no code was copied.
+- **Inside the product, no language model runs.** The harmonization fits its own small models to the
+  FIRMS data (a table by fire power, and gradient boosting from scikit-learn where it beats the table on
+  held-out years); anomalies and peak burning months are plain statistics.
 
 ## License
 
