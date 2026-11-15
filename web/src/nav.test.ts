@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeSection, monthAllowed, pickMonth, sectionNumber, yearsBetween } from "./nav";
+import { activeSection, monthAllowed, pickMonth, sectionNumber, shiftMonth } from "./nav";
 
 describe("the section the reader is in", () => {
   // Three sections down the page; the sticky bar ends 60 px from the top of the window.
@@ -41,10 +41,6 @@ describe("the number over a section", () => {
 });
 
 describe("the months a period field offers", () => {
-  it("lists every year of the record", () => {
-    expect(yearsBetween("2000-11", "2003-02")).toEqual([2000, 2001, 2002, 2003]);
-    expect(yearsBetween("2025-01", "2025-12")).toEqual([2025]);
-  });
   it("allows the months inside the range, its ends included", () => {
     expect(monthAllowed(2000, 10, "2000-11", "2025-12")).toBe(false);
     expect(monthAllowed(2000, 11, "2000-11", "2025-12")).toBe(true);
@@ -55,5 +51,12 @@ describe("the months a period field offers", () => {
     expect(pickMonth(2010, 6, "2000-11", "2025-12")).toBe("2010-06");
     expect(pickMonth(2000, 3, "2000-11", "2025-12")).toBe("2000-11");
     expect(pickMonth(2025, 12, "2000-11", "2020-08")).toBe("2020-08");
+  });
+  it("steps a month across the turn of a year and stops at the ends of the range", () => {
+    expect(shiftMonth("2010-12", 1, "2000-11", "2025-12")).toBe("2011-01");
+    expect(shiftMonth("2011-02", -3, "2000-11", "2025-12")).toBe("2010-11");
+    expect(shiftMonth("2010-06", 12, "2000-11", "2025-12")).toBe("2011-06");
+    expect(shiftMonth("2001-02", -4, "2000-11", "2025-12")).toBe("2000-11");
+    expect(shiftMonth("2025-10", 3, "2000-11", "2025-12")).toBe("2025-12");
   });
 });

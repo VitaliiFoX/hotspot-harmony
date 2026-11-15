@@ -219,6 +219,8 @@ export const UK: Record<string, string> = {
   "Hotspots from 00:00 through {time} UTC": "Гарячі точки з 00:00 до {time} UTC",
   "Previous month": "Попередній місяць",
   "Next month": "Наступний місяць",
+  "Previous year": "Попередній рік",
+  "Next year": "Наступний рік",
   "Days of {month}": "Дні: {month}",
   ", {sensor} was down: missing data": ", {sensor} не працював: брак даних",
   "{sensor} was down: missing data, not a quiet day": "{sensor} не працював: брак даних, а не спокійний день",

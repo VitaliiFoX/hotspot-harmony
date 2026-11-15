@@ -24,13 +24,6 @@ export function sectionNumber(sections: Section[], id: string): string {
   return String(sections.findIndex((section) => section.id === id) + 1).padStart(2, "0");
 }
 
-/** The years a period field offers: every year from that of `min` to that of `max`, both `YYYY-MM`. */
-export function yearsBetween(min: string, max: string): number[] {
-  const first = Number(min.slice(0, 4));
-  const last = Number(max.slice(0, 4));
-  return Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => first + index);
-}
-
 /** Whether month `month` (1 to 12) of `year` lies inside `min` to `max`, both `YYYY-MM` and both included. */
 export function monthAllowed(year: number, month: number, min: string, max: string): boolean {
   const text = `${year}-${String(month).padStart(2, "0")}`;
@@ -44,4 +37,10 @@ export function monthAllowed(year: number, month: number, min: string, max: stri
 export function pickMonth(year: number, month: number, min: string, max: string): string {
   const text = `${year}-${String(month).padStart(2, "0")}`;
   return text < min ? min : text > max ? max : text;
+}
+
+/** The month `months` away from `value` (`YYYY-MM`), across the turn of a year, kept inside `min` to `max`. */
+export function shiftMonth(value: string, months: number, min: string, max: string): string {
+  const index = Number(value.slice(0, 4)) * 12 + Number(value.slice(5, 7)) - 1 + months;
+  return pickMonth(Math.floor(index / 12), (index % 12) + 1, min, max);
 }
