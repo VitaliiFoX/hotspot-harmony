@@ -598,16 +598,87 @@ fieldset > legend {
   border-color: var(--ink-2);
   color: var(--ink);
 }
-/* A month of a year as two lists: the same in every browser, in the language of the page. */
+/* A month of a year, picked as the region is: a button that names it over a card of the year's twelve months. */
+.month-field {
+  position: relative;
+}
 .month-field-label {
   display: block;
   margin-bottom: 6px;
   color: var(--ink-2);
   font-size: 12px;
 }
-.month-field-lists {
+.month-field-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 150px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.month-field-button:hover:not(:disabled) {
+  border-color: var(--ink-2);
+}
+.month-field-button > svg {
+  flex: none;
+  color: var(--ink-2);
+}
+.month-field-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  width: 240px;
+  max-width: calc(100vw - 72px);
+  padding: 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--axis);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card), 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.month-field-year {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+}
+.month-field-year > strong {
+  font-variant-numeric: tabular-nums;
+}
+.month-field-year > button {
+  width: 36px;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  font-size: 18px;
+  line-height: 1;
+}
+.month-field-year > button:hover:not(:disabled) {
+  background: var(--wash);
+}
+.month-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.month-field-grid > button {
+  padding: 0 6px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--radius-chip);
+}
+.month-field-grid > button:hover:not(:disabled) {
+  background: var(--wash);
+}
+.month-field-grid > button[aria-pressed="true"] {
+  border-color: var(--ink-2);
+  font-weight: 600;
+}
+.month-field-pop button:disabled {
+  color: var(--muted);
+  opacity: 0.45;
+  cursor: default;
 }
 /* The region as a search: a button that names the place, and under it a field over the list of what it finds. */
 .region-search {
@@ -1770,9 +1841,8 @@ td.text-cell {
   .filters > .month-field {
     flex: 1 1 100%;
   }
-  .month-field-lists > select {
-    flex: 1 1 0;
-    min-width: 0;
+  .month-field-button {
+    width: 100%;
   }
   .calendar-plate {
     padding: 10px 8px 10px 0;
