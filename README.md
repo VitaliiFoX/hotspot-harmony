@@ -166,7 +166,18 @@ country, so the errors per country are to be read in the report above.
 
 ## Run it
 
-Requires [uv](https://docs.astral.sh/uv/) and `make`.
+The live demo is at <https://hotspot-harmony.vlad-sapozhnyk.workers.dev>. To run it on your own machine you need
+[uv](https://docs.astral.sh/uv/), Node 24 and `make`. The shortest way, with the record of Ukraine only (a few
+minutes, no key):
+
+```bash
+git clone https://github.com/VitaliiFoX/hotspot-harmony.git && cd hotspot-harmony
+make data COUNTRY=Ukraine  # download the FIRMS archive of Ukraine, build and check the record
+make api                   # terminal 1: the API on http://localhost:8000
+make web                   # terminal 2: the web app on http://localhost:5173, open it in a browser
+```
+
+All commands:
 
 ```bash
 make data                  # download, normalize, aggregate, harmonize, validate every country in config/regions.yaml
