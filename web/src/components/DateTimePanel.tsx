@@ -77,6 +77,12 @@ export function DateTimePanel({
     return byDay;
   }, [monthDays, month]);
   const monthMax = Math.max(0, ...values.values());
+  // Days the sensor was down: no dot must read as "no fires" there.
+  const gaps = useMemo(
+    () => new Set(monthDays?.month === month ? (monthDays.gap_days ?? []).map((d) => dayKey(month, d)) : []),
+    [monthDays, month],
+  );
+  const gapSensor = sensorLabel(monthDays?.sensor ?? day?.sensor ?? "");
   const dayUnit = monthDays?.unit ?? day?.unit ?? "";
 
   const firstYear = Number(firstDay.slice(0, 4));
@@ -109,6 +115,8 @@ export function DateTimePanel({
   let status: string | null = null;
   if (loading) status = "Loading the hotspots of this day...";
   else if (error) status = `Cannot load this day: ${error}`;
+  else if (day?.sensor_gap)
+    status = `${sensorLabel(day.sensor)} was down on this day, so its hotspots are missing or incomplete: a low count or a zero here is missing data, not a quiet day.`;
   else if (day && day.count === 0) status = "No hotspots on this day.";
 
   return (
@@ -167,10 +175,12 @@ export function DateTimePanel({
             if (d === null) return <span key={`blank-${index}`} aria-hidden="true" />;
             const value = values.get(d);
             const dot = value === undefined ? null : dotStyle(value, monthMax);
+            const gap = gaps.has(d);
             const label =
-              value === undefined
+              (value === undefined
                 ? longDate(d)
-                : `${longDate(d)}, ${value.toLocaleString("en-US")} ${dayUnit}`.trim();
+                : `${longDate(d)}, ${value.toLocaleString("en-US")} ${dayUnit}`.trim())
+              + (gap ? `, ${gapSensor} was down: missing data` : "");
             return (
               <button
                 key={d}
@@ -178,7 +188,8 @@ export function DateTimePanel({
                   buttons.current[index] = element;
                 }}
                 type="button"
-                className="dt-day"
+                className={gap ? "dt-day is-gap" : "dt-day"}
+                title={gap ? `${gapSensor} was down: missing data, not a quiet day` : undefined}
                 disabled={!enabled(d)}
                 aria-pressed={d === date}
                 aria-label={label}

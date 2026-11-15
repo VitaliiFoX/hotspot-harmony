@@ -387,6 +387,7 @@ def test_day_lists_hotspots_by_minute_with_their_region(client_two_regions):
         "truncated": False,
         "regions": ["Testland", "Farland"],
         "hotspots": [[6.0, 6.0, 0, 0], [21.9877, 25.1234, 187, 1], [0.6, 0.4, 750, 0]],
+        "sensor_gap": False,
     }
 
 
@@ -527,3 +528,34 @@ def test_validation_of_a_report_that_chose_the_method_once_says_so(tmp_path):
 def test_validation_without_a_report_says_which_command_writes_it(client_harmonized):
     r = client_harmonized.get("/api/validation")
     assert r.status_code == 404 and "make validate NESTED=1" in r.json()["detail"]
+
+
+def report_with_gaps(tmp_path, config_text=CONFIG_TWO_REGIONS):
+    """The paper record plus a report whose two countries saw VIIRS S-NPP down on different days."""
+    config = build_data(tmp_path, harmonized=True, config_text=config_text)
+    report = json.loads(json.dumps(REPORT))
+    report["countries"]["Testland"]["sensor_gap_days"] = {
+        "viirs_snpp": ["2011-08-10", "2013-08-05"],  # 2011: the day view uses MODIS then, so it is not a gap
+        "viirs_noaa20": ["2013-08-06"],  # NOAA-20 is never used by the day view
+    }
+    report["countries"]["Farland"]["sensor_gap_days"] = {"viirs_snpp": ["2013-08-20"]}
+    (tmp_path / "agg" / "harmonization_report.json").write_text(json.dumps(report))
+    return TestClient(create_app(data_dir=tmp_path, config_path=config))
+
+
+def test_days_of_a_month_name_the_days_its_sensor_was_down_in_any_country(tmp_path):
+    client = report_with_gaps(tmp_path)
+    assert client.get("/api/hotspots/days?month=2013-08").json()["gap_days"] == [5, 20]
+    assert client.get("/api/hotspots/days?month=2011-08").json()["gap_days"] == []  # MODIS month
+
+
+def test_day_says_whether_its_sensor_was_down(tmp_path):
+    client = report_with_gaps(tmp_path)
+    assert client.get("/api/hotspots/day?date=2013-08-05").json()["sensor_gap"] is True
+    assert client.get("/api/hotspots/day?date=2013-08-06").json()["sensor_gap"] is False
+    assert client.get("/api/hotspots/day?date=2011-08-10").json()["sensor_gap"] is False
+
+
+def test_without_a_report_no_day_is_a_sensor_gap(client):
+    assert client.get("/api/hotspots/days?month=2013-08").json()["gap_days"] == []
+    assert client.get("/api/hotspots/day?date=2013-08-05").json()["sensor_gap"] is False

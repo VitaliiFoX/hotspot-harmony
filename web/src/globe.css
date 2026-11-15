@@ -511,6 +511,14 @@ html {
 .dt-day[aria-pressed="true"] .dt-dot {
   background: var(--selected-ink);
 }
+/* A day the sensor was down: hatched, so a missing dot never reads as a day without fire. */
+.stage .dt-day.is-gap {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 4px,
+    color-mix(in srgb, var(--stage-ink) 28%, transparent) 4px 5px
+  );
+}
 
 .dt-divider {
   height: 1px;

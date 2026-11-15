@@ -80,6 +80,8 @@ export type MonthDays = {
   unit: string;
   /** `day` is the day of the month; a full "YYYY-MM-DD" is accepted too. */
   days: { day: number | string; value: number }[];
+  /** Days of the month (1-31) when `sensor` was down: their count is missing data, not a quiet day. */
+  gap_days?: number[];
 };
 
 /** One hotspot: longitude, latitude, minute of the UTC day (0..1439), index into `regions`. */
@@ -94,6 +96,8 @@ export type DayHotspots = {
   truncated: boolean;
   regions: string[];
   hotspots: DayHotspot[];
+  /** True when `sensor` was down that day (a sensor gap of the harmonization report): the hotspots are incomplete. */
+  sensor_gap?: boolean;
 };
 
 export type Polygon = { type: "Polygon"; coordinates: number[][][] };
