@@ -465,13 +465,19 @@ export type PaintedCell = { lat: number; lon: number; color: Rgba };
  * opacity, so a colour next to nothing fades without turning dark.
  */
 export function cellSurface(cells: readonly PaintedCell[], cellDeg: number) {
-  const lons = cells.map((cell) => cell.lon);
-  const lats = cells.map((cell) => cell.lat);
+  // A loop, not Math.min(...lons): the record of every country has more cells than a call takes arguments.
+  let [minLon, minLat, maxLon, maxLat] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const { lat, lon } of cells) {
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
   // One empty cell around the cells, for the fade.
-  const west = Math.min(...lons) - cellDeg;
-  const south = Math.min(...lats) - cellDeg;
-  const columns = Math.round((Math.max(...lons) - west) / cellDeg) + 2;
-  const rows = Math.round((Math.max(...lats) - south) / cellDeg) + 2;
+  const west = minLon - cellDeg;
+  const south = minLat - cellDeg;
+  const columns = Math.round((maxLon - west) / cellDeg) + 2;
+  const rows = Math.round((maxLat - south) / cellDeg) + 2;
   // Red, green and blue already multiplied by alpha, then alpha.
   const grid = new Float32Array(columns * rows * 4);
   for (const { lat, lon, color } of cells) {
