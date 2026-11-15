@@ -82,10 +82,12 @@ export function App() {
         }
         // A link can carry a view: ?region=Ukraine&box=29,50,32,51.5&start=2010-01&end=2025-12&series=raw
         const query = new URLSearchParams(window.location.search);
-        const linked = loaded.regions.find((r) => r.name === query.get("region")) ?? region;
         const box = query.get("box")?.split(",") ?? [];
         // A drawn area comes as &area=lon,lat;lon,lat;... and wins over the box, which then holds its bounds.
+        // It also names the region, as when it is drawn here, so a link without &region= still says the right one.
         const drawn = parseAreaParam(query.get("area"));
+        const named = loaded.regions.find((r) => r.name === query.get("region")) ?? region;
+        const linked = (drawn && regionOfArea(loaded.regions, drawn)) || named;
         const series = query.get("series") as SeriesName | null;
         setFilters({
           region: linked.name,

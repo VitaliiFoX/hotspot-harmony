@@ -43,6 +43,8 @@ const HOTSPOT = "#ff8a3d";
 // The drawn area of interest: white on a dark casing, so it reads on the imagery and on the street map.
 const AREA_INK = "#ffffff";
 const AREA_CASING = "rgba(3, 5, 11, 0.75)";
+// Longer than the gap between the two clicks of a double-click on every common system setting.
+const DOUBLE_CLICK_MS = 500;
 const EMPTY = { type: "FeatureCollection" as const, features: [] };
 
 const ATMOSPHERE: SkySpecification["atmosphere-blend"] = ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0];
@@ -382,8 +384,10 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
   const [showTable, setShowTable] = useState(false);
   const regionsRef = useRef(regions);
   const pickRef = useRef(onPickRegion);
+  const focusRef = useRef(focusRegion);
   regionsRef.current = regions;
   pickRef.current = onPickRegion;
+  focusRef.current = focusRegion;
 
   // Drawing an area of interest. The map's handlers are attached once, so they read the drawing through
   // a ref; the state mirrors it for what React renders.
@@ -393,6 +397,10 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
   const [drawNote, setDrawNote] = useState<string | null>(null);
   const areaRef = useRef(area);
   areaRef.current = area;
+  // When a click on the first corner closed the outline: the rest of a double-click there is not a pick.
+  const closedAt = useRef(-Infinity);
+  // The line to the pointer is redrawn once a frame, however many mouse events arrive in between.
+  const paintFrame = useRef(0);
 
   function paintArea() {
     const source = mapRef.current?.getSource("area") as GeoJSONSource | undefined;
@@ -444,7 +452,10 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
       const point = map.project(corner);
       return Math.hypot(point.x - event.point.x, point.y - event.point.y) < pixels;
     };
-    if (corners.length >= 3 && near(corners[0], 12)) return finishDrawing();
+    if (corners.length >= 3 && near(corners[0], 12)) {
+      closedAt.current = performance.now();
+      return finishDrawing();
+    }
     // The second click of a double-click lands on the corner the first one placed.
     if (corners.length > 0 && near(corners[corners.length - 1], 6)) return;
     if (corners.length >= MAX_CORNERS) return setDrawNote(`An area can have at most ${MAX_CORNERS} corners.`);
@@ -508,25 +519,31 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
       setReady(true);
       addStreetMap(map);
     });
+    const justClosed = () => performance.now() - closedAt.current < DOUBLE_CLICK_MS;
     map.on("dblclick", (event) => {
-      if (!draw.current.active) return;
+      if (!draw.current.active && !justClosed()) return;
       event.preventDefault(); // no zoom: a double-click closes the outline
-      drawActions.current.finishDrawing();
+      if (draw.current.active) drawActions.current.finishDrawing();
     });
     map.on("click", (event) => {
       if (draw.current.active) return drawActions.current.addCorner(event);
+      if (justClosed()) return;
       const region = regionAt(regionsRef.current, event.lngLat.lng, event.lngLat.lat);
-      if (region) {
-        pickRef.current(region.name);
-        fitRegion(map, region);
-      }
+      if (!region) return;
+      pickRef.current(region.name);
+      // Inside the region already chosen a drawn area stays (see pickRegion in App), and so does the view on it.
+      if (areaRef.current && region.name === focusRef.current) return;
+      fitRegion(map, region);
     });
     map.on("mousemove", (event) => {
       if (draw.current.active) {
         const { lng, lat } = event.lngLat.wrap();
         draw.current.cursor = [lng, lat];
         map.getCanvas().style.cursor = "crosshair";
-        paintArea();
+        paintFrame.current ||= requestAnimationFrame(() => {
+          paintFrame.current = 0;
+          paintArea();
+        });
         return;
       }
       const inside = regionAt(regionsRef.current, event.lngLat.lng, event.lngLat.lat) !== null;
@@ -534,6 +551,8 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
     });
     mapRef.current = map;
     return () => {
+      cancelAnimationFrame(paintFrame.current);
+      paintFrame.current = 0;
       mapRef.current = null;
       setReady(false);
       map.remove();
