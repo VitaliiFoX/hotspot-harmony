@@ -14,7 +14,7 @@ import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells }
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
-  type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops, openingTileDeg,
+  type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, SURFACE_ALPHA, labelPoint, outsideMask, cellSentence, cellSquares, cellStops, openingTileDeg,
   changeLabel, flatFillZoom, hourFilters, hourInstant, zeroNote, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
   regionsCenter, trendSentence,
   type PaintedCell, type Rgba, cellGroups, cellImage, rampRgba,
@@ -149,6 +149,8 @@ const STYLE: StyleSpecification = {
     terminator: { type: "geojson", data: EMPTY },
     regions: { type: "geojson", data: EMPTY },
     country: { type: "geojson", data: EMPTY },
+    "country-mask": { type: "geojson", data: EMPTY },
+    "country-name": { type: "geojson", data: EMPTY },
     area: { type: "geojson", data: EMPTY },
     hotspots: { type: "geojson", data: EMPTY },
   },
@@ -346,6 +348,36 @@ const STYLE: StyleSpecification = {
         "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 1, 0.8, 6, 1.6],
         "circle-pitch-alignment": "map",
       },
+    },
+    {
+      // Outside the picked country the map goes dark, so its burning is the only lit place.
+      id: "country-mask",
+      type: "fill",
+      source: "country-mask",
+      paint: { "fill-color": "#03050b", "fill-opacity": 0.86, "fill-antialias": false },
+    },
+    {
+      id: "country-outline-top",
+      type: "line",
+      source: "country",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": AREA_INK, "line-width": 2.2 },
+    },
+    {
+      // The name of the picked country, over its middle.
+      id: "country-name",
+      type: "symbol",
+      source: "country-name",
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": LABEL_FONT,
+        "text-size": ["interpolate", ["linear"], ["zoom"], 2, 16, 6, 26],
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.12,
+        "text-max-width": 10,
+        "text-allow-overlap": true,
+      },
+      paint: { "text-color": "#ffffff", "text-halo-color": "rgba(3,5,11,0.85)", "text-halo-width": 2 },
     },
     {
       // Corners while drawing; the first is larger, because clicking it closes the outline.
@@ -941,7 +973,7 @@ export function Globe({
                 ? TREND_NONE
                 : rampRgba(cell.change, [-2, -1, 0, 1, 2], TREND_RAMP)
               : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
-                rampRgba(cell.density, [0, ...stops], THERMAL_RAMP),
+                rampRgba(cell.density, [0, ...stops], THERMAL_RAMP, SURFACE_ALPHA),
         }));
         clearImages();
         // Countries that lie far apart get an image each: one from Argentina to Ukraine would be mostly empty sea.
@@ -1000,6 +1032,12 @@ export function Globe({
     if (!ready || !map) return;
     (map.getSource("country") as GeoJSONSource).setData(
       country ? { type: "Feature", properties: {}, geometry: country.geometry } : EMPTY,
+    );
+    (map.getSource("country-mask") as GeoJSONSource).setData(country ? outsideMask(country.geometry) : EMPTY);
+    (map.getSource("country-name") as GeoJSONSource).setData(
+      country
+        ? { type: "Feature", properties: { name: t(country.name) }, geometry: { type: "Point", coordinates: labelPoint(country.view) } }
+        : EMPTY,
     );
     // A country that arrives with the page (from a link) is flown to; one picked here is already on its way.
     if (country && flownTo.current !== country.name) fitBox(map, country.view, 6);

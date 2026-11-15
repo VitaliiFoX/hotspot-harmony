@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  type Rgba, DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, cellGroups, cellImage, cellSurface, openingTileDeg, rampRgba, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  type Rgba, DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, cellGroups, cellImage, cellSurface, openingTileDeg, outsideMask, labelPoint, rampRgba, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
   trendSentence, zeroNote, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, parseViewParam, flatFillZoom, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
@@ -352,7 +352,30 @@ describe("the globe's table of cells", () => {
   });
 });
 
+describe("outsideMask", () => {
+  it("cuts each part of the country out of the world, winding against the outer ring", () => {
+    const area = (ring: number[][]) => ring.reduce((sum, [x, y], i) => sum + x * ring[(i + 1) % ring.length][1] - ring[(i + 1) % ring.length][0] * y, 0);
+    const square = [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]];
+    const mask = outsideMask({ type: "MultiPolygon", coordinates: [[square], [[[10, 10], [10, 12], [12, 12], [12, 10], [10, 10]]]] });
+    const [world, ...holes] = mask.geometry.coordinates;
+    expect(world[0]).toEqual([-180, -85]);
+    expect(holes).toHaveLength(2);
+    for (const hole of holes) expect(Math.sign(area(hole))).toBe(-Math.sign(area(world)));
+  });
+});
+
+describe("labelPoint", () => {
+  it("is the middle of the view", () => {
+    expect(labelPoint([22, 44, 40.3, 52.5])).toEqual([31.15, 48.25]);
+  });
+});
+
 describe("rampRgba", () => {
+  it("fades along the alphas when they are given", () => {
+    expect(rampRgba(0, [0, 1], ["#000000", "#ffffff"], [0, 1])).toEqual([0, 0, 0, 0]);
+    expect(rampRgba(0.5, [0, 1], ["#000000", "#ffffff"], [0, 1])[3]).toBe(0.5);
+  });
+
   const stops = [0, 10, 20];
   const colors = ["#000000", "#646464", "#ff0000"];
 
