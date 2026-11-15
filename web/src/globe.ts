@@ -2,7 +2,7 @@
 
 import type { FilterSpecification } from "maplibre-gl";
 import type { Bbox, DayHotspot, Region } from "./api";
-import { dayInWords, formatCount, monthName, monthTitle, t, tn } from "./i18n";
+import { dayInWords, formatCount, formatDecimal, monthName, monthTitle, t, tn } from "./i18n";
 
 
 /** The date the globe opens on when the record covers it: a busy day in the southern burning season. */
@@ -325,7 +325,7 @@ export function trendSentence(
   const early = yearsLabel(halves.early);
   const late = yearsLabel(halves.late);
   if (cell.trend === null || cell.trend === undefined) {
-    const amount = (cell.late ?? 0) >= 10 ? Math.round(cell.late ?? 0).toString() : (cell.late ?? 0).toFixed(1);
+    const amount = (cell.late ?? 0) >= 10 ? formatCount(Math.round(cell.late ?? 0)) : formatDecimal(cell.late ?? 0, 1);
     return t("No burning in {early}, so no change can be given; about {amount} a year in {late}.", { early, amount, late });
   }
   const percentChange = Math.round((cell.trend - 1) * 100);
@@ -335,7 +335,7 @@ export function trendSentence(
       late, early, signed, error: Math.round(error * 100),
     });
   }
-  return t("{late} against {early}: {signed} ({ratio}×).", { late, early, signed, ratio: cell.trend.toFixed(2) });
+  return t("{late} against {early}: {signed} ({ratio}×).", { late, early, signed, ratio: formatDecimal(cell.trend, 2) });
 }
 
 /** The cells that burn most a year, most first: what the globe's table lists in "Where it burns". */
@@ -389,8 +389,8 @@ export function cellSquares(cells: readonly BurnCell[], cellDeg: number, trendEr
 /** A colour step as the legend prints it: whole numbers from 10, one decimal below, two below 0.1. */
 export function stopLabel(value: number): string {
   if (value >= 10) return String(Math.round(value));
-  if (value >= 0.1) return value.toFixed(1);
-  return value.toFixed(2);
+  if (value >= 0.1) return formatDecimal(value, 1);
+  return formatDecimal(value, 2);
 }
 
 function quantile(sorted: number[], q: number): number {
@@ -414,7 +414,7 @@ export function cellStops(values: readonly number[]): [number, number, number, n
 
 /** What the hover over a cell says: how often, how much (also per 100 km2) and when it burns. */
 export function cellSentence(cell: BurnCell, years: number, unit: string, cellDeg: number): string {
-  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : cell.per_year.toFixed(1);
+  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : formatDecimal(cell.per_year, 1);
   const perArea = stopLabel((cell.per_year / cellAreaKm2(cell.lat, cellDeg)) * 100);
   return tn(
     cell.years_burning,
@@ -427,7 +427,7 @@ export function cellSentence(cell: BurnCell, years: number, unit: string, cellDe
 /** A cell centre as people read it: "48.13° N, 37.63° E". */
 export function latLonLabel(lat: number, lon: number): string {
   const part = (value: number, positive: string, negative: string) =>
-    `${(Math.round(Math.abs(value) * 100) / 100).toFixed(2)}° ${value >= 0 ? positive : negative}`;
+    `${formatDecimal(Math.round(Math.abs(value) * 100) / 100, 2)}° ${value >= 0 ? positive : negative}`;
   return `${part(lat, t("N"), t("S"))}, ${part(lon, t("E"), t("W"))}`;
 }
 

@@ -474,6 +474,9 @@ export const UK: Record<string, string> = {
     "У ці дні гарячих точок немає. Хмари й дим можуть приховати пожежі від супутників, тож це не доводить, що їх не було.",
   "No hotspots on this day. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.":
     "Цього дня гарячих точок немає. Хмари й дим можуть приховати пожежі від супутників, тож це не доводить, що їх не було.",
+  "Link copied": "Посилання скопійовано",
+  "Copy the address from the browser bar": "Скопіюйте адресу з рядка браузера",
+  "Share this view": "Поділитися",
   Day: "День",
   Period: "Період",
   Show: "Показати",
