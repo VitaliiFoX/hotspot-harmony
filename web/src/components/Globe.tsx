@@ -989,7 +989,7 @@ export function Globe({
                 <p className="legend-hint">
                   {cells.series === "raw"
                     ? "The raw record switches from MODIS to VIIRS in 2012, so much of this rise is the sensor, not the fire: switch the record to harmonized to see the change that is real."
-                    : `A change within the method's error for a 1-degree tile and a year (±${Math.round(cells.error * 100)}%) is shown as none. Grey: no burning in the first half. From 2022 the record also holds the fires of the war in the east and south.`}
+                    : `A change within the method's error for a 1-degree tile and a year (±${Math.round(cells.error * 100)}%) is shown as none.${cells.cellDeg < 1 ? " That error was measured on 1-degree tiles; on 0.25-degree cells it is larger, so a small change here can still be noise." : ""} Grey: no burning in the first half. From 2022 the record also holds the fires of the war in the east and south.`}
                 </p>
               </>
             )}
