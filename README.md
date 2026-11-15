@@ -181,6 +181,8 @@ The same credits are in the globe's legend.
 - **English only.** Code, comments, docs, UI text, commit messages, branch names, PR titles and
   bodies, issues and review comments are written in English, whoever or whatever writes them.
   CI fails when Cyrillic text shows up in a tracked file, a commit message, or a PR title or body.
+  The one exception is `web/src/uk.ts`: the page opens in English and can be switched to Ukrainian,
+  and those texts live there, keyed by the English ones.
 - Work on a branch and open a pull request against `main`.
 - Run `make test` and `make lint` before you push.
 - **No commits after Sunday 2026-11-15 23:59 Kyiv time (21:59 UTC).** The hackathon submission is frozen then.

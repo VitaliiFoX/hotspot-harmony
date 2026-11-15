@@ -160,6 +160,13 @@ describe("searchPlaces", () => {
     expect(names("hol")).toEqual(["Holia"]);
   });
 
+  it("finds a place by the name the page shows for it in another language", () => {
+    const shown = (name: string) => (name === "Ringland" ? "Kiltseland" : name === "Holia" ? "Dirkia" : name);
+    expect(searchPlaces([ringRegion], all, "kilts", shown).map((place) => place.name)).toEqual(["Ringland"]);
+    expect(searchPlaces([ringRegion], all, "dirk", shown).map((place) => place.name)).toEqual(["Holia"]);
+    expect(searchPlaces([ringRegion], all, "kilts").map((place) => place.name)).toEqual([]);
+  });
+
   it("finds nothing for a text no name holds", () => {
     expect(names("zzz")).toEqual([]);
   });

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { Meta, SeriesName } from "../api";
 import type { Corner } from "../area";
 import type { Country, Place } from "../countries";
@@ -34,7 +35,7 @@ type Props = {
   onPickCountry?: (name: string) => void;
 };
 
-const BOX_LABELS = ["West", "South", "East", "North"];
+const BOX_LABELS = ["West", "South", "East", "North"] as const;
 
 /** One row of controls that scope everything below it. */
 export function Filters({
@@ -62,7 +63,7 @@ export function Filters({
   return (
     <form className="filters" onSubmit={(event) => event.preventDefault()}>
       <label>
-        <span>Period, from</span>
+        <span>{t("Period, from")}</span>
         <input
           type="month"
           value={value.start}
@@ -73,7 +74,7 @@ export function Filters({
         />
       </label>
       <label>
-        <span>to</span>
+        <span>{t("to")}</span>
         <input
           type="month"
           value={value.end}
@@ -92,14 +93,14 @@ export function Filters({
       <fieldset>
         <legend>
           {drawn
-            ? `Area of interest: drawn on the globe, ${value.area?.length} corners. Its bounds, degrees`
+            ? t("Area of interest: drawn on the globe, {n} corners. Its bounds, degrees", { n: value.area?.length ?? 0 })
             : value.country
-              ? `Area of interest: ${value.country}, inside its border. Its bounds, degrees`
-              : "Area of interest, degrees"}
+              ? t("Area of interest: {country}, inside its border. Its bounds, degrees", { country: t(value.country) })
+              : t("Area of interest, degrees")}
         </legend>
         {BOX_LABELS.map((label, index) => (
           <label key={label} className="coordinate">
-            <span>{label}</span>
+            <span>{t(label)}</span>
             <input
               type="number"
               step="0.25"
@@ -112,12 +113,12 @@ export function Filters({
         ))}
         {fixed && (
           <button type="button" onClick={() => pickRegion(value.region)}>
-            {drawn ? "Remove the drawn area" : `Back to the box of ${value.region}`}
+            {drawn ? t("Remove the drawn area") : t("Back to the box of {region}", { region: t(value.region) })}
           </button>
         )}
       </fieldset>
       <fieldset>
-        <legend>Record</legend>
+        <legend>{t("Record")}</legend>
         <div className="segmented">
           {(["harmonized", "raw"] as SeriesName[]).map((name) => {
             const available = meta.series.includes(name);
@@ -127,17 +128,17 @@ export function Filters({
                 type="button"
                 aria-pressed={value.series === name}
                 disabled={!available}
-                title={available ? undefined : "The pipeline has not produced this record yet"}
+                title={available ? undefined : t("The pipeline has not produced this record yet")}
                 onClick={() => onChange({ ...value, series: name })}
               >
-                {name === "raw" ? "Raw" : "Harmonized"}
+                {name === "raw" ? t("Raw") : t("Harmonized")}
               </button>
             );
           })}
         </div>
       </fieldset>
       <button type="button" className="primary" onClick={onDownload} disabled={downloading || problem !== null || !hasData}>
-        {downloading ? "Preparing CSV..." : "Download hotspots (CSV)"}
+        {downloading ? t("Preparing CSV...") : t("Download hotspots (CSV)")}
       </button>
       {problem && (
         <p className="filter-problem" role="alert">

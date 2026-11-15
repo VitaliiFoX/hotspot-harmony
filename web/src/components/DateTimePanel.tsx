@@ -1,3 +1,4 @@
+import { formatCount, t } from "../i18n";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { DayHotspots, MonthDays } from "../api";
 import {
@@ -19,7 +20,7 @@ type Props = {
   onTime: (time: number) => void;
 };
 
-const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const;
 
 function Chevron({ direction }: { direction: "left" | "right" }) {
   return (
@@ -83,7 +84,7 @@ export function DateTimePanel({
     [monthDays, month],
   );
   const gapSensor = sensorLabel(monthDays?.sensor ?? day?.sensor ?? "");
-  const dayUnit = monthDays?.unit ?? day?.unit ?? "";
+  const dayUnit = t(monthDays?.unit ?? day?.unit ?? "");
 
   const firstYear = Number(firstDay.slice(0, 4));
   const lastYear = Number(lastDay.slice(0, 4));
@@ -113,25 +114,28 @@ export function DateTimePanel({
   }
 
   let status: string | null = null;
-  if (loading) status = "Loading the hotspots of this day...";
-  else if (error) status = `Cannot load this day: ${error}`;
+  if (loading) status = t("Loading the hotspots of this day...");
+  else if (error) status = t("Cannot load this day: {error}", { error });
   else if (day?.sensor_gap)
-    status = `${sensorLabel(day.sensor)} was down on this day, so its hotspots are missing or incomplete: a low count or a zero here is missing data, not a quiet day.`;
-  else if (day && day.count === 0) status = "No hotspots on this day.";
+    status = t(
+      "{sensor} was down on this day, so its hotspots are missing or incomplete: a low count or a zero here is missing data, not a quiet day.",
+      { sensor: sensorLabel(day.sensor) },
+    );
+  else if (day && day.count === 0) status = t("No hotspots on this day.");
 
   return (
-    <section className="dt-panel" aria-label="Date and time">
+    <section className="dt-panel" aria-label={t("Date and time")}>
       <div className="dt-sheen" aria-hidden="true" />
       <div className="dt-heading">
         <h2 className="dt-date">{longDate(date)}</h2>
-        <p className="dt-secondary">{`Hotspots from 00:00 through ${timeLabel(time)} UTC`}</p>
+        <p className="dt-secondary">{t("Hotspots from 00:00 through {time} UTC", { time: timeLabel(time) })}</p>
       </div>
 
       <div className="dt-month">
         <button
           type="button"
           className="dt-round"
-          aria-label="Previous month"
+          aria-label={t("Previous month")}
           disabled={!canGoBack}
           onClick={() => onDate(moveToMonth(date, shiftMonth(month, -1), firstDay, lastDay))}
         >
@@ -140,7 +144,7 @@ export function DateTimePanel({
         <div className="dt-month-name">
           <span>{longMonth(month).split(" ")[0]}</span>
           <label className="dt-year">
-            <span className="dt-hidden">Year</span>
+            <span className="dt-hidden">{t("Year")}</span>
             <select
               value={Number(month.slice(0, 4))}
               onChange={(event) => onDate(moveToMonth(date, `${event.target.value}-${month.slice(5, 7)}`, firstDay, lastDay))}
@@ -156,7 +160,7 @@ export function DateTimePanel({
         <button
           type="button"
           className="dt-round"
-          aria-label="Next month"
+          aria-label={t("Next month")}
           disabled={!canGoForward}
           onClick={() => onDate(moveToMonth(date, shiftMonth(month, 1), firstDay, lastDay))}
         >
@@ -167,10 +171,10 @@ export function DateTimePanel({
       <div className="dt-calendar">
         <div className="dt-weekdays" aria-hidden="true">
           {WEEKDAYS.map((name) => (
-            <span key={name}>{name.toUpperCase()}</span>
+            <span key={name}>{t(name).toUpperCase()}</span>
           ))}
         </div>
-        <div className="dt-days" role="group" aria-label={`Days of ${longMonth(month)}`} onKeyDown={onGridKey}>
+        <div className="dt-days" role="group" aria-label={t("Days of {month}", { month: longMonth(month) })} onKeyDown={onGridKey}>
           {grid.map((d, index) => {
             if (d === null) return <span key={`blank-${index}`} aria-hidden="true" />;
             const value = values.get(d);
@@ -179,8 +183,8 @@ export function DateTimePanel({
             const label =
               (value === undefined
                 ? longDate(d)
-                : `${longDate(d)}, ${value.toLocaleString("en-US")} ${dayUnit}`.trim())
-              + (gap ? `, ${gapSensor} was down: missing data` : "");
+                : `${longDate(d)}, ${formatCount(value)} ${dayUnit}`.trim())
+              + (gap ? t(", {sensor} was down: missing data", { sensor: gapSensor }) : "");
             return (
               <button
                 key={d}
@@ -189,7 +193,7 @@ export function DateTimePanel({
                 }}
                 type="button"
                 className={gap ? "dt-day is-gap" : "dt-day"}
-                title={gap ? `${gapSensor} was down: missing data, not a quiet day` : undefined}
+                title={gap ? t("{sensor} was down: missing data, not a quiet day", { sensor: gapSensor }) : undefined}
                 disabled={!enabled(d)}
                 aria-pressed={d === date}
                 aria-label={label}
@@ -214,7 +218,7 @@ export function DateTimePanel({
       <div className="dt-time">
         <div className="dt-time-row">
           <label htmlFor="dt-time" className="dt-secondary">
-            Time, UTC
+            {t("Time, UTC")}
           </label>
           <div className="dt-time-controls">
             <input
@@ -223,7 +227,7 @@ export function DateTimePanel({
               inputMode="numeric"
               maxLength={5}
               pattern="[0-2]?[0-9]:[0-5][0-9]"
-              aria-label="Time, UTC, as HH:MM"
+              aria-label={t("Time, UTC, as HH:MM")}
               value={draft ?? timeLabel(time)}
               onFocus={() => setPlaying(false)}
               onChange={(event) => setDraft(event.target.value)}
@@ -237,8 +241,8 @@ export function DateTimePanel({
               type="button"
               className="dt-round dt-play"
               aria-pressed={playing}
-              aria-label={playing ? "Pause the clock" : "Play the day"}
-              title={playing ? "Pause" : "Play the day"}
+              aria-label={playing ? t("Pause the clock") : t("Play the day")}
+              title={playing ? t("Pause") : t("Play the day")}
               onClick={togglePlay}
             >
               {playing ? (
@@ -276,29 +280,31 @@ export function DateTimePanel({
         {status && <p className="dt-status">{status}</p>}
         {!loading && !error && day && counts && day.count > 0 && (
           <>
-            <p className="dt-big">{counts.throughHour.toLocaleString("en-US")}</p>
-            <p className="dt-secondary">{`${day.unit} so far that day`}</p>
+            <p className="dt-big">{formatCount(counts.throughHour)}</p>
+            <p className="dt-secondary">{t("{unit} so far that day", { unit: t(day.unit) })}</p>
             <dl className="dt-figures">
               {day.regions.map((name, index) => (
                 <div key={name}>
-                  <dt>{name}</dt>
-                  <dd>{(counts.regions[index]?.throughHour ?? 0).toLocaleString("en-US")}</dd>
+                  <dt>{t(name)}</dt>
+                  <dd>{formatCount(counts.regions[index]?.throughHour ?? 0)}</dd>
                 </div>
               ))}
               <div>
-                <dt>Last hour</dt>
-                <dd>{counts.inHour.toLocaleString("en-US")}</dd>
+                <dt>{t("Last hour")}</dt>
+                <dd>{formatCount(counts.inHour)}</dd>
               </div>
             </dl>
             {day.truncated && (
               <p className="dt-status">
-                {`This day is cut at ${day.hotspots.length.toLocaleString("en-US")} hotspots, so the figures are lower than the full record.`}
+                {t("This day is cut at {count} hotspots, so the figures are lower than the full record.", {
+                  count: formatCount(day.hotspots.length),
+                })}
               </p>
             )}
           </>
         )}
       </div>
-      {day && <p className="dt-sensor">{`Sensor: ${sensorLabel(day.sensor)}`}</p>}
+      {day && <p className="dt-sensor">{t("Sensor: {sensor}", { sensor: sensorLabel(day.sensor) })}</p>}
     </section>
   );
 }

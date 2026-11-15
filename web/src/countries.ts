@@ -157,8 +157,14 @@ export type Place = {
  * What the region search lists for the typed text: the regions first, in the order of the config, then the
  * countries that are not a region, those whose name starts with the text before those that only hold it,
  * each group by name. A country matches by its name, an alias or its code. With no text everything is listed.
+ * `shown` gives the name the page writes for a place in its language, so that it is found by that name too.
  */
-export function searchPlaces(regions: readonly Region[], countries: readonly Country[], query: string): Place[] {
+export function searchPlaces(
+  regions: readonly Region[],
+  countries: readonly Country[],
+  query: string,
+  shown: (name: string) => string = (name) => name,
+): Place[] {
   const wanted = plain(query);
   const rank = (names: string[]): number => {
     if (wanted === "") return 0;
@@ -167,11 +173,11 @@ export function searchPlaces(regions: readonly Region[], countries: readonly Cou
     return plains.some((name) => name.includes(wanted)) ? 1 : -1;
   };
   const places: Place[] = regions
-    .filter((region) => rank([region.name]) >= 0)
+    .filter((region) => rank([region.name, shown(region.name)]) >= 0)
     .map((region) => ({ name: region.name, kind: "region", hasData: true }));
   const others = countries
     .filter((country) => !regions.some((region) => namesCountry(region.name, country)))
-    .map((country) => ({ country, rank: rank([country.name, ...country.aliases, country.iso]) }))
+    .map((country) => ({ country, rank: rank([country.name, shown(country.name), ...country.aliases, country.iso]) }))
     .filter((item) => item.rank >= 0)
     .sort((a, b) => a.rank - b.rank || a.country.name.localeCompare(b.country.name, "en"));
   for (const { country } of others) {

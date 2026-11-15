@@ -25,6 +25,7 @@ import { summaryLines, unusualMonths } from "./insights";
 import { TrustBlock } from "./components/TrustBlock";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
+import { LANGUAGES, type Lang, formatCount, language, t, tn } from "./i18n";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
 import { monthError, sameMonthRatio, verdictKind } from "./trust";
@@ -34,12 +35,28 @@ import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths } from "./s
 function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } {
   const [west, south, east, north] = box.map(Number);
   if (box.some((text) => text.trim() === "") || [west, south, east, north].some(Number.isNaN)) {
-    return { problem: "Fill in all four edges of the area." };
+    return { problem: t("Fill in all four edges of the area.") };
   }
-  if (west >= east) return { problem: "West must be smaller than east." };
-  if (south >= north) return { problem: "South must be smaller than north." };
-  if (west < -180 || east > 180 || south < -90 || north > 90) return { problem: "The area is off the map." };
+  if (west >= east) return { problem: t("West must be smaller than east.") };
+  if (south >= north) return { problem: t("South must be smaller than north.") };
+  if (west < -180 || east > 180 || south < -90 || north > 90) return { problem: t("The area is off the map.") };
   return { bbox: [west, south, east, north] };
+}
+
+/** Open the page again in another language: every text, number and date follows it. */
+function switchLanguage(lang: Lang) {
+  const query = new URLSearchParams(window.location.search);
+  if (lang === "en") query.delete("lang");
+  else query.set("lang", lang);
+  writeAddress(query);
+  window.location.reload();
+}
+
+/** A sentence the API wrote, in the page's language when it is one the page knows. */
+function serverText(text: string): string {
+  const outside = text.match(/^Part of the area is outside the regions that have data \((.*)\); only the covered part is counted\.$/);
+  if (outside) return t("Part of the area is outside the regions that have data ({names}); only the covered part is counted.", { names: outside[1] });
+  return t(text);
 }
 
 /** Put the view into the address, keeping the commas, colons and semicolons of its values readable. */
@@ -106,7 +123,7 @@ export function App() {
         setMeta(loaded);
         const region = loaded.regions[0];
         if (!region || !loaded.default_series || !loaded.first_month || !loaded.last_month) {
-          setError("The API has no data yet. Run `make data`, then restart `make api`.");
+          setError(t("The API has no data yet. Run `make data`, then restart `make api`."));
           return;
         }
         // A link can carry a view: ?region=Ukraine&box=29,50,32,51.5&start=2010-01&end=2025-12&series=raw
@@ -133,7 +150,7 @@ export function App() {
         const linkedDate = parseDateParam(query.get("date"));
         setDate(linkedDate ? clampDate(linkedDate, first, last) : defaultDate(first, last));
       })
-      .catch((reason: Error) => setError(`Cannot reach the API: ${reason.message}. Start it with \`make api\`.`));
+      .catch((reason: Error) => setError(t("Cannot reach the API: {reason}. Start it with `make api`.", { reason: reason.message })));
   }, []);
 
   // Keep the address in step with the filters, so the current view can be shared as a link.
@@ -348,30 +365,32 @@ export function App() {
       URL.revokeObjectURL(link.href);
       if (truncated && meta) {
         setExportNote(
-          `The export stops at ${meta.csv_row_limit.toLocaleString("en-US")} hotspots. Choose a smaller area or a shorter period to get all of them.`,
+          t("The export stops at {limit} hotspots. Choose a smaller area or a shorter period to get all of them.", {
+            limit: formatCount(meta.csv_row_limit),
+          }),
         );
       }
     } catch (reason) {
-      setExportNote(`The export failed: ${(reason as Error).message}`);
+      setExportNote(t("The export failed: {reason}", { reason: (reason as Error).message }));
     } finally {
       setDownloading(false);
     }
   }
 
-  const unit = calendar?.unit ?? "";
+  const unit = calendar ? t(calendar.unit) : "";
   // The harmonized record shows its parts as a strip over the yearly columns (MODIS as reported up to 2021, VIIRS
   // harmonized after); the raw record marks the month it switches sensor, where it jumps.
   const recordParts = calendar?.series === "harmonized" ? (meta?.harmonized_record ?? undefined) : undefined;
   const sensorSwitch =
     calendar?.series === "raw" && meta
-      ? { year: Number(meta.raw_sensor_switch.slice(0, 4)), label: "VIIRS S-NPP replaces MODIS" }
+      ? { year: Number(meta.raw_sensor_switch.slice(0, 4)), label: t("VIIRS S-NPP replaces MODIS") }
       : undefined;
   // The seasonal chart opens on the year of the headline month.
   const year = highlightYear ?? (calendar?.season_peak ?? calendar?.anomaly)?.year ?? 0;
   // Over the harmonized columns, the raw record as a line: its jump in 2012 is what the harmonization removes.
   const rawLine =
     calendar?.series === "harmonized" && otherCalendar?.series === "raw"
-      ? { yearly: otherCalendar.yearly, label: "Raw record", unit: otherCalendar.unit, columns: "Harmonized record" }
+      ? { yearly: otherCalendar.yearly, label: t("Raw record"), unit: t(otherCalendar.unit), columns: t("Harmonized record") }
       : undefined;
   // The trust block reads the country figure only when the area is the region's whole box, as checked.
   const regionBox = meta?.regions.find((r) => r.name === filters?.region)?.bbox;
@@ -414,7 +433,7 @@ export function App() {
           return peak.months.length ? { months: peak.months, held: peak.held } : null;
         })(),
         yearly: calendar.yearly,
-        unit: calendar.unit,
+        unit,
         headline: headline
           ? { year: headline.year, month: headline.month, ratio: headline.ratio, kind: verdictKind(headline.ratio, headlineError?.share ?? null) }
           : null,
@@ -482,17 +501,29 @@ export function App() {
       <div className="page" id="calendar">
         <header className="top">
           <div>
-            <p className="subtitle">Burning activity calendar from satellite fire hotspots, 2000 to 2025</p>
-            {picked && <h2 className="place">{picked.name}</h2>}
+            <p className="subtitle">{t("Burning activity calendar from satellite fire hotspots, 2000 to 2025")}</p>
+            {picked && <h2 className="place">{t(picked.name)}</h2>}
           </div>
-          <label className="theme">
-            <span>Theme</span>
-            <select value={themeChoice} onChange={(event) => setThemeChoice(event.target.value as ThemeChoice)}>
-              <option value="auto">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
+          <div className="top-options">
+            <label className="theme">
+              <span>{t("Language")}</span>
+              <select value={language()} onChange={(event) => switchLanguage(event.target.value as Lang)}>
+                {LANGUAGES.map((item) => (
+                  <option key={item.lang} value={item.lang}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="theme">
+              <span>{t("Theme")}</span>
+              <select value={themeChoice} onChange={(event) => setThemeChoice(event.target.value as ThemeChoice)}>
+                <option value="auto">{t("System")}</option>
+                <option value="light">{t("Light")}</option>
+                <option value="dark">{t("Dark")}</option>
+              </select>
+            </label>
+          </div>
         </header>
 
         {meta && filters && (
@@ -510,15 +541,15 @@ export function App() {
         )}
 
         {meta && (
-          <nav className="presets" aria-label="Example areas">
-            <span>Examples</span>
+          <nav className="presets" aria-label={t("Example areas")}>
+            <span>{t("Examples")}</span>
             {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
               <a
                 key={preset.name}
-                href={presetHref(preset, new URLSearchParams(themeChoice === "auto" ? "" : `theme=${themeChoice}`))}
-                title={preset.note}
+                href={presetHref(preset, new URLSearchParams(window.location.search))}
+                title={t(preset.note)}
               >
-                {preset.name}
+                {t(preset.name)}
               </a>
             ))}
           </nav>
@@ -526,15 +557,18 @@ export function App() {
 
         {noData && picked && meta && filters && (
           <section className="card no-data" role="status">
-            <h2>{`No record for ${picked.name} yet`}</h2>
+            <h2>{t("No record for {country} yet", { country: t(picked.name) })}</h2>
             <p>
-              {`This build holds the hotspots of ${meta.regions.map((r) => r.name).join(" and ")}. Once the record of ${picked.name} is loaded, its burning activity calendar, peak months, yearly totals and unusual months appear here, counted inside its border.`}
+              {t(
+                "This build holds the hotspots of {regions}. Once the record of {country} is loaded, its burning activity calendar, peak months, yearly totals and unusual months appear here, counted inside its border.",
+                { regions: meta.regions.map((r) => t(r.name)).join(t(" and ")), country: t(picked.name) },
+              )}
             </p>
             <p>
-              To load it, add the country to <code>config/regions.yaml</code> and run <code>make data</code>; nothing on
-              this page has to change.
+              {t("To load it, add the country to")} <code>config/regions.yaml</code> {t("and run")} <code>make data</code>
+              {t("; nothing on this page has to change.")}
             </p>
-            <button type="button" onClick={() => pickCountry(null)}>{`Back to ${filters.region}`}</button>
+            <button type="button" onClick={() => pickCountry(null)}>{t("Back to {region}", { region: t(filters.region) })}</button>
           </section>
         )}
 
@@ -546,32 +580,52 @@ export function App() {
         {exportNote && <p className="notice">{exportNote}</p>}
         {!noData && picked && calendar && (
           <p className="notice">
-            {`Counted inside the border of ${picked.name}: a grid cell belongs to the country when its centre is inside the border, so a cell on the border counts in full or not at all. Border: Natural Earth, simplified to about 2 km.`}
+            {t(
+              "Counted inside the border of {country}: a grid cell belongs to the country when its centre is inside the border, so a cell on the border counts in full or not at all. Border: Natural Earth, simplified to about 2 km.",
+              { country: t(picked.name) },
+            )}
           </p>
         )}
         {!noData && calendar?.warnings.map((warning) => (
           <p className="notice" key={warning}>
-            {warning}
+            {serverText(warning)}
           </p>
         ))}
         {!noData && calendar?.series === "raw" && meta && (
           <p className="notice">
-            {`Raw record: MODIS before ${monthLabel(meta.raw_sensor_switch)}, VIIRS S-NPP from then on, counted as ${calendar.unit} with no correction. VIIRS sees many small fires that MODIS misses, so the values jump at that month and cannot be compared across it.`}
+            {t(
+              "Raw record: MODIS before {month}, VIIRS S-NPP from then on, counted as {unit} with no correction. VIIRS sees many small fires that MODIS misses, so the values jump at that month and cannot be compared across it.",
+              { month: monthLabel(meta.raw_sensor_switch), unit },
+            )}
           </p>
         )}
         {!noData && calendar?.series === "harmonized" && meta?.harmonized_record && (
           <p className="notice">
-            {`Harmonized record, in ${calendar.unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so ${meta.harmonized_record[0].from.slice(0, 4)} and ${meta.last_month?.slice(0, 4)} can be compared. ${meta.harmonized_record.map((part) => `${part.label}: ${part.to ? `${monthLabel(part.from)} to ${monthLabel(part.to)}` : `from ${monthLabel(part.from)}`}`).join("; ")}.`}
+            {t(
+              "Harmonized record, in {unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so {first} and {last} can be compared. {parts}.",
+              {
+                unit,
+                first: meta.harmonized_record[0].from.slice(0, 4),
+                last: meta.last_month?.slice(0, 4) ?? "",
+                parts: meta.harmonized_record
+                  .map((part) =>
+                    part.to
+                      ? t("{label}: {from} to {to}", { label: t(part.label), from: monthLabel(part.from), to: monthLabel(part.to) })
+                      : t("{label}: from {from}", { label: t(part.label), from: monthLabel(part.from) }),
+                  )
+                  .join("; "),
+              },
+            )}
             {trusted && (
               <>
                 {" "}
-                <a href="#trust">How far to trust it</a>
+                <a href="#trust">{t("How far to trust it")}</a>
               </>
             )}
           </p>
         )}
 
-        {!noData && !calendar && !error && <p className="notice">Loading the record...</p>}
+        {!noData && !calendar && !error && <p className="notice">{t("Loading the record...")}</p>}
 
         {!noData && calendar && (
           <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
@@ -589,13 +643,18 @@ export function App() {
 
             <ChartCard
               id="burning-calendar"
-              title="Burning activity calendar"
-              subtitle={`Monthly ${unit} in the area, over ${calendar.cells_used.toLocaleString("en-US")} ${calendar.cells_used === 1 ? "grid cell" : "grid cells"} with burning`}
+              title={t("Burning activity calendar")}
+              subtitle={tn(
+                calendar.cells_used,
+                "Monthly {unit} in the area, over {count} grid cell with burning",
+                "Monthly {unit} in the area, over {count} grid cells with burning",
+                { unit, count: formatCount(calendar.cells_used) },
+              )}
               options={
-                <div className="segmented" role="group" aria-label="Colour scale">
+                <div className="segmented" role="group" aria-label={t("Colour scale")}>
                   {(["linear", "log"] as ScaleMode[]).map((mode) => (
                     <button key={mode} type="button" aria-pressed={scaleMode === mode} onClick={() => setScaleMode(mode)}>
-                      {mode === "log" ? "Log scale" : "Linear scale"}
+                      {mode === "log" ? t("Log scale") : t("Linear scale")}
                     </button>
                   ))}
                 </div>
@@ -615,7 +674,7 @@ export function App() {
               pngName={exportName(["burning-activity-calendar", ...fileParts], "png")}
               downloads={
                 <button type="button" className="ghost download" onClick={saveCalendarCsv}>
-                  Download calendar data (CSV)
+                  {t("Download calendar data (CSV)")}
                 </button>
               }
             />
@@ -628,8 +687,16 @@ export function App() {
             />
 
             <ChartCard
-              title="Peak burning months"
-              subtitle={`The fewest months that together hold ${Math.round(PEAK_SHARE * 100)}% of a typical year, where a typical year adds up each month's median over every year of the record. Burning activity, not fire risk.${calendar.series === "raw" ? " Counted on the raw record, which jumps in 2012; the harmonized record compares the years fairly." : ""}`}
+              title={t("Peak burning months")}
+              subtitle={
+                t(
+                  "The fewest months that together hold {share}% of a typical year, where a typical year adds up each month's median over every year of the record. Burning activity, not fire risk.",
+                  { share: Math.round(PEAK_SHARE * 100) },
+                ) +
+                (calendar.series === "raw"
+                  ? ` ${t("Counted on the raw record, which jumps in 2012; the harmonized record compares the years fairly.")}`
+                  : "")
+              }
               chart={
                 <>
                   <PeakMonthsSummary climatology={calendar.climatology} />
@@ -649,11 +716,11 @@ export function App() {
 
             <div className="pair">
               <ChartCard
-                title={`${year} against the usual season`}
-                subtitle={`Monthly ${unit}; median and middle half over all years`}
+                title={t("{year} against the usual season", { year })}
+                subtitle={t("Monthly {unit}; median and middle half over all years", { unit })}
                 options={
                   <label className="inline">
-                    <span>Year</span>
+                    <span>{t("Year")}</span>
                     <select value={year} onChange={(event) => setHighlightYear(Number(event.target.value))}>
                       {calendar.yearly.map((item) => (
                         <option key={item.year}>{item.year}</option>
@@ -666,11 +733,14 @@ export function App() {
                 pngName={exportName([`season-${year}`, ...fileParts], "png")}
               />
               <ChartCard
-                title="Burning per year"
+                title={t("Burning per year")}
                 subtitle={
                   rawLine && meta
-                    ? `Yearly ${unit} within the selected period. The line is the raw record: MODIS before ${monthLabel(meta.raw_sensor_switch)}, VIIRS S-NPP from then on, in ${rawLine.unit} with no correction`
-                    : `Yearly ${unit} within the selected period`
+                    ? t(
+                        "Yearly {unit} within the selected period. The line is the raw record: MODIS before {month}, VIIRS S-NPP from then on, in {lineUnit} with no correction",
+                        { unit, month: monthLabel(meta.raw_sensor_switch), lineUnit: rawLine.unit },
+                      )
+                    : t("Yearly {unit} within the selected period", { unit })
                 }
                 chart={
                   <YearlyChart
@@ -691,7 +761,7 @@ export function App() {
         )}
 
         <footer className="credit">
-          Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). This project is not affiliated with or endorsed by NASA.
+          {t("Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). This project is not affiliated with or endorsed by NASA.")}
         </footer>
       </div>
     </>

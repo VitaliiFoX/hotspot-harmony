@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Region } from "../api";
 import { type Country, type Place, searchPlaces } from "../countries";
+import { t } from "../i18n";
 
 type Props = {
   regions: Region[];
@@ -33,7 +34,8 @@ export function RegionSearch({ regions, countries, current, onPick }: Props) {
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const id = useId();
-  const places = useMemo(() => searchPlaces(regions, countries, query), [regions, countries, query]);
+  // A place is found by its English name and by the name the page shows for it.
+  const places = useMemo(() => searchPlaces(regions, countries, query, (name) => t(name)), [regions, countries, query]);
 
   function close(refocus: boolean) {
     setOpen(false);
@@ -80,7 +82,7 @@ export function RegionSearch({ regions, countries, current, onPick }: Props) {
   return (
     <div className="region-search" ref={root}>
       <span className="region-search-label" id={`${id}-label`}>
-        Region
+        {t("Region")}
       </span>
       <button
         ref={button}
@@ -90,11 +92,11 @@ export function RegionSearch({ regions, countries, current, onPick }: Props) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-labelledby={`${id}-label ${id}-button`}
-        title="Search a region or a country"
+        title={t("Search a region or a country")}
         onClick={() => (open ? close(false) : setOpen(true))}
       >
         <SearchIcon />
-        <span>{current}</span>
+        <span>{t(current)}</span>
       </button>
       {open && (
         <div className="region-search-pop">
@@ -103,8 +105,8 @@ export function RegionSearch({ regions, countries, current, onPick }: Props) {
             role="combobox"
             autoFocus
             value={query}
-            placeholder="Search a country"
-            aria-label="Search a region or a country"
+            placeholder={t("Search a country")}
+            aria-label={t("Search a region or a country")}
             aria-expanded="true"
             aria-controls={`${id}-list`}
             aria-activedescendant={places[active] ? `${id}-option-${active}` : undefined}
@@ -114,7 +116,7 @@ export function RegionSearch({ regions, countries, current, onPick }: Props) {
             }}
             onKeyDown={onKeyDown}
           />
-          <ul ref={list} role="listbox" id={`${id}-list`} aria-label="Regions and countries">
+          <ul ref={list} role="listbox" id={`${id}-list`} aria-label={t("Regions and countries")}>
             {places.map((place, index) => (
               <li
                 key={`${place.kind}-${place.name}`}
@@ -126,11 +128,11 @@ export function RegionSearch({ regions, countries, current, onPick }: Props) {
                 onMouseEnter={() => setActive(index)}
                 onClick={() => pick(place)}
               >
-                <span>{place.name}</span>
-                {place.kind === "region" ? <small>record loaded</small> : !place.hasData && <small>no record yet</small>}
+                <span>{t(place.name)}</span>
+                {place.kind === "region" ? <small>{t("record loaded")}</small> : !place.hasData && <small>{t("no record yet")}</small>}
               </li>
             ))}
-            {places.length === 0 && <li className="region-search-empty">No country matches</li>}
+            {places.length === 0 && <li className="region-search-empty">{t("No country matches")}</li>}
           </ul>
         </div>
       )}
