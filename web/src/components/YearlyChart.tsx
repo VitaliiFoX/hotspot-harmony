@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { type KeyboardEvent, type PointerEvent, useState } from "react";
 import type { RecordPart, YearTotal } from "../api";
 import { useElementWidth } from "../hooks";
@@ -80,8 +81,8 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props)
             ...(line && lineValues[active] !== null
               ? [{ value: formatValue(lineValues[active]!), label: `${line.label}, ${line.unit}` }]
               : []),
-            ...(record ? [{ value: "From", label: partsOfYear(record, yearly[active].year).join(" and ") }] : []),
-            ...(yearly[active].complete ? [] : [{ value: "Partial", label: "not all 12 months are covered" }]),
+            ...(record ? [{ value: t("From"), label: partsOfYear(record, yearly[active].year).map((part) => t(part)).join(t(" and ")) }] : []),
+            ...(yearly[active].complete ? [] : [{ value: t("Partial"), label: t("not all 12 months are covered") }]),
           ],
         };
 
@@ -91,12 +92,12 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props)
         <ul className="legend">
           <li>
             <span className="box-key" style={{ background: "var(--accent)" }} />
-            {line ? (hasPartial ? `${line.columns}, full year` : line.columns) : "Full year"}
+            {line ? (hasPartial ? t("{columns}, full year", { columns: line.columns }) : line.columns) : t("Full year")}
           </li>
           {hasPartial && (
             <li>
               <span className="box-key" style={{ background: "var(--accent-soft)" }} />
-              Partial year
+              {t("Partial year")}
             </li>
           )}
           {line && (
@@ -112,7 +113,11 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props)
           width={width}
           height={HEIGHT}
           role="img"
-          aria-label={`${unit} per year${line ? `, with the ${line.label.toLowerCase()} as a line` : ""}. Use the left and right arrow keys to read years.`}
+          aria-label={
+            line
+              ? t("{unit} per year, with the {line} as a line. Use the left and right arrow keys to read years.", { unit, line: line.label.toLowerCase() })
+              : t("{unit} per year. Use the left and right arrow keys to read years.", { unit })
+          }
           tabIndex={0}
           onPointerMove={onPointerMove}
           onPointerLeave={() => setActive(null)}
@@ -163,7 +168,8 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props)
             const x1 = MARGIN.left + span.start * slot;
             const x2 = MARGIN.left + span.end * slot;
             const room = x2 - x1 - 8;
-            const text = span.label.length * CHAR_WIDTH <= room ? span.label
+            const label = t(span.label);
+            const text = label.length * CHAR_WIDTH <= room ? label
               : (SHORT[span.sensor] ?? "").length * CHAR_WIDTH <= room ? SHORT[span.sensor] : "";
             return (
               <g key={span.sensor}>
@@ -207,14 +213,20 @@ export function YearlyTable({ yearly, unit, line, record }: Props) {
   const lineValues = line ? valuesByYear(yearly, line.yearly) : [];
   return (
     <table>
-      <caption>{line ? `Per year: ${line.columns.toLowerCase()} in ${unit}, ${line.label.toLowerCase()} in ${line.unit}` : `${unit} per year`}</caption>
+      <caption>
+        {line
+          ? t("Per year: {columns} in {unit}, {line} in {lineUnit}", {
+              columns: line.columns.toLowerCase(), unit, line: line.label.toLowerCase(), lineUnit: line.unit,
+            })
+          : t("{unit} per year", { unit })}
+      </caption>
       <thead>
         <tr>
-          <th scope="col">Year</th>
-          <th scope="col">{line ? line.columns : "Total"}</th>
+          <th scope="col">{t("Year")}</th>
+          <th scope="col">{line ? line.columns : t("Total")}</th>
           {line && <th scope="col">{line.label}</th>}
-          <th scope="col">Coverage</th>
-          {record && <th scope="col">From</th>}
+          <th scope="col">{t("Coverage")}</th>
+          {record && <th scope="col">{t("From")}</th>}
         </tr>
       </thead>
       <tbody>
@@ -223,8 +235,8 @@ export function YearlyTable({ yearly, unit, line, record }: Props) {
             <th scope="row">{item.year}</th>
             <td>{formatValue(item.value)}</td>
             {line && <td>{lineValues[index] === null ? "" : formatValue(lineValues[index]!)}</td>}
-            <td>{item.complete ? "Full year" : "Partial year"}</td>
-            {record && <td className="text-cell">{partsOfYear(record, item.year).join(" and ")}</td>}
+            <td>{item.complete ? t("Full year") : t("Partial year")}</td>
+            {record && <td className="text-cell">{partsOfYear(record, item.year).map((part) => t(part)).join(t(" and "))}</td>}
           </tr>
         ))}
       </tbody>

@@ -1,7 +1,8 @@
+import { monthShort, monthTitle, t } from "../i18n";
 import { type KeyboardEvent, type PointerEvent, useState } from "react";
 import type { Climatology, MonthValue } from "../api";
 import { useElementWidth } from "../hooks";
-import { MONTHS, MONTHS_LONG, formatTick, formatValue, niceTicks } from "../scale";
+import { MONTHS, formatTick, formatValue, niceTicks } from "../scale";
 import { type Tip, Tooltip } from "./Tooltip";
 
 type Props = { months: MonthValue[]; climatology: Climatology[]; year: number; unit: string };
@@ -40,10 +41,10 @@ export function SeasonalChart({ months, climatology, year, unit }: Props) {
     const rows = [];
     if (ofYear.has(month)) rows.push({ value: formatValue(ofYear.get(month)!), label: String(year), swatch: "var(--accent)" });
     if (c) {
-      rows.push({ value: formatValue(c.median), label: "median", swatch: "var(--muted)" });
-      rows.push({ value: `${formatValue(c.p25)} to ${formatValue(c.p75)}`, label: "middle half of years" });
+      rows.push({ value: formatValue(c.median), label: t("median"), swatch: "var(--muted)" });
+      rows.push({ value: t("{low} to {high}", { low: formatValue(c.p25), high: formatValue(c.p75) }), label: t("middle half of years") });
     }
-    return { ...pointer, title: MONTHS_LONG[month - 1], rows };
+    return { ...pointer, title: monthTitle(month), rows };
   }
 
   function onPointerMove(event: PointerEvent<SVGSVGElement>) {
@@ -71,11 +72,11 @@ export function SeasonalChart({ months, climatology, year, unit }: Props) {
         </li>
         <li>
           <span className="line-key" style={{ background: "var(--muted)" }} />
-          Median of all years
+          {t("Median of all years")}
         </li>
         <li>
           <span className="band-key" />
-          Middle half of years (25th to 75th percentile)
+          {t("Middle half of years (25th to 75th percentile)")}
         </li>
       </ul>
       {width > 0 && (
@@ -83,7 +84,7 @@ export function SeasonalChart({ months, climatology, year, unit }: Props) {
           width={width}
           height={HEIGHT}
           role="img"
-          aria-label={`Monthly ${unit} in ${year} against the median of all years. Use the left and right arrow keys to read months.`}
+          aria-label={t("Monthly {unit} in {year} against the median of all years. Use the left and right arrow keys to read months.", { unit, year })}
           tabIndex={0}
           onPointerMove={onPointerMove}
           onPointerLeave={() => setActive(null)}
@@ -100,7 +101,7 @@ export function SeasonalChart({ months, climatology, year, unit }: Props) {
           ))}
           {MONTHS.map((name, index) => (
             <text key={name} className="tick" x={x(index + 1)} y={HEIGHT - 8} textAnchor="middle">
-              {name}
+              {monthShort(index + 1)}
             </text>
           ))}
           <polygon className="band" points={band} />
@@ -124,21 +125,21 @@ export function SeasonalTable({ months, climatology, year, unit }: Props) {
   const ofYear = new Map(months.filter((m) => m.year === year).map((m) => [m.month, m.value]));
   return (
     <table>
-      <caption>{`Monthly ${unit}: ${year} against all years`}</caption>
+      <caption>{t("Monthly {unit}: {year} against all years", { unit, year })}</caption>
       <thead>
         <tr>
-          <th scope="col">Month</th>
+          <th scope="col">{t("Month")}</th>
           <th scope="col">{year}</th>
-          <th scope="col">Median</th>
-          <th scope="col">25th percentile</th>
-          <th scope="col">75th percentile</th>
-          <th scope="col">Years</th>
+          <th scope="col">{t("Median")}</th>
+          <th scope="col">{t("25th percentile")}</th>
+          <th scope="col">{t("75th percentile")}</th>
+          <th scope="col">{t("Years")}</th>
         </tr>
       </thead>
       <tbody>
         {climatology.map((c) => (
           <tr key={c.month}>
-            <th scope="row">{MONTHS_LONG[c.month - 1]}</th>
+            <th scope="row">{monthTitle(c.month)}</th>
             <td>{ofYear.has(c.month) ? formatValue(ofYear.get(c.month)!) : ""}</td>
             <td>{formatValue(c.median)}</td>
             <td>{formatValue(c.p25)}</td>

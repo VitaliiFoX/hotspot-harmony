@@ -2,11 +2,8 @@
 
 import type { FilterSpecification } from "maplibre-gl";
 import type { Bbox, DayHotspot, Region } from "./api";
+import { dayInWords, formatCount, monthName, monthTitle, t, tn } from "./i18n";
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 /** The date the globe opens on when the record covers it: a busy day in the southern burning season. */
 export const PREFERRED_DATE = "2025-08-20";
@@ -88,12 +85,12 @@ export function dayKey(month: string, day: number | string): string {
 
 /** "20 August 2025". */
 export function longDate(date: string): string {
-  return `${Number(date.slice(8, 10))} ${MONTH_NAMES[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`;
+  return dayInWords(date);
 }
 
 /** "August 2025". */
 export function longMonth(month: string): string {
-  return `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
+  return `${monthTitle(Number(month.slice(5, 7)))} ${month.slice(0, 4)}`;
 }
 
 /** "18:00". */
@@ -290,14 +287,16 @@ export function trendSentence(
   const late = yearsLabel(halves.late);
   if (cell.trend === null || cell.trend === undefined) {
     const amount = (cell.late ?? 0) >= 10 ? Math.round(cell.late ?? 0).toString() : (cell.late ?? 0).toFixed(1);
-    return `No burning in ${early}, so no change can be given; about ${amount} a year in ${late}.`;
+    return t("No burning in {early}, so no change can be given; about {amount} a year in {late}.", { early, amount, late });
   }
   const percentChange = Math.round((cell.trend - 1) * 100);
-  const signed = percentChange > 0 ? `+${percentChange}%` : percentChange < 0 ? `−${-percentChange}%` : "no change";
+  const signed = percentChange > 0 ? `+${percentChange}%` : percentChange < 0 ? `−${-percentChange}%` : t("no change");
   if (Math.abs(cell.trend - 1) <= error) {
-    return `${late} against ${early}: ${signed}, within the method's error of ±${Math.round(error * 100)}%.`;
+    return t("{late} against {early}: {signed}, within the method's error of ±{error}%.", {
+      late, early, signed, error: Math.round(error * 100),
+    });
   }
-  return `${late} against ${early}: ${signed} (${cell.trend.toFixed(2)}×).`;
+  return t("{late} against {early}: {signed} ({ratio}×).", { late, early, signed, ratio: cell.trend.toFixed(2) });
 }
 
 const KM_PER_DEGREE = 111.32;
@@ -363,15 +362,19 @@ export function cellStops(values: readonly number[]): [number, number, number, n
 
 /** What the hover over a cell says: how often, how much (also per 100 km2) and when it burns. */
 export function cellSentence(cell: BurnCell, years: number, unit: string, cellDeg: number): string {
-  const amount = cell.per_year >= 10 ? Math.round(cell.per_year).toLocaleString("en-US") : cell.per_year.toFixed(1);
+  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : cell.per_year.toFixed(1);
   const perArea = stopLabel((cell.per_year / cellAreaKm2(cell.lat, cellDeg)) * 100);
-  const verb = cell.years_burning === 1 ? "Burned" : "Burns";
-  return `${verb} in ${cell.years_burning} of ${years} years, about ${amount} ${unit} a year (${perArea} per 100 km²), most in ${MONTH_NAMES[cell.peak_month - 1]}.`;
+  return tn(
+    cell.years_burning,
+    "Burned in {n} of {years} years, about {amount} {unit} a year ({perArea} per 100 km²), most in {month}.",
+    "Burns in {n} of {years} years, about {amount} {unit} a year ({perArea} per 100 km²), most in {month}.",
+    { years, amount, unit: t(unit), perArea, month: monthName(cell.peak_month) },
+  );
 }
 
 /** A cell centre as people read it: "48.13° N, 37.63° E". */
 export function latLonLabel(lat: number, lon: number): string {
   const part = (value: number, positive: string, negative: string) =>
     `${(Math.round(Math.abs(value) * 100) / 100).toFixed(2)}° ${value >= 0 ? positive : negative}`;
-  return `${part(lat, "N", "S")}, ${part(lon, "E", "W")}`;
+  return `${part(lat, t("N"), t("S"))}, ${part(lon, t("E"), t("W"))}`;
 }

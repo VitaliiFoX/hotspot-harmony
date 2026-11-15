@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { type ReactNode, useRef, useState } from "react";
 import { downloadPng } from "../exports";
 
@@ -42,7 +43,7 @@ export function ChartCard({ title, subtitle, options, chart, table, pngName, dow
         <div className="card-options" data-export="skip">
           {!showTable && options}
           <button type="button" className="ghost" aria-pressed={showTable} onClick={() => setShowTable(!showTable)}>
-            {showTable ? "Show chart" : "Show table"}
+            {showTable ? t("Show chart") : t("Show table")}
           </button>
         </div>
       </figcaption>
@@ -52,7 +53,7 @@ export function ChartCard({ title, subtitle, options, chart, table, pngName, dow
           {downloads}
           {pngName && !showTable && (
             <button type="button" className="ghost download" onClick={savePng} disabled={saving}>
-              {saving ? "Saving image..." : "Download PNG"}
+              {saving ? t("Saving image...") : t("Download PNG")}
             </button>
           )}
         </div>

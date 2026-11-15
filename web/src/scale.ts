@@ -1,5 +1,7 @@
 // Pure helpers behind the charts: colour scale, axis ticks, number and month formatting.
 
+import { monthOfYear, monthShort, numberLocale, t } from "./i18n";
+
 /** One blue hue, light to dark: the sequential ramp for "how much burning". */
 export const SEQUENTIAL = [
   "#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5",
@@ -44,20 +46,32 @@ export function niceTicks(max: number, count = 4): number[] {
   return ticks;
 }
 
-const full = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const oneDecimal = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
-const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+const formats = new Map<string, Intl.NumberFormat>();
+
+/** A number format of the page's language, made once per language and style. */
+function format(style: "full" | "oneDecimal" | "compact"): Intl.NumberFormat {
+  const key = `${numberLocale()} ${style}`;
+  let made = formats.get(key);
+  if (!made) {
+    made = new Intl.NumberFormat(
+      numberLocale(),
+      style === "compact" ? { notation: "compact", maximumFractionDigits: 1 } : { maximumFractionDigits: style === "full" ? 0 : 1 },
+    );
+    formats.set(key, made);
+  }
+  return made;
+}
 
 /** A value as people read it: 7.5, 1,284, 12.9K. */
 export function formatValue(value: number): string {
-  if (Math.abs(value) >= 10_000) return compact.format(value);
-  if (Math.abs(value) < 100 && !Number.isInteger(value)) return oneDecimal.format(value);
-  return full.format(value);
+  if (Math.abs(value) >= 10_000) return format("compact").format(value);
+  if (Math.abs(value) < 100 && !Number.isInteger(value)) return format("oneDecimal").format(value);
+  return format("full").format(value);
 }
 
 /** Axis labels: one style per axis, compact only when the axis reaches 10,000. */
 export function formatTick(value: number, axisMax: number): string {
-  return axisMax >= 10_000 ? compact.format(value) : full.format(value);
+  return axisMax >= 10_000 ? format("compact").format(value) : format("full").format(value);
 }
 
 export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -68,7 +82,7 @@ export const MONTHS_LONG = [
 
 /** "2012-02" -> "February 2012". */
 export function monthLabel(yyyyMm: string): string {
-  return `${MONTHS_LONG[Number(yyyyMm.slice(5, 7)) - 1]} ${yyyyMm.slice(0, 4)}`;
+  return monthOfYear(Number(yyyyMm.slice(5, 7)), yyyyMm.slice(0, 4));
 }
 
 /** Last day of a month as YYYY-MM-DD, for date ranges that end with a month. */
@@ -148,7 +162,7 @@ export function peakMonths(
 export function monthSpans(months: readonly number[]): string {
   const inSet = new Set(months);
   if (inSet.size === 0) return "";
-  if (inSet.size === 12) return "all year";
+  if (inSet.size === 12) return t("all year");
   // Start scanning right after a month that is not in the set, so no span is cut at December.
   let start = 1;
   while (inSet.has(start)) start += 1;
@@ -163,8 +177,8 @@ export function monthSpans(months: readonly number[]): string {
   }
   const names = spans
     .sort((a, b) => a[0] - b[0])
-    .map(([first, last]) => (first === last ? MONTHS[first - 1] : `${MONTHS[first - 1]}–${MONTHS[last - 1]}`));
-  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    .map(([first, last]) => (first === last ? monthShort(first) : `${monthShort(first)}–${monthShort(last)}`));
+  return names.length === 1 ? names[0] : t("{list} and {last}", { list: names.slice(0, -1).join(", "), last: names[names.length - 1] });
 }
 
 type RecordPartLike = { sensor: string; label: string; from: string; to: string | null };
@@ -199,3 +213,4 @@ export function partsOfYear(parts: readonly RecordPartLike[], year: number): str
     .filter((part) => monthIndex(part.from) <= year * 12 + 11 && (part.to === null || monthIndex(part.to) >= year * 12))
     .map((part) => part.label);
 }
+

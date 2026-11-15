@@ -134,6 +134,11 @@ h2 {
   gap: 16px;
   flex-wrap: wrap;
 }
+.top-options {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 
 input,
 select,
