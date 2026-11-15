@@ -1,7 +1,7 @@
 import { type KeyboardEvent, type PointerEvent, useState } from "react";
-import type { YearTotal } from "../api";
+import type { RecordPart, YearTotal } from "../api";
 import { useElementWidth } from "../hooks";
-import { brokenLinePath, columnPath, formatTick, formatValue, niceTicks, valuesByYear } from "../scale";
+import { brokenLinePath, columnPath, formatTick, formatValue, niceTicks, partsOfYear, recordSpans, valuesByYear } from "../scale";
 import { type Tip, Tooltip } from "./Tooltip";
 
 type Props = {
@@ -14,13 +14,23 @@ type Props = {
    * one, so the sensor jump shows without switching. `columns` names what the columns are.
    */
   line?: { yearly: YearTotal[]; label: string; unit: string; columns: string };
+  /**
+   * The parts of the harmonized record (/api/meta `harmonized_record`): drawn as a strip over the columns, so it reads
+   * that up to 2021 the columns are MODIS as reported and only from 2022 VIIRS harmonized to it.
+   */
+  record?: RecordPart[];
 };
 
+// Short names for the strip when the full label does not fit its span.
+const SHORT: Record<string, string> = { modis_terra: "Terra", modis: "MODIS", viirs_noaa20: "NOAA-20" };
+const CHAR_WIDTH = 6.2; // px per character of an 11 px label, near enough to decide whether it fits
+
 const HEIGHT = 260; // includes the axis band
-const MARGIN = { left: 48, right: 12, top: 24, bottom: 26 };
+const RIBBON = 24; // extra room on top for the strip of record parts
 
 /** One column per year. Years that are not fully covered are drawn lighter. */
-export function YearlyChart({ yearly, unit, sensorSwitch, line }: Props) {
+export function YearlyChart({ yearly, unit, sensorSwitch, line, record }: Props) {
+  const MARGIN = { left: 48, right: 12, top: record ? 24 + RIBBON : 24, bottom: 26 };
   const [ref, width] = useElementWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const [pointer, setPointer] = useState({ x: 0, y: 0 });
@@ -37,6 +47,8 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line }: Props) {
   const labelEvery = slot >= 34 ? 1 : slot >= 17 ? 2 : 5;
   const switchIndex = sensorSwitch ? yearly.findIndex((item) => item.year === sensorSwitch.year) : -1;
   const hasPartial = yearly.some((item) => !item.complete);
+  const spans =
+    record && yearly.length ? recordSpans(record, yearly[0].year, yearly[yearly.length - 1].year) : [];
   const linePoints = lineValues.map((value, index): [number, number] | null =>
     value === null ? null : [MARGIN.left + (index + 0.5) * slot, y(value)],
   );
@@ -68,6 +80,7 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line }: Props) {
             ...(line && lineValues[active] !== null
               ? [{ value: formatValue(lineValues[active]!), label: `${line.label}, ${line.unit}` }]
               : []),
+            ...(record ? [{ value: "From", label: partsOfYear(record, yearly[active].year).join(" and ") }] : []),
             ...(yearly[active].complete ? [] : [{ value: "Partial", label: "not all 12 months are covered" }]),
           ],
         };
@@ -146,6 +159,24 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line }: Props) {
               )}
             </g>
           )}
+          {spans.map((span, i) => {
+            const x1 = MARGIN.left + span.start * slot;
+            const x2 = MARGIN.left + span.end * slot;
+            const room = x2 - x1 - 8;
+            const text = span.label.length * CHAR_WIDTH <= room ? span.label
+              : (SHORT[span.sensor] ?? "").length * CHAR_WIDTH <= room ? SHORT[span.sensor] : "";
+            return (
+              <g key={span.sensor}>
+                <line className="record-span" x1={x1 + 2} x2={x2 - 2} y1={RIBBON} y2={RIBBON} />
+                {i > 0 && <line className="record-edge" x1={x1} x2={x1} y1={RIBBON - 5} y2={MARGIN.top + innerHeight} />}
+                {text && (
+                  <text className="record-label" x={(x1 + x2) / 2} y={RIBBON - 7} textAnchor="middle">
+                    {text}
+                  </text>
+                )}
+              </g>
+            );
+          })}
           {sensorSwitch && switchIndex > 0 && (
             <g>
               <line
@@ -172,7 +203,7 @@ export function YearlyChart({ yearly, unit, sensorSwitch, line }: Props) {
   );
 }
 
-export function YearlyTable({ yearly, unit, line }: Props) {
+export function YearlyTable({ yearly, unit, line, record }: Props) {
   const lineValues = line ? valuesByYear(yearly, line.yearly) : [];
   return (
     <table>
@@ -183,6 +214,7 @@ export function YearlyTable({ yearly, unit, line }: Props) {
           <th scope="col">{line ? line.columns : "Total"}</th>
           {line && <th scope="col">{line.label}</th>}
           <th scope="col">Coverage</th>
+          {record && <th scope="col">From</th>}
         </tr>
       </thead>
       <tbody>
@@ -192,6 +224,7 @@ export function YearlyTable({ yearly, unit, line }: Props) {
             <td>{formatValue(item.value)}</td>
             {line && <td>{lineValues[index] === null ? "" : formatValue(lineValues[index]!)}</td>}
             <td>{item.complete ? "Full year" : "Partial year"}</td>
+            {record && <td className="text-cell">{partsOfYear(record, item.year).join(" and ")}</td>}
           </tr>
         ))}
       </tbody>

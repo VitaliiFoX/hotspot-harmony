@@ -73,7 +73,7 @@ JSON for the two countries and no API.
 
 | # | Task | Estimate | Owner | |
 |---|---|---|---|---|
-| 9 | A "MODIS alone" line across 2012, next to the raw and the harmonized record. It explains the 0.66x jump ratio in Argentina, where burning really fell | 1 h | | [ ] |
+| 9 | A "MODIS alone" line across 2012, next to the raw and the harmonized record. It explains the 0.66x jump ratio in Argentina, where burning really fell. Done as a strip of the record's parts over the yearly chart instead: up to 2021 the harmonized record is MODIS as reported, so a MODIS line would sit on the columns | 1 h | VitaliiFoX | [x] |
 | 10 | Hatch sensor gap days in the calendar so that "no data" never reads as zero | 1 h | | [ ] |
 | 11 | Ukraine presets: Chornobyl exclusion zone (April 2020), the southern steppe | 1 h | | [ ] |
 | 11a | Optional, the first row to drop: a calendar of the days of one chosen year for the area, with weeks as sums of the same days. Needs a new API endpoint over `data/points`, because `/api/hotspots/days` counts the whole record, not the area. `harmonized.parquet` is monthly, so this view is in hotspots of one sensor and must say so; comparing years stays on the monthly harmonized calendar. If it is dropped, say in the README that single days are on the globe | 3-4 h | | [ ] |

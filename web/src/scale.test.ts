@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   PEAK_SHARE, SEQUENTIAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel,
-  monthSpans, niceTicks, peakMonths, position, valuesByYear,
+  monthSpans, niceTicks, partsOfYear, peakMonths, position, recordSpans, valuesByYear,
 } from "./scale";
 
 describe("position", () => {
@@ -152,5 +152,35 @@ describe("monthSpans", () => {
     expect(monthSpans([5])).toBe("May");
     expect(monthSpans([1, 4, 8])).toBe("Jan, Apr and Aug");
     expect(monthSpans([])).toBe("");
+  });
+});
+
+// The harmonized record of pipeline.harmonize.RECORD, as /api/meta serves it.
+const RECORD = [
+  { sensor: "modis_terra", label: "MODIS Terra only, scaled", from: "2000-11", to: "2002-06" },
+  { sensor: "modis", label: "MODIS Terra + Aqua (reference)", from: "2002-07", to: "2021-12" },
+  { sensor: "viirs_noaa20", label: "VIIRS NOAA-20, harmonized", from: "2022-01", to: null },
+];
+
+describe("recordSpans", () => {
+  it("places each part of the record on the year axis, in columns from the first year, to the month", () => {
+    // 2000-11 starts 10/12 into the first column; 2002-06 ends half way through the third; open ends run to the last.
+    const spans = recordSpans(RECORD, 2000, 2025);
+    expect(spans.map((s) => s.sensor)).toEqual(["modis_terra", "modis", "viirs_noaa20"]);
+    expect(spans.map((s) => [s.start, s.end])).toEqual([[10 / 12, 2.5], [2.5, 22], [22, 26]]);
+  });
+  it("cuts the parts to the years on screen and drops the ones outside", () => {
+    expect(recordSpans(RECORD, 2010, 2015)).toEqual([
+      { sensor: "modis", label: "MODIS Terra + Aqua (reference)", start: 0, end: 6 },
+    ]);
+  });
+});
+
+describe("partsOfYear", () => {
+  it("names the parts of the record a year draws on", () => {
+    expect(partsOfYear(RECORD, 2002)).toEqual(["MODIS Terra only, scaled", "MODIS Terra + Aqua (reference)"]);
+    expect(partsOfYear(RECORD, 2012)).toEqual(["MODIS Terra + Aqua (reference)"]);
+    expect(partsOfYear(RECORD, 2025)).toEqual(["VIIRS NOAA-20, harmonized"]);
+    expect(partsOfYear(RECORD, 1999)).toEqual([]);
   });
 });

@@ -287,14 +287,13 @@ export function App() {
   }
 
   const unit = calendar?.unit ?? "";
-  // Where the yearly chart marks a change of sensor: the raw record jumps there, the harmonized one should not.
-  const viirsTakesOver = meta?.harmonized_record?.find((part) => part.sensor.startsWith("viirs"));
+  // The harmonized record shows its parts as a strip over the yearly columns (MODIS as reported up to 2021, VIIRS
+  // harmonized after); the raw record marks the month it switches sensor, where it jumps.
+  const recordParts = calendar?.series === "harmonized" ? (meta?.harmonized_record ?? undefined) : undefined;
   const sensorSwitch =
     calendar?.series === "raw" && meta
       ? { year: Number(meta.raw_sensor_switch.slice(0, 4)), label: "VIIRS S-NPP replaces MODIS" }
-      : viirsTakesOver
-        ? { year: Number(viirsTakesOver.from.slice(0, 4)), label: "VIIRS NOAA-20 takes over" }
-        : undefined;
+      : undefined;
   // The seasonal chart opens on the year of the headline month.
   const year = highlightYear ?? (calendar?.season_peak ?? calendar?.anomaly)?.year ?? 0;
   // Over the harmonized columns, the raw record as a line: its jump in 2012 is what the harmonization removes.
@@ -492,9 +491,15 @@ export function App() {
                     : `Yearly ${unit} within the selected period`
                 }
                 chart={
-                  <YearlyChart yearly={calendar.yearly} unit={unit} sensorSwitch={sensorSwitch} line={rawLine} />
+                  <YearlyChart
+                    yearly={calendar.yearly}
+                    unit={unit}
+                    sensorSwitch={sensorSwitch}
+                    line={rawLine}
+                    record={recordParts}
+                  />
                 }
-                table={<YearlyTable yearly={calendar.yearly} unit={unit} line={rawLine} />}
+                table={<YearlyTable yearly={calendar.yearly} unit={unit} line={rawLine} record={recordParts} />}
                 pngName={exportName(["burning-per-year", ...fileParts], "png")}
               />
             </div>
