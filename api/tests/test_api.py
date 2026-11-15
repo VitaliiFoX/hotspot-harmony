@@ -634,6 +634,20 @@ def test_days_of_a_month_name_the_days_its_sensor_was_down_in_any_country(tmp_pa
     assert client.get("/api/hotspots/days?month=2011-08").json()["gap_days"] == []  # MODIS month
 
 
+def test_period_names_only_the_down_days_of_the_sensor_each_month_is_read_from(tmp_path):
+    client = report_with_gaps(tmp_path)
+    assert client.get("/api/hotspots/period?start=2013-08-01&end=2013-08-31").json()["gap_days"] == [
+        "2013-08-05", "2013-08-20",
+    ]  # fmt: skip
+    # January 2012 is read from MODIS and February from VIIRS S-NPP: an S-NPP down day in January is no gap
+    report = json.loads((tmp_path / "agg" / "harmonization_report.json").read_text())
+    report["countries"]["Testland"]["sensor_gap_days"]["viirs_snpp"] += ["2012-01-25", "2012-02-03"]
+    (tmp_path / "agg" / "harmonization_report.json").write_text(json.dumps(report))
+    client = TestClient(create_app(data_dir=tmp_path, config_path=tmp_path / "regions.yaml"))
+    body = client.get("/api/hotspots/period?start=2012-01-15&end=2012-02-10").json()
+    assert (body["sensor"], body["gap_days"]) == ("modis+viirs_snpp", ["2012-02-03"])
+
+
 def test_day_says_whether_its_sensor_was_down(tmp_path):
     client = report_with_gaps(tmp_path)
     assert client.get("/api/hotspots/day?date=2013-08-05").json()["sensor_gap"] is True

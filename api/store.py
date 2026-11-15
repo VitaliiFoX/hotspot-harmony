@@ -565,12 +565,16 @@ class Store:
             raise ApiError(400, f"a period can be at most {MAX_PERIOD_DAYS} days long")
         cur = self.con.cursor()
         parts = []
+        gaps: set[str] = set()
         segment = first
         while segment <= last:
             stop = min(segment + pd.offsets.MonthBegin(1), last + pd.Timedelta(days=1))
             sensor, source, params = self._day_source(segment, stop)
             (count,) = cur.execute(f"select count(*) {source}", params).fetchone()
             parts.append((sensor, source, params, int(count)))
+            # A sensor's down days count only in the months read from it: before 2012-02 that is MODIS, not VIIRS.
+            month_end = (stop - pd.Timedelta(days=1)).date().isoformat()
+            gaps.update(d for d in self.gap_days.get(sensor, ()) if segment.date().isoformat() <= d <= month_end)
             segment = stop
         total = sum(part[-1] for part in parts)
         share = min(1.0, limit / total) if total else 1.0
@@ -590,7 +594,6 @@ class Store:
             ).fetchall()
         rows.sort(key=lambda row: (row[4], row[1], row[0]))
         sensors = list(dict.fromkeys(part[0] for part in parts))
-        gaps = sorted(d for sensor in sensors for d in self.gap_days.get(sensor, ()) if start <= d <= end)
         return {
             "start": start,
             "end": end,
@@ -601,7 +604,7 @@ class Store:
             "truncated": total > len(rows),
             "regions": regions,
             "hotspots": [[lon, lat, day, index.get(country, 0)] for lon, lat, day, country, _ in rows],
-            "gap_days": gaps,
+            "gap_days": sorted(gaps),
         }
 
     def validation(self) -> dict:
