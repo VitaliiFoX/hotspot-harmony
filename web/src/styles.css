@@ -580,15 +580,12 @@ fieldset > legend {
   height: 12px;
   border-radius: 3px;
 }
+/* The ramp as one gradient, with no steps: the cells take their colour from the same ramp the same way. */
 .scale-ramp {
-  display: inline-flex;
+  width: 182px;
+  height: 12px;
   margin-left: 8px;
   border-radius: 3px;
-  overflow: hidden;
-}
-.scale-ramp > span {
-  width: 14px;
-  height: 12px;
 }
 
 svg {

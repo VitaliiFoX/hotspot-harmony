@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  DEFAULT_TIME, MERCATOR_LIMIT, busiestCells, cellAreaKm2, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  type Rgba, DEFAULT_TIME, MERCATOR_LIMIT, busiestCells, cellAreaKm2, cellGroups, cellImage, cellSurface, rampRgba, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
   trendSentence, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
@@ -319,5 +319,125 @@ describe("the globe's table of cells", () => {
     expect(changeLabel(1.1, 0.14)).toBe("within the error");
     expect(changeLabel(null, 0.14)).toBe("–");
     expect(changeLabel(1.004, 0)).toBe("no change");
+  });
+});
+
+describe("rampRgba", () => {
+  const stops = [0, 10, 20];
+  const colors = ["#000000", "#646464", "#ff0000"];
+
+  it("is a stop's own colour at the stop", () => {
+    expect(rampRgba(0, stops, colors)).toEqual([0, 0, 0, 1]);
+    expect(rampRgba(10, stops, colors)).toEqual([100, 100, 100, 1]);
+    expect(rampRgba(20, stops, colors)).toEqual([255, 0, 0, 1]);
+  });
+  it("mixes the two stops around a value", () => {
+    // A quarter of the way from #000000 to #646464 (100), then halfway from #646464 to #ff0000.
+    expect(rampRgba(2.5, stops, colors)).toEqual([25, 25, 25, 1]);
+    expect(rampRgba(15, stops, colors)).toEqual([177.5, 50, 50, 1]);
+  });
+  it("keeps the first and the last colour outside the stops", () => {
+    expect(rampRgba(-5, stops, colors)).toEqual([0, 0, 0, 1]);
+    expect(rampRgba(99, stops, colors)).toEqual([255, 0, 0, 1]);
+  });
+});
+
+describe("cellSurface", () => {
+  // Two 1-degree cells side by side on the equator: red centred on (0, 0), blue on (1, 0).
+  const red: Rgba = [200, 0, 0, 1];
+  const blue: Rgba = [0, 0, 100, 1];
+  const surface = cellSurface([{ lon: 0, lat: 0, color: red }, { lon: 1, lat: 0, color: blue }], 1);
+
+  it("reaches one cell past the outermost centres", () => {
+    expect(surface.bounds).toEqual([-1, -1, 2, 1]);
+    expect([surface.columns, surface.rows]).toEqual([4, 3]);
+  });
+  it("has a cell's own colour at its centre", () => {
+    expect(surface.at(0, 0)).toEqual(red);
+    expect(surface.at(1, 0)).toEqual(blue);
+  });
+  it("mixes two neighbours by distance between their centres", () => {
+    expect(surface.at(0.5, 0)).toEqual([100, 0, 50, 1]);
+    expect(surface.at(0.25, 0)).toEqual([150, 0, 25, 1]);
+  });
+  it("fades out past the last cell without changing its colour: a quarter left at the cell's edge, gone one cell out", () => {
+    // Half of the cell's opacity is mixed in at its edge, and the fade is the square of that.
+    expect(surface.at(-0.5, 0)).toEqual([200, 0, 0, 0.25]);
+    expect(surface.at(0, 0.5)).toEqual([200, 0, 0, 0.25]);
+    expect(surface.at(-1, 0)).toEqual([0, 0, 0, 0]);
+    expect(surface.at(0, 1)).toEqual([0, 0, 0, 0]);
+  });
+  it("is transparent outside its bounds", () => {
+    expect(surface.at(-1.5, 0)).toEqual([0, 0, 0, 0]);
+    expect(surface.at(0, 3)).toEqual([0, 0, 0, 0]);
+  });
+  it("weighs a faint colour less than a solid one beside it", () => {
+    // Solid red next to grey at 0.5 opacity: halfway, the mixed opacity is 0.75 (shown as its square, 0.5625)
+    // and red weighs twice the grey.
+    const mixed = cellSurface([{ lon: 0, lat: 0, color: red }, { lon: 1, lat: 0, color: [150, 150, 150, 0.5] }], 1).at(0.5, 0);
+    expect(mixed[3]).toBeCloseTo(0.5625, 6);
+    expect(mixed[0]).toBeCloseTo((200 * 1 + 150 * 0.5) / 1.5, 4);
+    expect(mixed[1]).toBeCloseTo((150 * 0.5) / 1.5, 4);
+  });
+});
+
+describe("cellGroups", () => {
+  const cell = (lon: number, lat: number) => ({ lon, lat });
+
+  it("keeps cells that lie together in one group", () => {
+    expect(cellGroups([cell(0, 0), cell(1, 0), cell(1, 1)])).toHaveLength(1);
+  });
+  it("splits where more than ten degrees of longitude hold no cell", () => {
+    const groups = cellGroups([cell(30, 50), cell(-60, -30), cell(31, 49), cell(-61, -31)]);
+    // West to east, and each group from south to north.
+    expect(groups).toEqual([[cell(-61, -31), cell(-60, -30)], [cell(31, 49), cell(30, 50)]]);
+  });
+  it("splits a band of longitudes where more than ten degrees of latitude hold no cell", () => {
+    // Two places on the same longitudes, 40 degrees of latitude apart.
+    expect(cellGroups([cell(10, 50), cell(11, 10), cell(10, 11)])).toEqual([[cell(11, 10), cell(10, 11)], [cell(10, 50)]]);
+  });
+  it("does not split at a gap of exactly ten degrees", () => {
+    expect(cellGroups([cell(0, 0), cell(10, 0)])).toHaveLength(1);
+    expect(cellGroups([cell(0, 0), cell(10.25, 0)])).toHaveLength(2);
+  });
+  it("has no group without cells", () => {
+    expect(cellGroups([])).toEqual([]);
+  });
+});
+
+describe("cellImage", () => {
+  const red: Rgba = [200, 0, 0, 1];
+  const image = cellImage([{ lon: 0, lat: 0, color: red }, { lon: 1, lat: 0, color: [0, 0, 100, 1] }], 1, 4)!;
+
+  it("has no image without cells", () => {
+    expect(cellImage([], 1)).toBeNull();
+  });
+  it("covers the bounds of the surface with four pixels a cell across, and as many down as the Mercator shape asks", () => {
+    expect(image.bounds).toEqual([-1, -1, 2, 1]);
+    expect(image.width).toBe(12);
+    // Three degrees wide, two degrees tall at the equator: two thirds as tall as wide.
+    expect(image.height).toBe(8);
+    expect(image.data).toHaveLength(12 * 8 * 4);
+  });
+  it("is transparent in its corners and coloured over the cells", () => {
+    expect(image.data[3]).toBeLessThan(40);
+    // Row 4 is centred an eighth of a degree south of the equator, column 4 on longitude 0.125. Across, red and
+    // blue mix 7 to 1: 200 * 0.875 = 175. Down, an eighth of the way to the empty row: opacity 0.875, shown as
+    // its square, 0.766 of 255 = 195.
+    const at = (4 * 12 + 4) * 4;
+    expect(image.data[at]).toBe(175);
+    expect(image.data[at + 3]).toBe(195);
+  });
+  it("shrinks to fit the largest side it may have", () => {
+    const small = cellImage([{ lon: 0, lat: 0, color: red }, { lon: 99, lat: 0, color: red }], 1, 4, 64)!;
+    expect(small.width).toBe(64);
+  });
+  it("spaces its rows evenly in Mercator, so a tall image is taller than its degrees say", () => {
+    // Cells at latitudes 0 and 60, one column: 2 degrees wide, 62 degrees tall. In Mercator the span from
+    // -1 to 61 degrees is ln(tan(75.5 deg)) + 0.0175 = 1.3524 + 0.0175 = 1.370, over a width of 2 degrees,
+    // 0.0349: 39.25 times as tall as wide, not 31. Eight pixels wide, so 314 tall.
+    const tall = cellImage([{ lon: 0, lat: 0, color: red }, { lon: 0, lat: 60, color: red }], 1, 4)!;
+    expect(tall.width).toBe(8);
+    expect(tall.height).toBe(314);
   });
 });

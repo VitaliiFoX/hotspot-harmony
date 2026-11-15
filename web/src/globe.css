@@ -1071,11 +1071,11 @@ html {
 
 /* "Where it burns": the legend's ramp, the same steps as the cells on the map (CELL_RAMP in Globe.tsx). */
 .stage {
-  --cell-0: #ffe08a;
-  --cell-1: #ffb347;
-  --cell-2: #ff7a2f;
-  --cell-3: #e2361f;
-  --cell-4: #9e0f16;
+  --cell-0: #2c0352;
+  --cell-1: #fd369b;
+  --cell-2: #fe8915;
+  --cell-3: #ffb60d;
+  --cell-4: #fefbec;
 }
 .legend-cells {
   display: grid;

@@ -14,6 +14,7 @@ import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "..
 import {
   type BurnCell, type HourCounts, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops, changeLabel,
   hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine, regionsCenter, trendSentence,
+  type PaintedCell, type Rgba, cellGroups, cellImage, rampRgba,
 } from "../globe";
 
 type Props = {
@@ -60,13 +61,17 @@ setWorkerUrl(workerUrl);
 
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 const HOTSPOT = "#ff8a3d";
-// "Where it burns": cells of the harmonized record from little to much burning a year, pale yellow to deep red, so the
-// mode reads as a different thing from the day's orange hotspots (which it hides). As --cell-0 .. --cell-4 in globe.css.
-const CELL_RAMP = ["#ffe08a", "#ffb347", "#ff7a2f", "#e2361f", "#9e0f16"] as const;
+// "Where it burns": the harmonized record from little to much burning a year, in the colours of a thermal camera:
+// dark violet where it is cold, through pink, orange and amber to near white where it is hottest. The mode then reads
+// as a different thing from the day's orange hotspots (which it hides). As --cell-0 .. --cell-4 in globe.css.
+const CELL_RAMP = ["#2c0352", "#fd369b", "#fe8915", "#ffb60d", "#fefbec"] as const;
 // "How it changed": second half of the period against the first, in doublings from -2 (a quarter) to +2 (four
 // times); less burning in blue, more in red, a change within the method's error neutral. As --trend-* in globe.css.
 const TREND_RAMP = ["#2166ac", "#67a9cf", "#f4f1ea", "#ef8a62", "#b2182b"] as const;
-const TREND_NONE = "rgba(150, 150, 150, 0.35)";
+// A cell with no burning in the first half has no change to show: faint grey.
+const TREND_NONE: Rgba = [150, 150, 150, 0.35];
+// How much of the map shows through the surface of "Where it burns".
+const CELLS_OPACITY = 0.85;
 // Where hotspots crowd, the heat layer runs from HOTSPOT to this red (as --hotspot-dense in globe.css).
 const HOTSPOT_DENSE = "#e0281f";
 // Below HEAT_FADE_FROM the heat layer carries the picture; by HEAT_FADE_TO single dots have taken over.
@@ -216,12 +221,14 @@ const STYLE: StyleSpecification = {
       paint: { "line-color": "rgba(255,255,255,0.6)", "line-width": 1.2 },
     },
     {
-      // Where it burns over the chosen period; the colour steps are set from the cells when they arrive.
+      // Where it burns over the chosen period. The cells themselves are not seen: they are what the pointer and
+      // a click find. What is seen is one surface with no steps, laid under this layer as an image per region
+      // when the cells arrive (see `cellImage` in globe.ts).
       id: "cells-fill",
       type: "fill",
       source: "cells",
       layout: { visibility: "none" },
-      paint: { "fill-color": CELL_RAMP[2], "fill-opacity": 0.72, "fill-antialias": false },
+      paint: { "fill-color": CELL_RAMP[2], "fill-opacity": 0, "fill-antialias": false },
     },
     {
       // The border of the picked country, in the ink of a drawn area: both are the area the calendar counts.
@@ -376,6 +383,17 @@ function areaFeatures(area: Corner[] | null, draft: Corner[] | null, cursor: Cor
   ];
 }
 
+/** The pixels of a cell surface as a PNG address the map can load as an image. */
+function imageUrl(image: { width: number; height: number; data: Uint8ClampedArray }): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const pixels = new ImageData(image.width, image.height);
+  pixels.data.set(image.data);
+  canvas.getContext("2d")?.putImageData(pixels, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 function reducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -496,6 +514,8 @@ export function Globe({
   const [cellsError, setCellsError] = useState<string | null>(null);
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
+  // The images of the cell surface now on the map, one per region: each is a source and a layer of that name.
+  const cellImages = useRef<string[]>([]);
   const regionsRef = useRef(regions);
   // Picking a country: the map's handlers are attached once, so they read the borders and the callback through refs.
   const countriesRef = useRef(countries);
@@ -831,7 +851,14 @@ export function Globe({
     const hotspotLayers = ["hotspot-heat", "hotspot-glow", "hotspot", "hotspot-hour"];
     for (const id of hotspotLayers) map.setLayoutProperty(id, "visibility", showCells ? "none" : "visible");
     map.setLayoutProperty("cells-fill", "visibility", showCells ? "visible" : "none");
-    if (!showCells || !period) return;
+    const clearImages = () => {
+      for (const id of cellImages.current) {
+        if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(id)) map.removeSource(id);
+      }
+      cellImages.current = [];
+    };
+    if (!showCells || !period) return clearImages();
     const controller = new AbortController();
     setCellsError(null);
     // The raw record has no method error to fall inside: any change counts there.
@@ -841,21 +868,36 @@ export function Globe({
         const squares = cellSquares(answer.cells, answer.cell_deg, error);
         const stops = cellStops(squares.features.map((f) => f.properties.density));
         (map.getSource("cells") as GeoJSONSource).setData(squares);
-        map.setPaintProperty(
-          "cells-fill",
-          "fill-color",
-          cellView === "change"
-            ? [
-                "case", ["==", ["get", "change"], null], TREND_NONE,
-                ["interpolate", ["linear"], ["get", "change"],
-                  -2, TREND_RAMP[0], -1, TREND_RAMP[1], 0, TREND_RAMP[2], 1, TREND_RAMP[3], 2, TREND_RAMP[4]],
-              ]
-            : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
-              [
-                "interpolate", ["linear"], ["get", "density"],
-                0, CELL_RAMP[0], stops[0], CELL_RAMP[1], stops[1], CELL_RAMP[2], stops[2], CELL_RAMP[3], stops[3], CELL_RAMP[4],
-              ],
-        );
+        // Each cell gets the colour of its value, and the colours are spread into one surface with no steps.
+        const painted: PaintedCell[] = squares.features.map(({ properties: cell }) => ({
+          lat: cell.lat,
+          lon: cell.lon,
+          color:
+            cellView === "change"
+              ? cell.change === null
+                ? TREND_NONE
+                : rampRgba(cell.change, [-2, -1, 0, 1, 2], TREND_RAMP)
+              : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
+                rampRgba(cell.density, [0, ...stops], CELL_RAMP),
+        }));
+        clearImages();
+        // Countries that lie far apart get an image each: one from Argentina to Ukraine would be mostly empty sea.
+        cellGroups(painted).forEach((painted, index) => {
+          const image = cellImage(painted, answer.cell_deg);
+          if (!image) return;
+          const [west, south, east, north] = image.bounds;
+          const id = `cells-image-${index}`;
+          map.addSource(id, {
+            type: "image",
+            url: imageUrl(image),
+            coordinates: [[west, north], [east, north], [east, south], [west, south]],
+          });
+          map.addLayer(
+            { id, type: "raster", source: id, paint: { "raster-opacity": CELLS_OPACITY, "raster-fade-duration": 0 } },
+            "cells-fill",
+          );
+          cellImages.current.push(id);
+        });
         setCells({
           years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
           halves: answer.halves, series: answer.series, error, busiest: busiestCells(answer.cells),
