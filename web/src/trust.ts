@@ -87,11 +87,16 @@ export function monthError(country: TrustCountry, sensor: string | null, wholeRe
 
 /**
  * Above, below or within the method's error: a month is called unusual only when it is further from its median than
- * the error that applies to it. A rough threshold, not a confidence interval. Without an error any ratio counts.
+ * the error that applies to it. A rough threshold, not a confidence interval. Without an error any ratio counts,
+ * except a ratio of exactly one, which is neither more nor less.
  */
-export function verdictKind(ratio: number | null, error: number | null): "above" | "below" | "within" | "none" {
+export function verdictKind(
+  ratio: number | null,
+  error: number | null,
+): "above" | "below" | "within" | "same" | "none" {
   if (ratio === null) return "none";
   if (error !== null && Math.abs(ratio - 1) <= error) return "within";
+  if (ratio === 1) return "same";
   return ratio >= 1 ? "above" : "below";
 }
 
