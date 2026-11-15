@@ -143,6 +143,24 @@ export async function fetchMeta(): Promise<Meta> {
   return response.json();
 }
 
+/** GET /api/cells: where and when it burns, per grid cell, over a period cut to the record. */
+export type Cells = {
+  series: SeriesName;
+  unit: string;
+  start: string;
+  end: string;
+  years: number;
+  cell_deg: number;
+  cells: { lat: number; lon: number; per_year: number; years_burning: number; peak_month: number }[];
+};
+
+export async function fetchCells(start: string, end: string, signal?: AbortSignal): Promise<Cells> {
+  const query = new URLSearchParams({ start, end, series: "harmonized" });
+  const response = await fetch(`${BASE}/api/cells?${query}`, { signal });
+  if (!response.ok) throw await failure(response);
+  return response.json();
+}
+
 export async function fetchValidation(): Promise<Validation> {
   const response = await fetch(`${BASE}/api/validation`);
   if (!response.ok) throw await failure(response);

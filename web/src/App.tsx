@@ -347,6 +347,7 @@ export function App() {
         area={filters?.area ?? null}
         onDrawArea={drawArea}
         areaError={filters?.area ? error : null}
+        period={filters ? { start: filters.start, end: filters.end } : null}
         panel={
           date && firstDay && finalDay ? (
             <DateTimePanel
@@ -451,7 +452,7 @@ export function App() {
 
             <ChartCard
               title="Burning activity calendar"
-              subtitle={`Monthly ${unit} in the area, over ${calendar.cells_used.toLocaleString("en-US")} grid cells with burning`}
+              subtitle={`Monthly ${unit} in the area, over ${calendar.cells_used.toLocaleString("en-US")} ${calendar.cells_used === 1 ? "grid cell" : "grid cells"} with burning`}
               options={
                 <div className="segmented" role="group" aria-label="Colour scale">
                   {(["linear", "log"] as ScaleMode[]).map((mode) => (

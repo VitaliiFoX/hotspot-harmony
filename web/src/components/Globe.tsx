@@ -2,15 +2,15 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "../globe.css";
 import {
   type GeoJSONSource, type LayerSpecification, type LngLatBoundsLike, type MapMouseEvent, type SkySpecification, type StyleSpecification, MapLibreMap,
-  Marker, NavigationControl, setWorkerUrl,
+  Marker, NavigationControl, Popup, setWorkerUrl,
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import type { Bbox, DayHotspots, Region } from "../api";
-import { type Corner, MAX_CORNERS, areaProblem, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
+import { type Bbox, type DayHotspots, type Region, fetchCells } from "../api";
+import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import {
-  type HourCounts, MERCATOR_LIMIT, boxRing, hourFilters, hourInstant, longDate, timeLabel, nightPolygon, regionAt, terminatorLine,
-  regionsCenter,
+  type BurnCell, type HourCounts, MERCATOR_LIMIT, boxRing, cellSentence, cellSquares, cellStops, hourFilters, hourInstant, longDate,
+  stopLabel, timeLabel, nightPolygon, regionAt, terminatorLine, regionsCenter,
 } from "../globe";
 
 type Props = {
@@ -31,6 +31,8 @@ type Props = {
   onDrawArea: (corners: Corner[] | null) => void;
   /** Why the calendar could not be computed for the drawn area, if it could not. */
   areaError: string | null;
+  /** The period of the filters, "YYYY-MM": "Where it burns" colours the cells over it. */
+  period: { start: string; end: string } | null;
   /** The date and time panel, floated in the stage's top right corner. */
   panel: ReactNode;
 };
@@ -40,6 +42,9 @@ setWorkerUrl(workerUrl);
 
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 const HOTSPOT = "#ff8a3d";
+// "Where it burns": cells of the harmonized record from little to much burning a year, pale yellow to deep red, so the
+// mode reads as a different thing from the day's orange hotspots (which it hides). As --cell-0 .. --cell-4 in globe.css.
+const CELL_RAMP = ["#ffe08a", "#ffb347", "#ff7a2f", "#e2361f", "#9e0f16"] as const;
 // Where hotspots crowd, the heat layer runs from HOTSPOT to this red (as --hotspot-dense in globe.css).
 const HOTSPOT_DENSE = "#e0281f";
 // Below HEAT_FADE_FROM the heat layer carries the picture; by HEAT_FADE_TO single dots have taken over.
@@ -97,6 +102,7 @@ const STYLE: StyleSpecification = {
       attribution: "Imagery: NASA GIBS (Blue Marble)",
     },
     night: { type: "geojson", data: EMPTY },
+    cells: { type: "geojson", data: EMPTY },
     terminator: { type: "geojson", data: EMPTY },
     regions: { type: "geojson", data: EMPTY },
     area: { type: "geojson", data: EMPTY },
@@ -180,6 +186,14 @@ const STYLE: StyleSpecification = {
       source: "regions",
       layout: { visibility: "none" },
       paint: { "line-color": "rgba(255,255,255,0.6)", "line-width": 1.2 },
+    },
+    {
+      // Where it burns over the chosen period; the colour steps are set from the cells when they arrive.
+      id: "cells-fill",
+      type: "fill",
+      source: "cells",
+      layout: { visibility: "none" },
+      paint: { "fill-color": CELL_RAMP[2], "fill-opacity": 0.72, "fill-antialias": false },
     },
     {
       id: "area-fill",
@@ -397,7 +411,9 @@ function CalendarIcon() {
  */
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
-export function Globe({ regions, date, time, day, counts, focusRegion, dark, onPickRegion, area, onDrawArea, areaError, panel }: Props) {
+export function Globe({
+  regions, date, time, day, counts, focusRegion, dark, onPickRegion, area, onDrawArea, areaError, period, panel,
+}: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
@@ -413,6 +429,14 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
     setLegendOpen(!fold);
   }, [zoomedIn]);
   const [showTable, setShowTable] = useState(false);
+  // "Where it burns": the cells of the harmonized record over the period, instead of the day's hotspots.
+  const [showCells, setShowCells] = useState(false);
+  const [cells, setCells] = useState<
+    { years: number; unit: string; start: string; end: string; stops: number[]; cellDeg: number } | null
+  >(null);
+  const [cellsError, setCellsError] = useState<string | null>(null);
+  const cellsRef = useRef(cells);
+  cellsRef.current = cells;
   const regionsRef = useRef(regions);
   const pickRef = useRef(onPickRegion);
   const focusRef = useRef(focusRegion);
@@ -494,8 +518,13 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
     setDrawNote(null);
     setCorners([...corners, roundCorner([lng, lat])]);
   }
-  const drawActions = useRef({ addCorner, finishDrawing, stopDrawing, undoCorner });
-  drawActions.current = { addCorner, finishDrawing, stopDrawing, undoCorner };
+  function pickCell(corners: Corner[]) {
+    areaRef.current = corners; // shown at once, before the page answers with the same corners
+    paintArea();
+    onDrawArea(corners);
+  }
+  const drawActions = useRef({ addCorner, finishDrawing, stopDrawing, undoCorner, pickCell });
+  drawActions.current = { addCorner, finishDrawing, stopDrawing, undoCorner, pickCell };
 
   // While drawing: Enter finishes, Backspace takes the last corner back, Escape gives up.
   useEffect(() => {
@@ -558,6 +587,15 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
     });
     map.on("click", (event) => {
       if (draw.current.active) return drawActions.current.addCorner(event);
+      // In "Where it burns" a click on a cell makes that cell the area of interest.
+      const info = cellsRef.current;
+      const cellFeature = info ? map.queryRenderedFeatures(event.point, { layers: ["cells-fill"] })[0] : undefined;
+      if (info && cellFeature) {
+        // The square from the cell's own centre: tile geometry is quantized, the centre is exact.
+        const { lat, lon } = cellFeature.properties as BurnCell;
+        const half = info.cellDeg / 2;
+        return drawActions.current.pickCell(boxCorners([lon - half, lat - half, lon + half, lat + half]));
+      }
       if (justClosed()) return;
       const region = regionAt(regionsRef.current, event.lngLat.lng, event.lngLat.lat);
       if (!region) return;
@@ -580,6 +618,16 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
       const inside = regionAt(regionsRef.current, event.lngLat.lng, event.lngLat.lat) !== null;
       map.getCanvas().style.cursor = inside ? "pointer" : "";
     });
+    // A cell under the pointer says how often, how much and when it burns.
+    const popup = new Popup({ closeButton: false, closeOnClick: false, className: "cell-popup", maxWidth: "260px" });
+    map.on("mousemove", "cells-fill", (event) => {
+      const info = cellsRef.current;
+      const feature = event.features?.[0];
+      if (!info || !feature || draw.current.active) return;
+      const cell = feature.properties as BurnCell;
+      popup.setLngLat(event.lngLat).setText(`${cellSentence(cell, info.years, info.unit, info.cellDeg)} Click to make it your area.`).addTo(map);
+    });
+    map.on("mouseleave", "cells-fill", () => popup.remove());
     mapRef.current = map;
     return () => {
       cancelAnimationFrame(paintFrame.current);
@@ -651,6 +699,34 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
     );
   }, [ready, date, time]);
 
+  // Where it burns: fetch the cells of the period, colour them, and hide the day's hotspots while they show.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const hotspotLayers = ["hotspot-heat", "hotspot-glow", "hotspot", "hotspot-hour"];
+    for (const id of hotspotLayers) map.setLayoutProperty(id, "visibility", showCells ? "none" : "visible");
+    map.setLayoutProperty("cells-fill", "visibility", showCells ? "visible" : "none");
+    if (!showCells || !period) return;
+    const controller = new AbortController();
+    setCellsError(null);
+    fetchCells(period.start, period.end, controller.signal)
+      .then((answer) => {
+        const squares = cellSquares(answer.cells, answer.cell_deg);
+        const stops = cellStops(squares.features.map((f) => f.properties.density));
+        (map.getSource("cells") as GeoJSONSource).setData(squares);
+        // Coloured per 100 km2: a 0.25-degree cell is about a quarter smaller in Ukraine than in northern Argentina.
+        map.setPaintProperty("cells-fill", "fill-color", [
+          "interpolate", ["linear"], ["get", "density"],
+          0, CELL_RAMP[0], stops[0], CELL_RAMP[1], stops[1], CELL_RAMP[2], stops[2], CELL_RAMP[3], stops[3], CELL_RAMP[4],
+        ]);
+        setCells({ years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg });
+      })
+      .catch((reason: Error) => {
+        if (reason.name !== "AbortError") setCellsError(reason.message);
+      });
+    return () => controller.abort();
+  }, [ready, showCells, period?.start, period?.end]);
+
   useEffect(() => {
     if (ready) paintArea();
   }, [ready, area]);
@@ -694,6 +770,9 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
           <a className="stage-next" href="#calendar">
             Burning activity calendar, 2000 to 2025 <span aria-hidden="true">↓</span>
           </a>
+          <button type="button" className="stage-toggle" aria-pressed={showCells} onClick={() => setShowCells(!showCells)}>
+            {showCells ? "Back to the day" : "Where it burns"}
+          </button>
           <button type="button" className="stage-toggle" aria-pressed={drawing} onClick={drawing ? stopDrawing : startDrawing}>
             {area && !drawing ? "Redraw the area" : "Draw an area"}
           </button>
@@ -807,20 +886,47 @@ export function Globe({ regions, date, time, day, counts, focusRegion, dark, onP
           <button type="button" className="stage-fold stage-fold-legend" aria-label="Hide the legend" title="Hide" onClick={() => setLegendOpen(false)}>
             <FoldIcon />
           </button>
-        <ul>
-          <li>
-            <i className="legend-dot" aria-hidden="true" />
-            Hotspots through the selected time
-          </li>
-          <li>
-            <i className="legend-dot is-ringed" aria-hidden="true" />
-            Detected in the hour up to it
-          </li>
-          <li>
-            <i className="legend-heat" aria-hidden="true" />
-            Where hotspots crowd, orange turns red
-          </li>
-        </ul>
+        {showCells ? (
+          <div className="legend-cells">
+            <p className="legend-title">
+              {cells
+                ? `Where it burns, ${cells.start} to ${cells.end}: ${cells.unit} a year per 100 km², harmonized record`
+                : cellsError
+                  ? `Cannot load the cells: ${cellsError}`
+                  : "Loading where it burns..."}
+            </p>
+            {cells && (
+              <>
+                <i className="legend-ramp" aria-hidden="true" />
+                <div className="legend-ramp-ticks" aria-hidden="true">
+                  <span>0</span>
+                  <span>{stopLabel(cells.stops[0])}</span>
+                  <span>{stopLabel(cells.stops[2])}</span>
+                  <span>{`${stopLabel(cells.stops[3])}+`}</span>
+                </div>
+                <p className="legend-hint">
+                  Point at a cell for how often it burns and in which month most; click it to make it your area. The
+                  error of the method was measured on 1-degree tiles, about 16 of these cells.
+                </p>
+              </>
+            )}
+          </div>
+        ) : (
+          <ul>
+            <li>
+              <i className="legend-dot" aria-hidden="true" />
+              Hotspots through the selected time
+            </li>
+            <li>
+              <i className="legend-dot is-ringed" aria-hidden="true" />
+              Detected in the hour up to it
+            </li>
+            <li>
+              <i className="legend-heat" aria-hidden="true" />
+              Where hotspots crowd, orange turns red
+            </li>
+          </ul>
+        )}
         <p className="legend-hint">{`${ZOOM_KEY} + scroll zooms the globe; scroll alone moves down the page.`}</p>
         <p>
           Data: NASA FIRMS (MODIS Collection 6.1, VIIRS 375 m). Imagery: NASA GIBS (Blue Marble). Map:{" "}
