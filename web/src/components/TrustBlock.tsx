@@ -1,7 +1,7 @@
 import type { Validation } from "../api";
 import {
-  CHECKS, CHECK_LABELS, SCALES, SCALE_LABELS, expectedError, percent, reportTime, scalesWhereFactorWins, signedPercent,
-  validateCommand,
+  CHECKS, CHECK_LABELS, SCALES, SCALE_LABELS, change, expectedError, percent, reportTime, scalesWhereFactorWins,
+  signedPercent, validateCommand,
 } from "../trust";
 
 const REPOSITORY = "https://github.com/VitaliiFoX/hotspot-harmony/blob/main";
@@ -87,6 +87,35 @@ export function TrustBlock({ validation, region, wholeRegion }: Props) {
           </tbody>
         </table>
       </div>
+
+      {country.sensor_jump && (
+        <div className="trust-jump">
+          <h3>{`What the sensor switch does to ${region}`}</h3>
+          <p className="subtitle">
+            {`Mean yearly burning in ${country.sensor_jump.after.replace("-", "–")} against ${country.sensor_jump.before.replace("-", "–")}, for the whole country. The raw record switches from MODIS to VIIRS in 2012; the harmonized one does not jump there.`}
+          </p>
+          <dl className="trust-jump-figures">
+            <div>
+              <dt>Raw record</dt>
+              <dd>
+                <strong>{change(country.sensor_jump.raw)}</strong>
+                {` (${country.sensor_jump.raw.toFixed(2)}×)`}
+              </dd>
+            </div>
+            <div>
+              <dt>Harmonized record</dt>
+              <dd>
+                <strong>{change(country.sensor_jump.harmonized)}</strong>
+                {` (${country.sensor_jump.harmonized.toFixed(2)}×)`}
+              </dd>
+            </div>
+          </dl>
+          <p className="trust-note">
+            The difference between the two is the sensor, not the fire. Up to 2021 the harmonized record is MODIS as
+            reported, so its change is what MODIS itself saw.
+          </p>
+        </div>
+      )}
 
       {factorWins.length > 0 && (
         <p className="trust-note">
