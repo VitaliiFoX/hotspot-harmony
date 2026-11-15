@@ -1048,6 +1048,12 @@ html {
 .stage-cells {
   gap: 8px;
 }
+/* The bar of a drawn area sits in the same place: the switches go above it. */
+@media (min-width: 900px) {
+  .stage-cells.is-raised {
+    bottom: 100px;
+  }
+}
 .stage-cells .segmented > button {
   white-space: nowrap;
 }
