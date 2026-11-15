@@ -464,6 +464,45 @@ export const UK: Record<string, string> = {
   "See what is missing": "Подивитися, чого бракує",
   "Let the country go": "Прибрати країну",
   "Hotspots on {date}": "Гарячі точки {date}",
+  "{regions}: no hotspot seen yet. Clouds, smoke and the hours between satellite passes hide some fires, so a zero is not proof there was none.":
+    "{regions}: гарячих точок поки не видно. Хмари, дим і години між прольотами супутників приховують частину пожеж, тож нуль не доводить, що їх не було.",
+  "None on that day: on a quiet day the satellites can pass without seeing a fire.":
+    "Того дня жодної: у спокійний день супутники можуть пролетіти й не побачити вогню.",
+  "None in the last hour: a satellite sees a place only a few times a day, so most hours are empty.":
+    "За останню годину жодної: супутник бачить місце лише кілька разів на добу, тож більшість годин порожні.",
+  "No hotspots in these days. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.":
+    "У ці дні гарячих точок немає. Хмари й дим можуть приховати пожежі від супутників, тож це не доводить, що їх не було.",
+  "No hotspots on this day. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.":
+    "Цього дня гарячих точок немає. Хмари й дим можуть приховати пожежі від супутників, тож це не доводить, що їх не було.",
+  "Link copied": "Посилання скопійовано",
+  "Copy the address from the browser bar": "Скопіюйте адресу з рядка браузера",
+  "Share this view": "Поділитися",
+  Day: "День",
+  Period: "Період",
+  Show: "Показати",
+  "Loading the hotspots of these days...": "Завантаження гарячих точок за ці дні...",
+  "Cannot load these days: {error}": "Не вдалося завантажити ці дні: {error}",
+  "No hotspots in these days.": "У ці дні гарячих точок немає.",
+  "Now click the last day; Esc starts over.": "Тепер клацніть останній день; Esc — почати спочатку.",
+  "Click a first and a last day to pick another.": "Клацніть перший і останній день, щоб вибрати інший.",
+  "Through the day": "До дня",
+  "Play the days": "Програти дні",
+  "{unit} from {first} through {day}": "{unit} з {first} до {day}",
+  "That day": "Того дня",
+  "These days hold {count} hotspots; the globe and these figures show an even sample of {shown}.":
+    "У ці дні {count} гарячих точок; глобус і ці цифри показують рівномірну вибірку з {shown}.",
+  "{sensor} was down on {n} days of this span, so its hotspots are missing or incomplete there.":
+    "{sensor} не працював {n} день цього періоду, тож гарячі точки там відсутні або неповні.|{sensor} не працював {n} дні цього періоду, тож гарячі точки там відсутні або неповні.|{sensor} не працював {n} днів цього періоду, тож гарячі точки там відсутні або неповні.",
+  "Hotspots, {span}": "Гарячі точки, {span}",
+  "{span}, through {day}": "{span}, до {day}",
+  "All days": "Усі дні",
+  "No hotspots loaded for these days.": "Для цих днів гарячі точки не завантажено.",
+  "Hotspots through the selected day": "Гарячі точки до вибраного дня",
+  "Detected on that day": "Виявлені того дня",
+  "Hotspots of the whole month, {n} days":
+    "Гарячі точки за весь місяць, {n} день|Гарячі точки за весь місяць, {n} дні|Гарячі точки за весь місяць, {n} днів",
+  "Hotspots from the first day through the last, {n} days":
+    "Гарячі точки з першого до останнього дня, {n} день|Гарячі точки з першого до останнього дня, {n} дні|Гарячі точки з першого до останнього дня, {n} днів",
   "within the error": "у межах похибки",
   "Where it burns most, {start} to {end}, {record}: {unit} a year, {deg}° cells":
     "Де горить найбільше, {start} – {end}, {record}: {unit} за рік, клітинки {deg}°",

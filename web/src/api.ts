@@ -103,6 +103,11 @@ export type DayHotspots = {
   hotspots: DayHotspot[];
   /** True when `sensor` was down that day (a sensor gap of the harmonization report): the hotspots are incomplete. */
   sensor_gap?: boolean;
+  /** Set for a span of days: its last day and length. The third field of a hotspot is then its day of the span. */
+  end?: string;
+  days?: number;
+  /** Days of the span a sensor was down. */
+  gap_days?: string[];
 };
 
 export type Polygon = { type: "Polygon"; coordinates: number[][][] };
@@ -200,6 +205,22 @@ export async function fetchMonthDays(month: string, signal?: AbortSignal): Promi
 
 export async function fetchDayHotspots(date: string, signal?: AbortSignal): Promise<DayHotspots> {
   const response = await fetch(`${BASE}/api/hotspots/day?date=${encodeURIComponent(date)}`, { signal });
+  if (!response.ok) throw await failure(response);
+  return response.json();
+}
+
+/** The hotspots of a period as the globe draws a day's: the third field is the day of the period, not the minute. */
+export type PeriodHotspots = Omit<DayHotspots, "date" | "sensor_gap"> & {
+  start: string;
+  end: string;
+  days: number;
+  /** Days of the period a sensor was down: the hotspots of those days are missing or incomplete. */
+  gap_days: string[];
+};
+
+export async function fetchPeriodHotspots(start: string, end: string, signal?: AbortSignal): Promise<PeriodHotspots> {
+  const query = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+  const response = await fetch(`${BASE}/api/hotspots/period?${query}`, { signal });
   if (!response.ok) throw await failure(response);
   return response.json();
 }

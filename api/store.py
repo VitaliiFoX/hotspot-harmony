@@ -45,6 +45,7 @@ from pipeline.harmonize import JUMP_AFTER, JUMP_BEFORE, METHOD_NAMES, RECORD
 
 RAW_SWITCH = (2012, 2)  # first month the raw series takes from VIIRS S-NPP (it started on 2012-01-20)
 RECORD_FIRST = (2000, 11)  # first full month of the FIRMS archive
+MAX_PERIOD_DAYS = 366  # the longest period the globe shows at once: a year, leap day included
 UNITS = {
     "harmonized": "MODIS-equivalent fire cell-days",
     "raw": "fire cell-days",
@@ -163,7 +164,10 @@ class Store:
             self.units = {"raw": UNITS["raw_hotspots"]}
         self.month_sensor: dict[str, dict[int, str]] = {}
         for name, (path, query) in sources.items():
-            self.con.execute(f"create table {name} as {query}", [path.as_posix()])
+            # A view, not a table: the file is read at each request. A copy in memory answers a millisecond
+            # sooner and costs about 1 GB for the record of every country.
+            file = "read_parquet('" + path.as_posix().replace("'", "''") + "')"
+            self.con.execute(f"create view {name} as {query.replace('read_parquet(?)', file)}")
             lo, hi = self.con.execute(f"select min(ym), max(ym) from {name}").fetchone()
             if lo is None:
                 self.units.pop(name, None)
@@ -205,6 +209,16 @@ class Store:
         """Number of cells inside the area and their summed value per month index."""
         cur = self.con.cursor()
         west, south, east, north = area.bounds
+        if area.equals(box(west, south, east, north)):
+            # A rectangle holds the cells whose centre is strictly inside its bounds: the same rule as
+            # `contains_xy` below, without listing the cells and joining them back.
+            inside = "cell_lon > ? and cell_lon < ? and cell_lat > ? and cell_lat < ?"
+            bounds = [west, east, south, north]
+            (n,) = cur.execute(
+                f"select count(*) from (select distinct cell_lat, cell_lon from {name} where {inside})", bounds
+            ).fetchone()
+            rows = cur.execute(f"select ym, sum(value) from {name} where {inside} group by ym", bounds).fetchall()
+            return n, {ym: float(v) for ym, v in rows}
         cells = cur.execute(
             f"select distinct cell_lat, cell_lon from {name} "
             "where cell_lon between ? and ? and cell_lat between ? and ?",
@@ -298,19 +312,8 @@ class Store:
             "yearly": yearly,
         }
 
-    def cells(self, start: str | None, end: str | None, series: str | None, deg: float | None = None) -> dict:
-        """Where and when it burns, and whether it burns more: for each tile over the chosen period (cut to the
-        record), the value per calendar year the period touches, the years with any burning, the calendar month with
-        the most, and the mean yearly value of the second half of its full years against the first.
-
-        A tile is the grid cell itself, or a square of `deg` degrees summing whole cells; `deg` must be a multiple of
-        the grid. With an odd number of full years the middle one is left out of both halves."""
-        cell_deg = self.cfg.cell_deg
-        deg = deg or cell_deg
-        multiple = deg / cell_deg
-        if deg > 10 or multiple < 1 or abs(multiple - round(multiple)) > 1e-9:
-            raise ApiError(400, f"deg must be a multiple of the grid, {cell_deg} degrees, up to 10")
-        name = self.pick_series(series)
+    def _chosen(self, name: str, start: str | None, end: str | None) -> Span:
+        """The asked period cut to the record of the series `name`."""
         record = self.spans[name]
         asked = Span(Span.parse(start) if start else record.first, Span.parse(end) if end else record.last)
         if asked.first > asked.last:
@@ -320,15 +323,49 @@ class Store:
             raise ApiError(
                 400, f"the record covers {Span.label(record.first)} to {Span.label(record.last)}; nothing to show"
             )
+        return chosen
+
+    def cells(
+        self,
+        start: str | None,
+        end: str | None,
+        series: str | None,
+        deg: float | None = None,
+        bounds: tuple[float, float, float, float] | None = None,
+        only: pd.DataFrame | None = None,
+    ) -> dict:
+        """Where and when it burns, and whether it burns more: for each tile over the chosen period (cut to the
+        record), the value per calendar year the period touches, the years with any burning, the calendar month with
+        the most, and the mean yearly value of the second half of its full years against the first.
+
+        A tile is the grid cell itself, or a square of `deg` degrees summing whole cells; `deg` must be a multiple of
+        the grid. With an odd number of full years the middle one is left out of both halves. `bounds` (west, south,
+        east, north) keeps the cells whose centre is within them, edges included; `only` (columns cell_lat,
+        cell_lon) keeps the listed cells."""
+        cell_deg = self.cfg.cell_deg
+        deg = deg or cell_deg
+        multiple = deg / cell_deg
+        if deg > 10 or multiple < 1 or abs(multiple - round(multiple)) > 1e-9:
+            raise ApiError(400, f"deg must be a multiple of the grid, {cell_deg} degrees, up to 10")
+        name = self.pick_series(series)
+        chosen = self._chosen(name, start, end)
         years = chosen.last // 12 - chosen.first // 12 + 1
         touched = range(chosen.first // 12, chosen.last // 12 + 1)
         full = [y for y in touched if chosen.first <= y * 12 and y * 12 + 11 <= chosen.last]
         half = len(full) // 2
         early_years, late_years = (full[:half], full[-half:]) if half else ([], [])
         tile = f"round(floor(cell_{{axis}} / {deg}) * {deg} + {deg / 2}, 6)"
-        rows = self.con.cursor().execute(
+        within, within_values = "", []
+        if bounds is not None:
+            within = " and cell_lon between ? and ? and cell_lat between ? and ?"
+            within_values = [bounds[0], bounds[2], bounds[1], bounds[3]]
+        cur = self.con.cursor()
+        if only is not None:
+            cur.register("only_cells", only)
+            within += " and (cell_lat, cell_lon) in (select cell_lat, cell_lon from only_cells)"
+        rows = cur.execute(
             f"""with t as (select {tile.format(axis="lat")} as lat, {tile.format(axis="lon")} as lon, ym, value
-                           from {name} where ym between ? and ?),
+                           from {name} where ym between ? and ?{within}),
                 by_year as (select lat, lon, ym // 12 as y, sum(value) as v from t group by all),
                 by_month as (select lat, lon, ym % 12 + 1 as m, sum(value) as v from t group by all),
                 cell as (select lat, lon, sum(v) as total, count(*) filter (where v > 0) as burning,
@@ -341,7 +378,7 @@ class Store:
                 from cell join peak using (lat, lon)
                 where total > 0
                 order by lat, lon""",
-            [chosen.first, chosen.last],
+            [chosen.first, chosen.last, *within_values],
         ).fetchall()
 
         def mean(by_year: dict[int, float], wanted: list[int]) -> float | None:
@@ -378,15 +415,28 @@ class Store:
         """The busiest cells of an area: `cells` kept to those whose centre is inside it, most burning a year first."""
         area = parse_area(geometry)
         self.coverage_warnings(area)
-        answer = self.cells(start, end, series)
-        cells = answer["cells"]
-        if cells:
-            lon = np.array([c["lon"] for c in cells])
-            lat = np.array([c["lat"] for c in cells])
-            inside = shapely.contains_xy(area, lon, lat)
-            cells = [c for c, keep in zip(cells, inside, strict=True) if keep]
-        cells.sort(key=lambda c: (-c["per_year"], c["lat"], c["lon"]))
-        return {**answer, "cells": cells[:limit]}
+        name = self.pick_series(series)
+        chosen = self._chosen(name, start, end)
+        years = chosen.last // 12 - chosen.first // 12 + 1
+        west, south, east, north = area.bounds
+        # First the total of every cell in the bounds, three numbers a cell; then the full answer for the few
+        # busiest alone. The full answer of every cell of a continent takes seconds and gigabytes.
+        found = self.con.cursor().execute(
+            f"""select cell_lat, cell_lon, sum(value) as total from {name}
+                where ym between ? and ? and cell_lon between ? and ? and cell_lat between ? and ?
+                group by all having sum(value) > 0""",
+            [chosen.first, chosen.last, west, east, south, north],
+        ).fetchnumpy()
+        inside = shapely.contains_xy(area, found["cell_lon"], found["cell_lat"])
+        ranked = sorted(
+            zip(found["total"][inside].tolist(), found["cell_lat"][inside].tolist(),
+                found["cell_lon"][inside].tolist(), strict=True),
+            key=lambda c: (-round(c[0] / years, 3), c[1], c[2]),
+        )[:limit]  # fmt: skip
+        only = pd.DataFrame({"cell_lat": [c[1] for c in ranked], "cell_lon": [c[2] for c in ranked]})
+        answer = self.cells(start, end, series, only=only)
+        cells = sorted(answer["cells"], key=lambda c: (-c["per_year"], c["lat"], c["lon"]))
+        return {**answer, "cells": cells}
 
     def hotspots_csv(self, geometry: dict, start: str, end: str) -> tuple[str, bool]:
         """CSV text of the hotspots inside the area between two dates (inclusive), and whether it was cut short."""
@@ -496,6 +546,62 @@ class Store:
             "regions": regions,
             "hotspots": [[lon, lat, minute, index.get(country, 0)] for lon, lat, minute, country in rows],
             "sensor_gap": date in self.gap_days.get(sensor, set()),
+        }
+
+    def hotspot_period(self, start: str, end: str, limit: int) -> dict:
+        """Hotspots from the UTC day `start` through `end` as [lon, lat, day of the period, region index].
+
+        The period may cross months and the switch from MODIS to VIIRS: each month is read from its own sensor. Past
+        `limit` rows an even sample is returned, the same share of every month, and `count` still holds every hotspot.
+        """
+        try:
+            first, last = pd.Timestamp(start), pd.Timestamp(end)
+        except ValueError as e:
+            raise ApiError(400, f"{start} to {end} is not a pair of calendar days") from e
+        if last < first:
+            raise ApiError(400, "the period ends before it starts")
+        days = (last - first).days + 1
+        if days > MAX_PERIOD_DAYS:
+            raise ApiError(400, f"a period can be at most {MAX_PERIOD_DAYS} days long")
+        cur = self.con.cursor()
+        parts = []
+        segment = first
+        while segment <= last:
+            stop = min(segment + pd.offsets.MonthBegin(1), last + pd.Timedelta(days=1))
+            sensor, source, params = self._day_source(segment, stop)
+            (count,) = cur.execute(f"select count(*) {source}", params).fetchone()
+            parts.append((sensor, source, params, int(count)))
+            segment = stop
+        total = sum(part[-1] for part in parts)
+        share = min(1.0, limit / total) if total else 1.0
+        regions = [r.name for r in self.cfg.regions]
+        index = {name: i for i, name in enumerate(regions)}
+        rows = []
+        for _, source, params, count in parts:
+            # hash() orders the rows the same way on every call, so the sample is stable and spread evenly in time.
+            rows += cur.execute(
+                f"""select round(lon, 4), round(lat, 4),
+                           cast(date_diff('day', ?::date, cast(acq_datetime_utc as date)) as integer) as day,
+                           country, acq_datetime_utc
+                    {source}
+                    order by hash(lon, lat, acq_datetime_utc)
+                    limit ?""",
+                [first.date(), *params, round(count * share)],
+            ).fetchall()
+        rows.sort(key=lambda row: (row[4], row[1], row[0]))
+        sensors = list(dict.fromkeys(part[0] for part in parts))
+        gaps = sorted(d for sensor in sensors for d in self.gap_days.get(sensor, ()) if start <= d <= end)
+        return {
+            "start": start,
+            "end": end,
+            "days": days,
+            "sensor": sensors[0] if len(sensors) == 1 else "+".join(sensors),
+            "unit": UNITS["raw_hotspots"],
+            "count": total,
+            "truncated": total > len(rows),
+            "regions": regions,
+            "hotspots": [[lon, lat, day, index.get(country, 0)] for lon, lat, day, country, _ in rows],
+            "gap_days": gaps,
         }
 
     def validation(self) -> dict:

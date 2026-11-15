@@ -1,4 +1,4 @@
-import { monthTitle, t } from "../i18n";
+import { formatDecimal, monthTitle, t } from "../i18n";
 import type { Unusual } from "../insights";
 import { UNUSUAL_Z } from "../insights";
 import { formatValue } from "../scale";
@@ -40,13 +40,13 @@ export function UnusualMonths({ unusual, unit, raw, onShow }: Props) {
                   {m.ratio === null
                     ? t("{value} {unit} in a month that usually has none", { value: formatValue(m.value), unit })
                     : t("{ratio}× its median: {value} against {median} {unit}", {
-                        ratio: m.ratio.toFixed(2), value: formatValue(m.value), median: formatValue(m.median), unit,
+                        ratio: formatDecimal(m.ratio, 2), value: formatValue(m.value), median: formatValue(m.median), unit,
                       })}
                 </span>
                 <span className="unusual-z">
                   {m.direction === "above"
-                    ? t("more than usual, z {z}", { z: m.z.toFixed(1) })
-                    : t("less than usual, z {z}", { z: m.z.toFixed(1) })}
+                    ? t("more than usual, z {z}", { z: formatDecimal(m.z, 1) })
+                    : t("less than usual, z {z}", { z: formatDecimal(m.z, 1) })}
                 </span>
               </button>
             </li>

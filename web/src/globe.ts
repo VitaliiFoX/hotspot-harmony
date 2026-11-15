@@ -2,7 +2,7 @@
 
 import type { FilterSpecification } from "maplibre-gl";
 import type { Bbox, DayHotspot, Region } from "./api";
-import { dayInWords, formatCount, monthName, monthTitle, t, tn } from "./i18n";
+import { dayInWords, formatCount, formatDecimal, monthName, monthTitle, t, tn } from "./i18n";
 
 
 /** The date the globe opens on when the record covers it: a busy day in the southern burning season. */
@@ -137,10 +137,11 @@ export type HourCounts = RegionCounts & { regions: RegionCounts[] };
 
 /**
  * Hotspots from 00:00 through `time` (minutes after 00:00 UTC, inclusive), in the hour up to it, and in the
- * whole day, overall and per region.
+ * whole day, overall and per region. Over a period the third field of a hotspot is its day of the period instead
+ * of its minute: `time` is then a day and `window` 1, so "in the hour" reads "on that day".
  */
-export function countHotspots(hotspots: DayHotspot[], time: number, regionCount: number): HourCounts {
-  const start = time - 59;
+export function countHotspots(hotspots: DayHotspot[], time: number, regionCount: number, window = 60): HourCounts {
+  const start = time - (window - 1);
   const end = time + 1;
   const regions: RegionCounts[] = Array.from({ length: regionCount }, () => ({ throughHour: 0, inHour: 0, day: 0 }));
   const total: RegionCounts = { throughHour: 0, inHour: 0, day: 0 };
@@ -155,6 +156,26 @@ export function countHotspots(hotspots: DayHotspot[], time: number, regionCount:
   return { ...total, regions };
 }
 
+/**
+ * Why a figure reads zero, so it is not taken for an error or for proof that nothing burned: a region with no
+ * hotspot yet, or an empty hour (a satellite sees a place only a few times a day). Null when nothing is zero.
+ */
+export function zeroNote(regions: readonly string[], counts: HourCounts, span: boolean): string | null {
+  const quiet = regions.filter((_, index) => (counts.regions[index]?.throughHour ?? 0) === 0).map((name) => t(name));
+  if (quiet.length > 0 && counts.throughHour > 0) {
+    return t(
+      "{regions}: no hotspot seen yet. Clouds, smoke and the hours between satellite passes hide some fires, so a zero is not proof there was none.",
+      { regions: quiet.join(t(" and ")) },
+    );
+  }
+  if (counts.inHour === 0 && counts.throughHour > 0) {
+    return span
+      ? t("None on that day: on a quiet day the satellites can pass without seeing a fire.")
+      : t("None in the last hour: a satellite sees a place only a few times a day, so most hours are empty.");
+  }
+  return null;
+}
+
 /** Size in px and opacity of a day's dot in the calendar, by the square root of its share of the month's maximum. */
 export function dotStyle(value: number, monthMax: number): { size: number; opacity: number } | null {
   if (value <= 0 || monthMax <= 0) return null;
@@ -162,11 +183,11 @@ export function dotStyle(value: number, monthMax: number): { size: number; opaci
   return { size: 4 + 4 * share, opacity: 0.35 + 0.65 * share };
 }
 
-/** Map filters: every hotspot up to the end of the hour, and those detected within the hour. */
-export function hourFilters(time: number): { through: FilterSpecification; inHour: FilterSpecification } {
+/** Map filters: every hotspot up to the end of the hour, and those detected within the hour (or on that day of a period). */
+export function hourFilters(time: number, window = 60): { through: FilterSpecification; inHour: FilterSpecification } {
   return {
     through: ["<=", ["get", "minute"], time],
-    inHour: ["all", [">", ["get", "minute"], time - 60], ["<=", ["get", "minute"], time]],
+    inHour: ["all", [">", ["get", "minute"], time - window], ["<=", ["get", "minute"], time]],
   };
 }
 
@@ -304,7 +325,7 @@ export function trendSentence(
   const early = yearsLabel(halves.early);
   const late = yearsLabel(halves.late);
   if (cell.trend === null || cell.trend === undefined) {
-    const amount = (cell.late ?? 0) >= 10 ? Math.round(cell.late ?? 0).toString() : (cell.late ?? 0).toFixed(1);
+    const amount = (cell.late ?? 0) >= 10 ? formatCount(Math.round(cell.late ?? 0)) : formatDecimal(cell.late ?? 0, 1);
     return t("No burning in {early}, so no change can be given; about {amount} a year in {late}.", { early, amount, late });
   }
   const percentChange = Math.round((cell.trend - 1) * 100);
@@ -314,7 +335,7 @@ export function trendSentence(
       late, early, signed, error: Math.round(error * 100),
     });
   }
-  return t("{late} against {early}: {signed} ({ratio}×).", { late, early, signed, ratio: cell.trend.toFixed(2) });
+  return t("{late} against {early}: {signed} ({ratio}×).", { late, early, signed, ratio: formatDecimal(cell.trend, 2) });
 }
 
 /** The cells that burn most a year, most first: what the globe's table lists in "Where it burns". */
@@ -368,8 +389,8 @@ export function cellSquares(cells: readonly BurnCell[], cellDeg: number, trendEr
 /** A colour step as the legend prints it: whole numbers from 10, one decimal below, two below 0.1. */
 export function stopLabel(value: number): string {
   if (value >= 10) return String(Math.round(value));
-  if (value >= 0.1) return value.toFixed(1);
-  return value.toFixed(2);
+  if (value >= 0.1) return formatDecimal(value, 1);
+  return formatDecimal(value, 2);
 }
 
 function quantile(sorted: number[], q: number): number {
@@ -393,7 +414,7 @@ export function cellStops(values: readonly number[]): [number, number, number, n
 
 /** What the hover over a cell says: how often, how much (also per 100 km2) and when it burns. */
 export function cellSentence(cell: BurnCell, years: number, unit: string, cellDeg: number): string {
-  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : cell.per_year.toFixed(1);
+  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : formatDecimal(cell.per_year, 1);
   const perArea = stopLabel((cell.per_year / cellAreaKm2(cell.lat, cellDeg)) * 100);
   return tn(
     cell.years_burning,
@@ -406,6 +427,130 @@ export function cellSentence(cell: BurnCell, years: number, unit: string, cellDe
 /** A cell centre as people read it: "48.13° N, 37.63° E". */
 export function latLonLabel(lat: number, lon: number): string {
   const part = (value: number, positive: string, negative: string) =>
-    `${(Math.round(Math.abs(value) * 100) / 100).toFixed(2)}° ${value >= 0 ? positive : negative}`;
+    `${formatDecimal(Math.round(Math.abs(value) * 100) / 100, 2)}° ${value >= 0 ? positive : negative}`;
   return `${part(lat, t("N"), t("S"))}, ${part(lon, t("E"), t("W"))}`;
+}
+
+/** A colour with its opacity: red, green and blue from 0 to 255, alpha from 0 to 1. */
+export type Rgba = [r: number, g: number, b: number, a: number];
+
+function hexRgb(hex: string): [number, number, number] {
+  return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16)) as [number, number, number];
+}
+
+/**
+ * The colour of a value on a ramp of `#rrggbb` colours set at `stops` (ascending): mixed from the two stops
+ * around the value, the first or the last colour outside them. The same reading as the map's own
+ * `interpolate` expression, so a cell keeps the colour its legend promises.
+ */
+export function rampRgba(value: number, stops: readonly number[], colors: readonly string[]): Rgba {
+  let upper = stops.findIndex((stop) => value <= stop);
+  if (upper === -1) upper = stops.length - 1;
+  const lower = Math.max(0, upper - 1);
+  const span = stops[upper] - stops[lower];
+  const share = span > 0 ? Math.max(0, Math.min(1, (value - stops[lower]) / span)) : 0;
+  const [from, to] = [hexRgb(colors[lower]), hexRgb(colors[upper])];
+  return [0, 1, 2].map((i) => from[i] + (to[i] - from[i]) * share).concat(1) as Rgba;
+}
+
+/** A cell of "Where it burns" with the colour it is drawn in. */
+export type PaintedCell = { lat: number; lon: number; color: Rgba };
+
+/**
+ * The cells as one surface with no steps. At the centre of a cell the surface has the cell's own colour;
+ * between four centres it is mixed from the four by distance (bilinear). A place where no cell burned counts
+ * as fully transparent, so the surface fades out over one cell past the last one. The fade is the square of
+ * the mixed opacity: a quarter is left on that cell's outer edge and a sixteenth half a cell further, so the
+ * surface ends close to where the cells end and not in a wide pale band. Colours are mixed weighted by their
+ * opacity, so a colour next to nothing fades without turning dark.
+ */
+export function cellSurface(cells: readonly PaintedCell[], cellDeg: number) {
+  const lons = cells.map((cell) => cell.lon);
+  const lats = cells.map((cell) => cell.lat);
+  // One empty cell around the cells, for the fade.
+  const west = Math.min(...lons) - cellDeg;
+  const south = Math.min(...lats) - cellDeg;
+  const columns = Math.round((Math.max(...lons) - west) / cellDeg) + 2;
+  const rows = Math.round((Math.max(...lats) - south) / cellDeg) + 2;
+  // Red, green and blue already multiplied by alpha, then alpha.
+  const grid = new Float32Array(columns * rows * 4);
+  for (const { lat, lon, color } of cells) {
+    const at = (Math.round((lat - south) / cellDeg) * columns + Math.round((lon - west) / cellDeg)) * 4;
+    grid.set([color[0] * color[3], color[1] * color[3], color[2] * color[3], color[3]], at);
+  }
+  const bounds: [number, number, number, number] = [west, south, west + (columns - 1) * cellDeg, south + (rows - 1) * cellDeg];
+
+  /** The colour of the surface at a point; transparent outside the bounds. */
+  function at(lon: number, lat: number): Rgba {
+    const x = (lon - west) / cellDeg;
+    const y = (lat - south) / cellDeg;
+    if (!(x >= 0 && y >= 0 && x <= columns - 1 && y <= rows - 1)) return [0, 0, 0, 0];
+    const x0 = Math.min(columns - 2, Math.floor(x));
+    const y0 = Math.min(rows - 2, Math.floor(y));
+    const [tx, ty] = [x - x0, y - y0];
+    const mixed = [0, 0, 0, 0];
+    for (const [dx, dy, weight] of [
+      [0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty],
+    ]) {
+      const from = ((y0 + dy) * columns + x0 + dx) * 4;
+      for (let i = 0; i < 4; i++) mixed[i] += grid[from + i] * weight;
+    }
+    const alpha = mixed[3];
+    return alpha > 0 ? [mixed[0] / alpha, mixed[1] / alpha, mixed[2] / alpha, alpha * alpha] : [0, 0, 0, 0];
+  }
+  return { bounds, columns, rows, at };
+}
+
+/**
+ * The cells split into groups that lie far apart: first where a gap of more than `gapDeg` degrees of longitude
+ * holds no cell, then each of those where such a gap of latitude holds none. Argentina and Ukraine come out
+ * as two groups, so that each gets an image of its own size and not one image that is mostly empty sea.
+ */
+export function cellGroups<T extends { lat: number; lon: number }>(cells: readonly T[], gapDeg = 10): T[][] {
+  const split = (group: readonly T[], key: "lon" | "lat"): T[][] => {
+    const sorted = [...group].sort((a, b) => a[key] - b[key]);
+    const groups: T[][] = [];
+    for (const cell of sorted) {
+      const last = groups[groups.length - 1];
+      if (last && cell[key] - last[last.length - 1][key] <= gapDeg) last.push(cell);
+      else groups.push([cell]);
+    }
+    return groups;
+  };
+  return split(cells, "lon").flatMap((band) => split(band, "lat"));
+}
+
+function mercatorY(lat: number): number {
+  return Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+}
+
+/**
+ * The surface of the cells as an image the map can lay over its bounds: `data` holds red, green, blue and
+ * alpha (0-255) of each pixel, top row first. The map stretches an image evenly in Web Mercator, where a
+ * degree of latitude grows towards the poles, so the rows are spaced evenly in Mercator and not in degrees:
+ * each pixel then lies over the place it was computed for. `scale` is pixels per cell across; it is lowered
+ * until the image fits `maxSide`, and the map smooths what is left between pixels.
+ */
+export function cellImage(cells: readonly PaintedCell[], cellDeg: number, scale = 4, maxSide = 2048) {
+  if (cells.length === 0) return null;
+  const surface = cellSurface(cells, cellDeg);
+  const [west, rawSouth, east, rawNorth] = surface.bounds;
+  const south = Math.max(-MERCATOR_LIMIT, rawSouth);
+  const north = Math.min(MERCATOR_LIMIT, rawNorth);
+  const [top, bottom] = [mercatorY(north), mercatorY(south)];
+  // Pixels as wide as they are tall on the map: the height follows the Mercator shape of the bounds.
+  const shape = (top - bottom) / (((east - west) * Math.PI) / 180);
+  const fit = Math.min(scale, maxSide / (surface.columns - 1), maxSide / ((surface.columns - 1) * shape));
+  const width = Math.max(2, Math.round((surface.columns - 1) * fit));
+  const height = Math.max(2, Math.round(width * shape));
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let py = 0; py < height; py++) {
+    const y = top - ((py + 0.5) / height) * (top - bottom);
+    const lat = (Math.atan(Math.exp(y)) * 360) / Math.PI - 90;
+    for (let px = 0; px < width; px++) {
+      const [r, g, b, a] = surface.at(west + ((px + 0.5) / width) * (east - west), lat);
+      data.set([r, g, b, a * 255], (py * width + px) * 4);
+    }
+  }
+  return { width, height, data, bounds: [west, south, east, north] as [number, number, number, number] };
 }

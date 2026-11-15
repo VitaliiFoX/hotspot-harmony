@@ -1,7 +1,7 @@
 // What the page can say in words about the area on screen, from the numbers it has computed and nothing else.
 
 import type { MonthValue, YearTotal } from "./api";
-import { monthName, t, tn } from "./i18n";
+import { formatDecimal, monthName, t, tn } from "./i18n";
 import { formatValue, monthSpans } from "./scale";
 
 /** A month that stands out from the same calendar month of the other years. */
@@ -119,7 +119,7 @@ export function summaryLines(input: {
       text:
         typical > 0
           ? t("Busiest full year: {value} {unit}, {ratio}× the median year.", {
-              ...values, ratio: (busiest.value / typical).toFixed(2),
+              ...values, ratio: formatDecimal(busiest.value / typical, 2),
             })
           : t("Busiest full year: {value} {unit}.", values),
       target: "burning-per-year",
@@ -150,7 +150,7 @@ export function summaryLines(input: {
     const top = unusual[0];
     const values = {
       first: `${monthName(top.month)} ${top.year}`,
-      how: top.ratio === null ? t("in a month that usually has none") : t("{ratio}× its median", { ratio: top.ratio.toFixed(2) }),
+      how: top.ratio === null ? t("in a month that usually has none") : t("{ratio}× its median", { ratio: formatDecimal(top.ratio, 2) }),
     };
     lines.push({
       figure: tn(unusual.length, "{n} month", "{n} months"),

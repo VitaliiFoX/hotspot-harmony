@@ -2,7 +2,7 @@
 
 import { monthOfYear, monthShort, numberLocale, t } from "./i18n";
 
-/** One blue hue, light to dark: the sequential ramp for "how much burning". */
+/** One blue hue, light to dark: the stops of the sequential ramp for "how much burning". */
 export const SEQUENTIAL = [
   "#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5",
   "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b",
@@ -23,16 +23,42 @@ export function position(value: number, min: number, max: number, mode: ScaleMod
   return Math.max(0, Math.min(1, Math.log(value / min) / Math.log(max / min)));
 }
 
+/** The stops of the ramp in the order a surface needs them: reversed on a dark one, so more is further from it. */
+export function rampStops(dark: boolean): string[] {
+  return dark ? [...SEQUENTIAL].reverse() : [...SEQUENTIAL];
+}
+
+function channels(hex: string): [number, number, number] {
+  return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16)) as [number, number, number];
+}
+
+/**
+ * The colour at a place on the ramp, from 0 (its first stop) to 1 (its last). Between two stops the colour is
+ * mixed from both, so the ramp has no steps: two months that differ a little differ a little in colour.
+ */
+export function rampColor(place: number, dark: boolean): string {
+  const stops = rampStops(dark);
+  const at = Math.max(0, Math.min(1, place)) * (stops.length - 1);
+  const below = Math.floor(at);
+  const from = channels(stops[below]);
+  const to = channels(stops[Math.min(stops.length - 1, below + 1)]);
+  const mixed = from.map((channel, i) => Math.round(channel + (to[i] - channel) * (at - below)));
+  return `#${mixed.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** The whole ramp as a CSS gradient, left to right: the legend of the calendar. */
+export function rampGradient(dark: boolean): string {
+  return `linear-gradient(90deg, ${rampStops(dark).join(", ")})`;
+}
+
 /**
  * Fill for a calendar cell. Exactly zero gets a neutral grey so "no burning" never
- * looks like "a little burning". On a dark surface the ramp runs the other way,
- * so that more is always further from the surface.
+ * looks like "a little burning". Above zero the colour follows the value without steps.
+ * On a dark surface the ramp runs the other way, so that more is always further from the surface.
  */
 export function cellColor(value: number, min: number, max: number, mode: ScaleMode, dark: boolean): string {
   if (value <= 0) return dark ? ZERO_FILL.dark : ZERO_FILL.light;
-  const steps = dark ? [...SEQUENTIAL].reverse() : SEQUENTIAL;
-  const index = Math.ceil(position(value, min, max, mode) * steps.length) - 1;
-  return steps[Math.max(0, Math.min(steps.length - 1, index))];
+  return rampColor(position(value, min, max, mode), dark);
 }
 
 /** Round axis ticks from zero up to at least `max`: steps of 1, 2 or 5 times a power of ten. */

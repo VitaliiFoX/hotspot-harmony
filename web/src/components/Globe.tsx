@@ -2,26 +2,31 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "../globe.css";
 import {
   type GeoJSONSource, type LayerSpecification, type LngLatBoundsLike, type MapMouseEvent, type SkySpecification, type StyleSpecification, MapLibreMap,
-  Marker, NavigationControl, Popup, setWorkerUrl,
+  NavigationControl, Popup, setWorkerUrl,
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { ShareButton } from "./ShareButton";
 import { formatCount, monthTitle, numberLocale, t } from "../i18n";
 import { formatValue } from "../scale";
+import { type Span, cursorLabel, spanLabel } from "../period";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
   type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops,
-  changeLabel, flatFillZoom, hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
+  changeLabel, flatFillZoom, hourFilters, hourInstant, zeroNote, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
   regionsCenter, trendSentence,
+  type PaintedCell, type Rgba, cellGroups, cellImage, rampRgba,
 } from "../globe";
 
 type Props = {
   regions: Region[];
   date: string | null;
-  /** Minutes after 00:00 UTC. */
+  /** Minutes after 00:00 UTC; over a span, the day of the span the slider is on. */
   time: number;
+  /** A month or period on screen instead of one day: the hotspots then carry their day of the span, not their minute. */
+  span: Span | null;
   day: DayHotspots | null;
   counts: HourCounts | null;
   /** The region chosen in the filters; the globe eases to it when it changes. */
@@ -64,13 +69,23 @@ setWorkerUrl(workerUrl);
 
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 const HOTSPOT = "#ff8a3d";
-// "Where it burns": cells of the harmonized record from little to much burning a year, pale yellow to deep red, so the
-// mode reads as a different thing from the day's orange hotspots (which it hides). As --cell-0 .. --cell-4 in globe.css.
+// "Where it burns" on the globe: cells of the harmonized record from little to much burning a year, pale yellow to
+// deep red, so the mode reads as a different thing from the day's orange hotspots (which it hides). As --cell-0 ..
+// --cell-4 in globe.css.
 const CELL_RAMP = ["#ffe08a", "#ffb347", "#ff7a2f", "#e2361f", "#9e0f16"] as const;
+// The same on the flat map, where the cells are drawn as one surface with no steps, in the colours of a thermal
+// camera: dark violet where it is cold, through pink, orange and amber to near white where it is hottest.
+// As --thermal-0 .. --thermal-4 in globe.css.
+const THERMAL_RAMP = ["#2c0352", "#fd369b", "#fe8915", "#ffb60d", "#fefbec"] as const;
 // "How it changed": second half of the period against the first, in doublings from -2 (a quarter) to +2 (four
 // times); less burning in blue, more in red, a change within the method's error neutral. As --trend-* in globe.css.
 const TREND_RAMP = ["#2166ac", "#67a9cf", "#f4f1ea", "#ef8a62", "#b2182b"] as const;
-const TREND_NONE = "rgba(150, 150, 150, 0.35)";
+// A cell with no burning in the first half has no change to show: faint grey.
+const TREND_NONE: Rgba = [150, 150, 150, 0.35];
+const TREND_NONE_CSS = `rgba(${TREND_NONE.join(", ")})`;
+// How much of the map shows through the cells of "Where it burns": the squares on the globe, the surface on the flat map.
+const CELLS_OPACITY = 0.72;
+const SURFACE_OPACITY = 0.85;
 // Where hotspots crowd, the heat layer runs from HOTSPOT to this red (as --hotspot-dense in globe.css).
 const HOTSPOT_DENSE = "#e0281f";
 // Below HEAT_FADE_FROM the heat layer carries the picture; by HEAT_FADE_TO single dots have taken over.
@@ -220,12 +235,14 @@ const STYLE: StyleSpecification = {
       paint: { "line-color": "rgba(255,255,255,0.6)", "line-width": 1.2 },
     },
     {
-      // Where it burns over the chosen period; the colour steps are set from the cells when they arrive.
+      // Where it burns over the chosen period; the colour steps are set from the cells when they arrive. On the
+      // flat map the squares are not seen (opacity 0) and only answer the pointer and a click: what is seen there
+      // is one surface with no steps, laid under this layer as images (see `cellImage` in globe.ts).
       id: "cells-fill",
       type: "fill",
       source: "cells",
       layout: { visibility: "none" },
-      paint: { "fill-color": CELL_RAMP[2], "fill-opacity": 0.72, "fill-antialias": false },
+      paint: { "fill-color": CELL_RAMP[2], "fill-opacity": CELLS_OPACITY, "fill-antialias": false },
     },
     {
       // The border of the picked country, in the ink of a drawn area: both are the area the calendar counts.
@@ -380,6 +397,17 @@ function areaFeatures(area: Corner[] | null, draft: Corner[] | null, cursor: Cor
   ];
 }
 
+/** The pixels of a cell surface as a PNG address the map can load as an image. */
+function imageUrl(image: { width: number; height: number; data: Uint8ClampedArray }): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const pixels = new ImageData(image.width, image.height);
+  pixels.data.set(image.data);
+  canvas.getContext("2d")?.putImageData(pixels, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 function reducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -483,8 +511,8 @@ function CalendarIcon() {
 const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318" : "Ctrl";
 
 export function Globe({
-  regions, date, time, day, counts, focusRegion, dark, view, onViewChange, countries, onEnsureCountries, country, countryHasData,
-  onPickCountry, area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
+  regions, date, time, span, day, counts, focusRegion, dark, view, onViewChange, countries, onEnsureCountries, country,
+  countryHasData, onPickCountry, area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -526,6 +554,8 @@ export function Globe({
   cellsRef.current = cells;
   // The view the map was last put in; it starts as the view the map is made in.
   const shownView = useRef(view);
+  // The images of the cell surface now on the flat map, one per group of cells: each is a source and a layer of that name.
+  const cellImages = useRef<string[]>([]);
   const regionsRef = useRef(regions);
   // Picking a country: the map's handlers are attached once, so they read the borders and the callback through refs.
   const countriesRef = useRef(countries);
@@ -811,15 +841,6 @@ export function Globe({
         geometry: { type: "LineString", coordinates: boxRing(region.bbox) },
       })),
     });
-    const markers = regions.map((region) => {
-      const label = document.createElement("div");
-      label.className = "globe-region-label";
-      label.textContent = t(region.name);
-      return new Marker({ element: label, anchor: "bottom-left", opacityWhenCovered: "0" })
-        .setLngLat([region.bbox[0], region.bbox[3]])
-        .addTo(map);
-    });
-    return () => markers.forEach((marker) => marker.remove());
   }, [ready, regions]);
 
   useEffect(() => {
@@ -838,18 +859,20 @@ export function Globe({
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    const { through, inHour } = hourFilters(time);
+    const { through, inHour } = hourFilters(time, span ? 1 : 60);
     map.setFilter("hotspot-heat", through);
     map.setFilter("hotspot-glow", through);
     map.setFilter("hotspot", through);
     map.setFilter("hotspot-hour", inHour);
+    // Over a span of days there is no one moment, so no night side either.
+    const moment = date && !span;
     (map.getSource("night") as GeoJSONSource).setData(
-      date ? { type: "Feature", properties: {}, geometry: nightPolygon(hourInstant(date, time)) } : EMPTY,
+      moment ? { type: "Feature", properties: {}, geometry: nightPolygon(hourInstant(date, time)) } : EMPTY,
     );
     (map.getSource("terminator") as GeoJSONSource).setData(
-      date ? { type: "Feature", properties: {}, geometry: terminatorLine(hourInstant(date, time)) } : EMPTY,
+      moment ? { type: "Feature", properties: {}, geometry: terminatorLine(hourInstant(date, time)) } : EMPTY,
     );
-  }, [ready, date, time]);
+  }, [ready, date, time, span]);
 
   // Where it burns: fetch the cells of the period, colour them, and hide the day's hotspots while they show.
   useEffect(() => {
@@ -858,7 +881,18 @@ export function Globe({
     const hotspotLayers = ["hotspot-heat", "hotspot-glow", "hotspot", "hotspot-hour"];
     for (const id of hotspotLayers) map.setLayoutProperty(id, "visibility", showCells ? "none" : "visible");
     map.setLayoutProperty("cells-fill", "visibility", showCells ? "visible" : "none");
-    if (!showCells || !period) return;
+    const clearImages = () => {
+      for (const id of cellImages.current) {
+        if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(id)) map.removeSource(id);
+      }
+      cellImages.current = [];
+    };
+    // The flat map shows the cells as one surface; the globe keeps a square per cell.
+    const surface = view === "flat";
+    map.setPaintProperty("cells-fill", "fill-opacity", surface ? 0 : CELLS_OPACITY);
+    if (!surface) clearImages();
+    if (!showCells || !period) return clearImages();
     const controller = new AbortController();
     setCellsError(null);
     // The raw record has no method error to fall inside: any change counts there.
@@ -868,31 +902,64 @@ export function Globe({
         const squares = cellSquares(answer.cells, answer.cell_deg, error);
         const stops = cellStops(squares.features.map((f) => f.properties.density));
         (map.getSource("cells") as GeoJSONSource).setData(squares);
-        map.setPaintProperty(
-          "cells-fill",
-          "fill-color",
-          cellView === "change"
-            ? [
-                "case", ["==", ["get", "change"], null], TREND_NONE,
-                ["interpolate", ["linear"], ["get", "change"],
-                  -2, TREND_RAMP[0], -1, TREND_RAMP[1], 0, TREND_RAMP[2], 1, TREND_RAMP[3], 2, TREND_RAMP[4]],
-              ]
-            : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
-              [
-                "interpolate", ["linear"], ["get", "density"],
-                0, CELL_RAMP[0], stops[0], CELL_RAMP[1], stops[1], CELL_RAMP[2], stops[2], CELL_RAMP[3], stops[3], CELL_RAMP[4],
-              ],
-        );
         setCells({
           years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
           halves: answer.halves, series: answer.series, error, busiest: busiestCells(answer.cells),
+        });
+        if (!surface) {
+          map.setPaintProperty(
+            "cells-fill",
+            "fill-color",
+            cellView === "change"
+              ? [
+                  "case", ["==", ["get", "change"], null], TREND_NONE_CSS,
+                  ["interpolate", ["linear"], ["get", "change"],
+                    -2, TREND_RAMP[0], -1, TREND_RAMP[1], 0, TREND_RAMP[2], 1, TREND_RAMP[3], 2, TREND_RAMP[4]],
+                ]
+              : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
+                [
+                  "interpolate", ["linear"], ["get", "density"],
+                  0, CELL_RAMP[0], stops[0], CELL_RAMP[1], stops[1], CELL_RAMP[2], stops[2], CELL_RAMP[3], stops[3], CELL_RAMP[4],
+                ],
+          );
+          return;
+        }
+        // Each cell gets the colour of its value, and the colours are spread into one surface with no steps.
+        const painted: PaintedCell[] = squares.features.map(({ properties: cell }) => ({
+          lat: cell.lat,
+          lon: cell.lon,
+          color:
+            cellView === "change"
+              ? cell.change === null
+                ? TREND_NONE
+                : rampRgba(cell.change, [-2, -1, 0, 1, 2], TREND_RAMP)
+              : // Coloured per 100 km2: a cell shrinks with the cosine of the latitude.
+                rampRgba(cell.density, [0, ...stops], THERMAL_RAMP),
+        }));
+        clearImages();
+        // Countries that lie far apart get an image each: one from Argentina to Ukraine would be mostly empty sea.
+        cellGroups(painted).forEach((painted, index) => {
+          const image = cellImage(painted, answer.cell_deg);
+          if (!image) return;
+          const [west, south, east, north] = image.bounds;
+          const id = `cells-image-${index}`;
+          map.addSource(id, {
+            type: "image",
+            url: imageUrl(image),
+            coordinates: [[west, north], [east, north], [east, south], [west, south]],
+          });
+          map.addLayer(
+            { id, type: "raster", source: id, paint: { "raster-opacity": SURFACE_OPACITY, "raster-fade-duration": 0 } },
+            "cells-fill",
+          );
+          cellImages.current.push(id);
         });
       })
       .catch((reason: Error) => {
         if (reason.name !== "AbortError") setCellsError(reason.message);
       });
     return () => controller.abort();
-  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError]);
+  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError, view]);
 
   /** Leave the table for the globe and fly to a cell, its neighbours around it. */
   function flyToCell(cell: { lat: number; lon: number }) {
@@ -1011,7 +1078,9 @@ export function Globe({
 
   const unit = t(day?.unit ?? "");
   // The caption names the unit only when it is not simply hotspots, which the caption already says.
-  const dayCaption = day
+  const dayCaption = day && span
+    ? t("Hotspots, {span}", { span: spanLabel(span) })
+    : day
     ? day.unit === "hotspots"
       ? t("Hotspots on {date}", { date: longDate(day.date) })
       : t("Hotspots on {date}, in {unit}", { date: longDate(day.date), unit })
@@ -1046,6 +1115,7 @@ export function Globe({
           <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={toggleTable}>
             {showTable ? (view === "flat" ? t("Show map") : t("Show globe")) : t("Show table")}
           </button>
+          <ShareButton className="stage-toggle stage-share" />
         </div>
       </div>
 
@@ -1059,7 +1129,11 @@ export function Globe({
       ) : (
         <button type="button" className="stage-pill stage-pill-panel" aria-label={t("Show the date panel")} onClick={() => setPanelOpen(true)}>
           <CalendarIcon />
-          {date ? `${longDate(date)}, ${timeLabel(time)} UTC` : t("Date and time")}
+          {span
+            ? t("{span}, through {day}", { span: spanLabel(span), day: cursorLabel(span, time) })
+            : date
+              ? `${longDate(date)}, ${timeLabel(time)} UTC`
+              : t("Date and time")}
           {counts && <strong>{formatCount(counts.throughHour)}</strong>}
         </button>
       )}
@@ -1125,9 +1199,19 @@ export function Globe({
                 <thead>
                   <tr>
                     <th scope="col">{t("Region")}</th>
-                    <th scope="col">{t("00:00 through {time}", { time: timeLabel(time) })}</th>
-                    <th scope="col">{t("{from} to {to}", { from: timeLabel(Math.max(0, time - 59)), to: timeLabel(time) })}</th>
-                    <th scope="col">{t("Whole day")}</th>
+                    {span ? (
+                      <>
+                        <th scope="col">{t("{from} to {to}", { from: cursorLabel(span, 0), to: cursorLabel(span, time) })}</th>
+                        <th scope="col">{cursorLabel(span, time)}</th>
+                        <th scope="col">{t("All days")}</th>
+                      </>
+                    ) : (
+                      <>
+                        <th scope="col">{t("00:00 through {time}", { time: timeLabel(time) })}</th>
+                        <th scope="col">{t("{from} to {to}", { from: timeLabel(Math.max(0, time - 59)), to: timeLabel(time) })}</th>
+                        <th scope="col">{t("Whole day")}</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -1148,7 +1232,10 @@ export function Globe({
                 </tbody>
               </table>
             ) : (
-              <p>{t("No hotspots loaded for this day.")}</p>
+              <p>{span ? t("No hotspots loaded for these days.") : t("No hotspots loaded for this day.")}</p>
+            )}
+            {day && counts && zeroNote(day.regions, counts, Boolean(span)) && (
+              <p className="stage-table-note">{zeroNote(day.regions, counts, Boolean(span))}</p>
             )}
           </div>
         )}
@@ -1263,7 +1350,7 @@ export function Globe({
             </p>
             {cells && cellView === "amount" && (
               <>
-                <i className="legend-ramp" aria-hidden="true" />
+                <i className={view === "flat" ? "legend-ramp is-thermal" : "legend-ramp"} aria-hidden="true" />
                 <div className="legend-ramp-ticks" aria-hidden="true">
                   <span>0</span>
                   <span>{stopLabel(cells.stops[0])}</span>
@@ -1309,11 +1396,11 @@ export function Globe({
           <ul>
             <li>
               <i className="legend-dot" aria-hidden="true" />
-              {t("Hotspots through the selected time")}
+              {span ? t("Hotspots through the selected day") : t("Hotspots through the selected time")}
             </li>
             <li>
               <i className="legend-dot is-ringed" aria-hidden="true" />
-              {t("Detected in the hour up to it")}
+              {span ? t("Detected on that day") : t("Detected in the hour up to it")}
             </li>
             <li>
               <i className="legend-heat" aria-hidden="true" />

@@ -1,8 +1,11 @@
-import { formatCount, t } from "../i18n";
+import { formatCount, t, tn } from "../i18n";
+import { type Span, type View, cursorLabel, inSpan, makeSpan, monthLabel, spanDays, spanLabel, spanNote } from "../period";
+import { ReadoutSkeleton } from "./Skeleton";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { DayHotspots, MonthDays } from "../api";
 import {
   type HourCounts, LAST_MINUTE, dayKey, dotStyle, longDate, longMonth, monthGrid, moveToMonth, parseTimeParam, sensorLabel, shiftMonth, timeLabel,
+  zeroNote,
 } from "../globe";
 
 type Props = {
@@ -18,7 +21,27 @@ type Props = {
   error: string | null;
   onDate: (date: string) => void;
   onTime: (time: number) => void;
+  /** One day, a calendar month or a period from day to day. */
+  view: View;
+  /** The month or period on screen; null for one day. */
+  span: Span | null;
+  /** Day of the span the slider is on, 0 for its first. */
+  cursor: number;
+  onView: (view: View) => void;
+  onPeriod: (span: Span) => void;
+  onCursor: (day: number) => void;
 };
+
+const VIEWS: readonly { view: View; label: string }[] = [
+  { view: "day", label: "Day" },
+  { view: "month", label: "Month" },
+  { view: "period", label: "Period" },
+];
+
+/** Sensor ids as people read them; a span across the 2012 switch has two, joined by "+". */
+function sensorsLabel(sensor: string): string {
+  return sensor.split("+").map(sensorLabel).join(", ");
+}
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const;
 
@@ -44,21 +67,40 @@ const PLAY_TICK_MS = 80;
 /** The floating glass panel that picks the UTC day and minute the globe shows, plays the day, and reads out its hotspots. */
 export function DateTimePanel({
   date, time, firstDay, lastDay, monthDays, day, counts, loading, error, onDate, onTime,
+  view, span, cursor, onView, onPeriod, onCursor,
 }: Props) {
   const [playing, setPlaying] = useState(false);
-  const timeRef = useRef(time);
-  timeRef.current = time;
+  const days = span ? spanDays(span) : 0;
+  // The slider runs over the minutes of a day, or over the days of a span; playback moves it to the end.
+  const position = span ? cursor : time;
+  const end = span ? days - 1 : LAST_MINUTE;
+  const move = span ? onCursor : onTime;
+  const positionRef = useRef(position);
+  positionRef.current = position;
   useEffect(() => {
     if (!playing) return;
+    // A day plays in about 24 seconds; a span in 6 to 15, however many days it has.
+    const tick = span ? Math.max(40, Math.min(500, 12_000 / days)) : PLAY_TICK_MS;
     const timer = window.setInterval(() => {
-      const next = Math.min(LAST_MINUTE, timeRef.current + PLAY_STEP);
-      onTime(next);
-      if (next >= LAST_MINUTE) setPlaying(false);
-    }, PLAY_TICK_MS);
+      const next = Math.min(end, positionRef.current + (span ? 1 : PLAY_STEP));
+      move(next);
+      if (next >= end) setPlaying(false);
+    }, tick);
     return () => window.clearInterval(timer);
-  }, [playing, onTime]);
-  // A new day stops the clock where it is.
-  useEffect(() => setPlaying(false), [date]);
+  }, [playing, move, end, span, days]);
+  // A new day or span stops the clock where it is.
+  useEffect(() => setPlaying(false), [date, view, span?.start, span?.end]);
+  // The first day of a period being picked, until its last day is clicked; and the day under the pointer meanwhile.
+  const [pending, setPending] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+  useEffect(() => setPending(null), [view]);
+  const shownSpan = pending ? makeSpan(pending, hovered ?? pending, firstDay, lastDay) : span;
+  function pickDay(d: string) {
+    if (view !== "period") return onDate(d);
+    if (pending === null) return setPending(d);
+    onPeriod(makeSpan(pending, d, firstDay, lastDay));
+    setPending(null);
+  }
   // The typed time, while it is being edited; HH:MM in 24-hour form, whatever the browser's locale.
   const [draft, setDraft] = useState<string | null>(null);
   function commitDraft() {
@@ -67,7 +109,7 @@ export function DateTimePanel({
     setDraft(null);
   }
   function togglePlay() {
-    if (!playing && time >= LAST_MINUTE) onTime(0); // at the end of the day, play from the start
+    if (!playing && position >= end) move(0); // at the end, play from the start
     setPlaying(!playing);
   }
   const month = date.slice(0, 7);
@@ -114,21 +156,50 @@ export function DateTimePanel({
   }
 
   let status: string | null = null;
-  if (loading) status = t("Loading the hotspots of this day...");
-  else if (error) status = t("Cannot load this day: {error}", { error });
+  if (loading) status = span ? t("Loading the hotspots of these days...") : t("Loading the hotspots of this day...");
+  else if (error) status = span ? t("Cannot load these days: {error}", { error }) : t("Cannot load this day: {error}", { error });
+  else if (span && day?.gap_days?.length)
+    status = tn(
+      day.gap_days.length,
+      "{sensor} was down on {n} day of this span, so its hotspots are missing or incomplete there.",
+      "{sensor} was down on {n} days of this span, so its hotspots are missing or incomplete there.",
+      { sensor: sensorsLabel(day.sensor) },
+    );
+  else if (span && day && day.count === 0)
+    status = t("No hotspots in these days. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.");
+  else if (span) status = null;
   else if (day?.sensor_gap)
     status = t(
       "{sensor} was down on this day, so its hotspots are missing or incomplete: a low count or a zero here is missing data, not a quiet day.",
       { sensor: sensorLabel(day.sensor) },
     );
-  else if (day && day.count === 0) status = t("No hotspots on this day.");
+  else if (day && day.count === 0)
+    status = t("No hotspots on this day. Clouds and smoke can hide fires from the satellites, so this is not proof there were none.");
+  const zero = day && counts ? zeroNote(day.regions, counts, Boolean(span)) : null;
 
   return (
     <section className="dt-panel" aria-label={t("Date and time")}>
       <div className="dt-sheen" aria-hidden="true" />
+      <div className="dt-views segmented" role="group" aria-label={t("Show")}>
+        {VIEWS.map((item) => (
+          <button key={item.view} type="button" aria-pressed={view === item.view} onClick={() => onView(item.view)}>
+            {t(item.label)}
+          </button>
+        ))}
+      </div>
       <div className="dt-heading">
-        <h2 className="dt-date">{longDate(date)}</h2>
-        <p className="dt-secondary">{t("Hotspots from 00:00 through {time} UTC", { time: timeLabel(time) })}</p>
+        <h2 className="dt-date">
+          {view === "day" || !span ? longDate(date) : view === "month" ? monthLabel(span.start) : spanLabel(shownSpan ?? span)}
+        </h2>
+        <p className="dt-secondary">
+          {!span
+            ? t("Hotspots from 00:00 through {time} UTC", { time: timeLabel(time) })
+            : pending
+              ? t("Now click the last day; Esc starts over.")
+              : view === "period"
+                ? `${spanNote(view, span)}. ${t("Click a first and a last day to pick another.")}`
+                : spanNote(view, span)}
+        </p>
       </div>
 
       <div className="dt-month">
@@ -174,7 +245,16 @@ export function DateTimePanel({
             <span key={name}>{t(name).toUpperCase()}</span>
           ))}
         </div>
-        <div className="dt-days" role="group" aria-label={t("Days of {month}", { month: longMonth(month) })} onKeyDown={onGridKey}>
+        <div
+          className={view === "day" ? "dt-days" : "dt-days is-span"}
+          role="group"
+          aria-label={t("Days of {month}", { month: longMonth(month) })}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && pending) setPending(null);
+            onGridKey(event);
+          }}
+          onPointerLeave={() => setHovered(null)}
+        >
           {grid.map((d, index) => {
             if (d === null) return <span key={`blank-${index}`} aria-hidden="true" />;
             const value = values.get(d);
@@ -185,6 +265,15 @@ export function DateTimePanel({
                 ? longDate(d)
                 : `${longDate(d)}, ${formatCount(value)} ${dayUnit}`.trim())
               + (gap ? t(", {sensor} was down: missing data", { sensor: gapSensor }) : "");
+            const within = view !== "day" && inSpan(d, shownSpan);
+            const classes = [
+              "dt-day",
+              gap && "is-gap",
+              within && "is-in-span",
+              within && d === shownSpan?.start && "is-span-start",
+              within && d === shownSpan?.end && "is-span-end",
+              pending === d && "is-pending",
+            ];
             return (
               <button
                 key={d}
@@ -192,14 +281,15 @@ export function DateTimePanel({
                   buttons.current[index] = element;
                 }}
                 type="button"
-                className={gap ? "dt-day is-gap" : "dt-day"}
+                className={classes.filter(Boolean).join(" ")}
                 title={gap ? t("{sensor} was down: missing data, not a quiet day", { sensor: gapSensor }) : undefined}
                 disabled={!enabled(d)}
-                aria-pressed={d === date}
+                aria-pressed={view === "day" ? d === date : within}
                 aria-label={label}
                 tabIndex={d === tabbable ? 0 : -1}
                 onFocus={() => setFocusDay(d)}
-                onClick={() => onDate(d)}
+                onPointerEnter={() => setHovered(d)}
+                onClick={() => pickDay(d)}
               >
                 <span>{Number(d.slice(8, 10))}</span>
                 <i
@@ -218,9 +308,14 @@ export function DateTimePanel({
       <div className="dt-time">
         <div className="dt-time-row">
           <label htmlFor="dt-time" className="dt-secondary">
-            {t("Time, UTC")}
+            {span ? t("Through the day") : t("Time, UTC")}
           </label>
           <div className="dt-time-controls">
+            {span ? (
+              <output className="dt-time-input dt-cursor" htmlFor="dt-time">
+                {cursorLabel(span, cursor)}
+              </output>
+            ) : (
             <input
               className="dt-time-input"
               type="text"
@@ -237,12 +332,13 @@ export function DateTimePanel({
                 if (event.key === "Escape") setDraft(null);
               }}
             />
+            )}
             <button
               type="button"
               className="dt-round dt-play"
               aria-pressed={playing}
-              aria-label={playing ? t("Pause the clock") : t("Play the day")}
-              title={playing ? t("Pause") : t("Play the day")}
+              aria-label={playing ? t("Pause the clock") : span ? t("Play the days") : t("Play the day")}
+              title={playing ? t("Pause") : span ? t("Play the days") : t("Play the day")}
               onClick={togglePlay}
             >
               {playing ? (
@@ -261,50 +357,64 @@ export function DateTimePanel({
           id="dt-time"
           type="range"
           min={0}
-          max={LAST_MINUTE}
+          max={end}
           step={1}
-          value={time}
-          aria-valuetext={`${timeLabel(time)} UTC`}
+          value={position}
+          aria-valuetext={span ? cursorLabel(span, cursor) : `${timeLabel(time)} UTC`}
           onChange={(event) => {
             setPlaying(false);
-            onTime(Number(event.target.value));
+            move(Number(event.target.value));
           }}
         />
         <div className="dt-time-ends dt-secondary" aria-hidden="true">
-          <span>00:00</span>
-          <span>23:59</span>
+          <span>{span ? cursorLabel(span, 0) : "00:00"}</span>
+          <span>{span ? cursorLabel(span, days - 1) : "23:59"}</span>
         </div>
       </div>
 
       <div className="dt-readout" aria-live="polite">
-        {status && <p className="dt-status">{status}</p>}
+        {status && <p className={loading ? "dt-hidden" : "dt-status"}>{status}</p>}
+        {loading && <ReadoutSkeleton />}
         {!loading && !error && day && counts && day.count > 0 && (
           <>
             <p className="dt-big">{formatCount(counts.throughHour)}</p>
-            <p className="dt-secondary">{t("{unit} so far that day", { unit: t(day.unit) })}</p>
+            <p className="dt-secondary">
+              {span
+                ? t("{unit} from {first} through {day}", {
+                    unit: t(day.unit), first: cursorLabel(span, 0), day: cursorLabel(span, cursor),
+                  })
+                : t("{unit} so far that day", { unit: t(day.unit) })}
+            </p>
             <dl className="dt-figures">
               {day.regions.map((name, index) => (
                 <div key={name}>
                   <dt>{t(name)}</dt>
-                  <dd>{formatCount(counts.regions[index]?.throughHour ?? 0)}</dd>
+                  <dd className={(counts.regions[index]?.throughHour ?? 0) === 0 ? "is-zero" : undefined}>
+                    {formatCount(counts.regions[index]?.throughHour ?? 0)}
+                  </dd>
                 </div>
               ))}
               <div>
-                <dt>{t("Last hour")}</dt>
-                <dd>{formatCount(counts.inHour)}</dd>
+                <dt>{span ? t("That day") : t("Last hour")}</dt>
+                <dd className={counts.inHour === 0 ? "is-zero" : undefined}>{formatCount(counts.inHour)}</dd>
               </div>
             </dl>
+            {zero && <p className="dt-note">{zero}</p>}
             {day.truncated && (
               <p className="dt-status">
-                {t("This day is cut at {count} hotspots, so the figures are lower than the full record.", {
-                  count: formatCount(day.hotspots.length),
-                })}
+                {span
+                  ? t("These days hold {count} hotspots; the globe and these figures show an even sample of {shown}.", {
+                      count: formatCount(day.count), shown: formatCount(day.hotspots.length),
+                    })
+                  : t("This day is cut at {count} hotspots, so the figures are lower than the full record.", {
+                      count: formatCount(day.hotspots.length),
+                    })}
               </p>
             )}
           </>
         )}
       </div>
-      {day && <p className="dt-sensor">{t("Sensor: {sensor}", { sensor: sensorLabel(day.sensor) })}</p>}
+      {day && <p className="dt-sensor">{t("Sensor: {sensor}", { sensor: sensorsLabel(day.sensor) })}</p>}
     </section>
   );
 }
