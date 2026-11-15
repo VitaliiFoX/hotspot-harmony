@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  MERCATOR_LIMIT, cellAreaKm2, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  DEFAULT_TIME, MERCATOR_LIMIT, cellAreaKm2, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
   trendSentence, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
   moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
@@ -60,6 +60,9 @@ describe("reading the address", () => {
     expect(parseTimeParam(null, "18")).toBe(18 * 60 + 59);
     expect(parseTimeParam(null, "24")).toBeNull();
     expect(parseTimeParam(null, null)).toBeNull();
+  });
+  it("opens on 23:59 UTC, so a fresh page shows the whole day", () => {
+    expect(DEFAULT_TIME).toBe(23 * 60 + 59);
   });
   it("opens on the preferred day when the record covers it, else on its last day", () => {
     expect(defaultDate("2000-11-01", "2025-12-31")).toBe("2025-08-20");

@@ -10,8 +10,8 @@ const MONTH_NAMES = [
 
 /** The date the globe opens on when the record covers it: a busy day in the southern burning season. */
 export const PREFERRED_DATE = "2025-08-20";
-/** Time of day the globe opens on, in minutes after 00:00 UTC (18:59). */
-export const DEFAULT_TIME = 18 * 60 + 59;
+/** Time of day the globe opens on, in minutes after 00:00 UTC (23:59, the whole day). */
+export const DEFAULT_TIME = 23 * 60 + 59;
 export const LAST_MINUTE = 24 * 60 - 1;
 
 /** "YYYY-MM-DD" if the text is a real calendar date written that way, otherwise null. */
