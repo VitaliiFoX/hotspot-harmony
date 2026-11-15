@@ -17,6 +17,7 @@ import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
 import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
+import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { InShort } from "./components/InShort";
 import { TopPlaces } from "./components/TopPlaces";
@@ -619,38 +620,8 @@ export function App() {
             {serverText(warning)}
           </p>
         ))}
-        {!noData && calendar?.series === "raw" && meta && (
-          <p className="notice">
-            {t(
-              "Raw record: MODIS before {month}, VIIRS S-NPP from then on, counted as {unit} with no correction. VIIRS sees many small fires that MODIS misses, so the values jump at that month and cannot be compared across it.",
-              { month: monthLabel(meta.raw_sensor_switch), unit },
-            )}
-          </p>
-        )}
-        {!noData && calendar?.series === "harmonized" && meta?.harmonized_record && (
-          <p className="notice">
-            {t(
-              "Harmonized record, in {unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so {first} and {last} can be compared. {parts}.",
-              {
-                unit,
-                first: meta.harmonized_record[0].from.slice(0, 4),
-                last: meta.last_month?.slice(0, 4) ?? "",
-                parts: meta.harmonized_record
-                  .map((part) =>
-                    part.to
-                      ? t("{label}: {from} to {to}", { label: t(part.label), from: monthLabel(part.from), to: monthLabel(part.to) })
-                      : t("{label}: from {from}", { label: t(part.label), from: monthLabel(part.from) }),
-                  )
-                  .join("; "),
-              },
-            )}
-            {trusted && (
-              <>
-                {" "}
-                <a href="#trust">{t("How far to trust it")}</a>
-              </>
-            )}
-          </p>
+        {!noData && calendar && meta && (
+          <RecordTimeline meta={meta} series={calendar.series} unit={unit} trusted={Boolean(trusted)} />
         )}
 
         {!noData && !calendar && !error && <p className="notice">{t("Loading the record...")}</p>}
