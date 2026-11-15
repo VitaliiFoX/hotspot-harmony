@@ -452,6 +452,11 @@ export const UK: Record<string, string> = {
   "{country}. The calendar below now counts the burning inside its border.": "{country}. Календар нижче тепер рахує горіння в межах її кордону.",
   "See what is missing": "Подивитися, чого бракує",
   "Let the country go": "Прибрати країну",
+  "Hotspots on {date}": "Гарячі точки {date}",
+  "within the error": "у межах похибки",
+  "Where it burns most, {start} to {end}, {record}: {unit} a year, {deg}° cells":
+    "Де горить найбільше, {start} – {end}, {record}: {unit} за рік, клітинки {deg}°",
+  "{late} against {early}": "{late} проти {early}",
   "No record for {country} yet": "Для країни {country} ряду ще немає",
   "This build holds the hotspots of {regions}. Once the record of {country} is loaded, its burning activity calendar, peak months, yearly totals and unusual months appear here, counted inside its border.":
     "Ця збірка містить гарячі точки таких регіонів: {regions}. Коли завантажиться ряд для країни {country}, тут з'являться її календар активності горіння, місяці піку, річні суми та незвичні місяці, пораховані в межах кордону.",

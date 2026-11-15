@@ -6,13 +6,14 @@ import {
 } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { formatCount, t } from "../i18n";
+import { formatCount, monthTitle, numberLocale, t } from "../i18n";
+import { formatValue } from "../scale";
 import { type Bbox, type DayHotspots, type Region, type SeriesName, fetchCells } from "../api";
 import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densifyPath, densifyRing, roundCorner } from "../area";
 import { type Country, type Tap, countryAt, isDoubleTap } from "../countries";
 import {
-  type BurnCell, type HourCounts, MERCATOR_LIMIT, boxRing, cellSentence, cellSquares, cellStops, hourFilters, hourInstant, longDate,
-  stopLabel, timeLabel, nightPolygon, terminatorLine, regionsCenter, trendSentence,
+  type BurnCell, type HourCounts, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops, changeLabel,
+  hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine, regionsCenter, trendSentence,
 } from "../globe";
 
 type Props = {
@@ -472,6 +473,8 @@ export function Globe({
   const [cells, setCells] = useState<{
     years: number; unit: string; start: string; end: string; stops: number[]; cellDeg: number;
     halves: { early: string; late: string } | null; series: SeriesName; error: number;
+    /** The cells that burn most, for the table that stands in for the map. */
+    busiest: BurnCell[];
   } | null>(null);
   // What the cells show (how much, or how it changed) and their size: 1-degree tiles by default, the scale the
   // method's error was measured on; 0.25-degree cells on request, finer than that.
@@ -802,7 +805,7 @@ export function Globe({
         );
         setCells({
           years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
-          halves: answer.halves, series: answer.series, error,
+          halves: answer.halves, series: answer.series, error, busiest: busiestCells(answer.cells),
         });
       })
       .catch((reason: Error) => {
@@ -811,10 +814,23 @@ export function Globe({
     return () => controller.abort();
   }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError]);
 
+  /** Leave the table for the globe and fly to a cell, its neighbours around it. */
+  function flyToCell(cell: { lat: number; lon: number }) {
+    setShowTable(false);
+    mapRef.current?.flyTo({ center: [cell.lon, cell.lat], zoom: 7, duration: reducedMotion() ? 0 : 1600 });
+  }
+
+  /** The table stands in for the map: what is drawn over the globe goes, and a drawing in progress is given up. */
+  function toggleTable() {
+    if (!showTable && drawing) stopDrawing();
+    setShowTable(!showTable);
+  }
+
   // "Show on the globe" from the list of busiest cells: switch to where it burns and fly there.
   useEffect(() => {
     const map = mapRef.current;
     if (!focus || !ready || !map) return;
+    setShowTable(false);
     setShowCells(true);
     // Zoom 7: the cell and its neighbours, so it reads against the cells around it.
     map.flyTo({ center: [focus.lon, focus.lat], zoom: 7, duration: reducedMotion() ? 0 : 1600 });
@@ -871,9 +887,18 @@ export function Globe({
   }, [showTable]);
 
   const unit = t(day?.unit ?? "");
+  // The caption names the unit only when it is not simply hotspots, which the caption already says.
+  const dayCaption = day
+    ? day.unit === "hotspots"
+      ? t("Hotspots on {date}", { date: longDate(day.date) })
+      : t("Hotspots on {date}, in {unit}", { date: longDate(day.date), unit })
+    : "";
   const record = cells?.series === "raw" ? t("raw record") : t("harmonized record");
   return (
-    <section className={street ? "stage is-street" : "stage"} aria-label={t("Globe of hotspots")}>
+    <section
+      className={["stage", street && "is-street", showTable && "is-table", showTable && !panelOpen && "is-table-wide"].filter(Boolean).join(" ")}
+      aria-label={t("Globe of hotspots")}
+    >
       <div className="stage-head">
         <h1>Hotspot Harmony</h1>
         <p>{t("Satellite fire hotspots, day by day")}</p>
@@ -887,7 +912,7 @@ export function Globe({
           <button type="button" className="stage-toggle" aria-pressed={drawing} onClick={drawing ? stopDrawing : startDrawing}>
             {area && !drawing ? t("Redraw the area") : t("Draw an area")}
           </button>
-          <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={() => setShowTable(!showTable)}>
+          <button type="button" className="stage-toggle" aria-pressed={showTable} onClick={toggleTable}>
             {showTable ? t("Show globe") : t("Show table")}
           </button>
         </div>
@@ -910,13 +935,62 @@ export function Globe({
 
       <div className="stage-map">
         <div ref={container} className={showTable ? "stage-canvas is-hidden" : "stage-canvas"} />
-        {showTable && (
+        {showTable && showCells && (
+          <div className="stage-table">
+            {cells ? (
+              <table>
+                <caption>
+                  {t("Where it burns most, {start} to {end}, {record}: {unit} a year, {deg}° cells", {
+                    start: cells.start, end: cells.end, record, unit: t(cells.unit), deg: cells.cellDeg.toLocaleString(numberLocale()),
+                  })}
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{t("Cell centre")}</th>
+                    <th scope="col">{t("A year")}</th>
+                    <th scope="col">{t("Per 100 km²")}</th>
+                    <th scope="col">{t("Years burning")}</th>
+                    <th scope="col">{t("Most in")}</th>
+                    {cells.halves && (
+                      <th scope="col">
+                        {t("{late} against {early}", {
+                          late: cells.halves.late.replace("-", "–"), early: cells.halves.early.replace("-", "–"),
+                        })}
+                      </th>
+                    )}
+                    <th scope="col">
+                      <span className="dt-hidden">{t("Map")}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cells.busiest.map((cell) => (
+                    <tr key={`${cell.lat},${cell.lon}`}>
+                      <th scope="row">{latLonLabel(cell.lat, cell.lon)}</th>
+                      <td>{formatValue(cell.per_year)}</td>
+                      <td>{stopLabel((cell.per_year / cellAreaKm2(cell.lat, cells.cellDeg)) * 100)}</td>
+                      <td>{t("{n} of {years}", { n: cell.years_burning, years: cells.years })}</td>
+                      <td>{monthTitle(cell.peak_month)}</td>
+                      {cells.halves && <td>{changeLabel(cell.trend, cells.error)}</td>}
+                      <td>
+                        <button type="button" className="stage-toggle stage-table-action" onClick={() => flyToCell(cell)}>
+                          {t("Show on the globe")}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p>{cellsError ? t("Cannot load the cells: {error}", { error: cellsError }) : t("Loading where it burns...")}</p>
+            )}
+          </div>
+        )}
+        {showTable && !showCells && (
           <div className="stage-table">
             {day && counts ? (
               <table>
-                <caption>
-                  {t("Hotspots on {date}, in {unit}", { date: longDate(day.date), unit })}
-                </caption>
+                <caption>{dayCaption}</caption>
                 <thead>
                   <tr>
                     <th scope="col">{t("Region")}</th>
@@ -949,7 +1023,7 @@ export function Globe({
         )}
       </div>
 
-      {showCells && !drawing && (
+      {showCells && !drawing && !showTable && (
         <div className={area || country ? "stage-draw stage-cells is-raised" : "stage-draw stage-cells"} role="group" aria-label={t("What the cells show")}>
           <div className="segmented">
             <button type="button" aria-pressed={cellView === "amount"} onClick={() => showCellView("amount")}>
@@ -992,7 +1066,7 @@ export function Globe({
           </div>
         </div>
       )}
-      {!drawing && area && (
+      {!drawing && !showTable && area && (
         <div className="stage-draw">
           <p role="status">
             {areaError
@@ -1012,7 +1086,7 @@ export function Globe({
         </div>
       )}
 
-      {!drawing && !area && country && (
+      {!drawing && !showTable && !area && country && (
         <div className="stage-draw">
           <p role="status">
             {!countryHasData
@@ -1034,7 +1108,7 @@ export function Globe({
         </div>
       )}
 
-      {legendOpen ? (
+      {showTable ? null : legendOpen ? (
         <div className="stage-legend">
           <button type="button" className="stage-fold stage-fold-legend" aria-label={t("Hide the legend")} title={t("Hide")} onClick={() => setLegendOpen(false)}>
             <FoldIcon />
