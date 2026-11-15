@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { DayHotspot, Region } from "./api";
 import {
-  DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, changeLabel, cellMonthSentence, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
+  DEFAULT_TIME, DEFAULT_VIEW, MERCATOR_LIMIT, busiestCells, cellAreaKm2, changeLabel, cellSentence, cellSquares, cellStops, countHotspots, dayKey, latLonLabel, stopLabel, trendChange,
   trendSentence, defaultDate, dotStyle, hourFilters, hourInstant, isNight, longDate, monthGrid,
-  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, parseViewParam, parseLayerParam, layerPeriod, shownMonth, flatFillZoom, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
+  moveToMonth, nightPolygon, terminatorLine, parseDateParam, parseTimeParam, parseViewParam, flatFillZoom, regionAt, regionsCenter, sensorLabel, shiftMonth, subsolarPoint,
 } from "./globe";
 
 describe("monthGrid", () => {
@@ -267,19 +267,6 @@ describe("cellSentence", () => {
   });
 });
 
-describe("cellMonthSentence", () => {
-  it("says how much a cell burned in the one month, and the same per 100 km2", () => {
-    const cell = { lat: 48.375, lon: 38.875, per_year: 54.2, years_burning: 1, peak_month: 8 };
-    expect(cellMonthSentence(cell, "2020-08", "MODIS-equivalent fire cell-days", 0.25)).toBe(
-      "About 54 MODIS-equivalent fire cell-days in August 2020 (11 per 100 km²).",
-    );
-  });
-  it("keeps one decimal for a small cell", () => {
-    const cell = { lat: 0.5, lon: 1.5, per_year: 1.04, years_burning: 1, peak_month: 3 };
-    expect(cellMonthSentence(cell, "2019-03", "fire cell-days", 1)).toBe("About 1.0 fire cell-days in March 2019 (0.01 per 100 km²).");
-  });
-});
-
 describe("latLonLabel", () => {
   it("names a cell centre with hemispheres, two decimals", () => {
     expect(latLonLabel(48.125, 37.625)).toBe("48.13° N, 37.63° E");
@@ -330,44 +317,6 @@ describe("parseViewParam", () => {
     expect(parseViewParam("")).toBe("globe");
     expect(parseViewParam("Flat")).toBe("globe");
     expect(parseViewParam("mercator")).toBe("globe");
-  });
-});
-
-describe("parseLayerParam", () => {
-  it("reads the month and the whole period by name", () => {
-    expect(parseLayerParam("month")).toBe("month");
-    expect(parseLayerParam("period")).toBe("period");
-  });
-  it("opens on the day when the address says nothing or something unknown", () => {
-    expect(parseLayerParam(null)).toBe("day");
-    expect(parseLayerParam("day")).toBe("day");
-    expect(parseLayerParam("Month")).toBe("day");
-  });
-});
-
-describe("layerPeriod", () => {
-  const period = { start: "2012-01", end: "2025-12" };
-  it("is the month of the date in the month layer", () => {
-    expect(layerPeriod("month", "2020-08-20", period)).toEqual({ start: "2020-08", end: "2020-08" });
-  });
-  it("is the filters' period in the period layer", () => {
-    expect(layerPeriod("period", "2020-08-20", period)).toEqual(period);
-  });
-  it("is nothing for the day, or before the date or the filters are known", () => {
-    expect(layerPeriod("day", "2020-08-20", period)).toBeNull();
-    expect(layerPeriod("month", null, period)).toBeNull();
-    expect(layerPeriod("period", "2020-08-20", null)).toBeNull();
-  });
-});
-
-describe("shownMonth", () => {
-  it("is the month of the date while the map shows a day or a month", () => {
-    expect(shownMonth("day", "2020-08-20")).toBe("2020-08");
-    expect(shownMonth("month", "2020-08-20")).toBe("2020-08");
-  });
-  it("is nothing over the whole period, or without a date", () => {
-    expect(shownMonth("period", "2020-08-20")).toBeNull();
-    expect(shownMonth("day", null)).toBeNull();
   });
 });
 
