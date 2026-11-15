@@ -1,7 +1,7 @@
 // How far the harmonized record can be trusted: the wording and the choices of the trust block, kept pure.
 
 import type { ErrorScale, TrustCheck, TrustCountry } from "./api";
-import { dayInWords, t } from "./i18n";
+import { dayInWords, formatDecimal, t } from "./i18n";
 
 /** The scales of the check, coarse to fine, as the table shows them. */
 export const SCALES: readonly ErrorScale[] = ["country_year", "country_month", "tile_year", "tile_month"];
@@ -25,7 +25,7 @@ export const CHECK_LABELS: Record<TrustCheck, string> = {
 
 /** A share as a percentage with one decimal: 0.0662 is "6.6%". */
 export function percent(share: number): string {
-  return `${(share * 100).toFixed(1)}%`;
+  return `${formatDecimal(share * 100, 1)}%`;
 }
 
 /** A ratio as the change it means: 2.0 is "+100%", 0.902 is "−10%". */
