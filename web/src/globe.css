@@ -1211,14 +1211,9 @@ html {
   }
 }
 
-/* "Where it burns": the legend's ramp, the same steps as the cells on the map (CELL_RAMP in Globe.tsx). */
+/* "Where it burns": the legend's ramp, the colours of the surface on the map, those of a thermal camera
+   (THERMAL_RAMP in Globe.tsx). */
 .stage {
-  --cell-0: #ffe08a;
-  --cell-1: #ffb347;
-  --cell-2: #ff7a2f;
-  --cell-3: #e2361f;
-  --cell-4: #9e0f16;
-  /* The same on the flat map, where the cells are one surface: the colours of a thermal camera (THERMAL_RAMP). */
   --thermal-0: #2c0352;
   --thermal-1: #fd369b;
   --thermal-2: #fe8915;
@@ -1236,7 +1231,6 @@ html {
   display: block;
   height: 10px;
   border-radius: 5px;
-  background: linear-gradient(90deg, var(--cell-0), var(--cell-1) 25%, var(--cell-2) 50%, var(--cell-3) 75%, var(--cell-4));
 }
 .legend-ramp-ticks {
   display: flex;
