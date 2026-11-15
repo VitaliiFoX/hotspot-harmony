@@ -600,7 +600,7 @@ export function App() {
           { id: "season", label: t("Season") },
           { id: "years", label: t("By year") },
           ...(hasPlaces ? [{ id: "places", label: t("Places") }] : []),
-          ...(validation && filters ? [{ id: "method", label: t("Trust") }] : []),
+          ...(validation && filters && trusted ? [{ id: "method", label: t("Trust") }] : []),
         ]
       : [];
   const labelOf = (id: string) => sections.find((section) => section.id === id)?.label ?? "";
@@ -931,7 +931,7 @@ export function App() {
               </section>
             )}
 
-            {validation && filters && (
+            {validation && filters && trusted && (
               <section className="section" id="method" aria-label={labelOf("method")}>
                 {label("method")}
                 <TrustBlock validation={validation} region={filters.region} wholeRegion={wholeRegion} />
