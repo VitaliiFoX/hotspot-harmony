@@ -10,6 +10,7 @@ __pycache__/
 .DS_Store
 .env
 node_modules/
+.wrangler/
 catboost_info/
 dist/
 .claude/launch.json

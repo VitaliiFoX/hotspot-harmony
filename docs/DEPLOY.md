@@ -1,8 +1,8 @@
 # Deploying the demo
 
 The demo has two parts: the API, a Docker image with the record inside, and the web app, static files that
-call it. Both fit free plans: the API on a Render free web service (512 MB, 0.1 CPU), the web app on
-Cloudflare Pages.
+call it. Both fit free plans: the API on a Render free web service (512 MB, 0.1 CPU), the web app as a
+Cloudflare Worker with static assets. A push to `main` deploys both (step 4).
 
 ## 1. The record
 
@@ -57,17 +57,43 @@ was cut short.
 A free instance sleeps after 15 minutes without a request and takes about a minute to wake. To keep it
 awake during judging, have an uptime monitor request `/api/health` every 10 minutes.
 
-## 3. The web app on Cloudflare Pages
+## 3. The web app on Cloudflare
 
-Build it with the address of the API, then upload `web/dist` (Workers & Pages > Create > Pages > Upload
-assets, or `npx wrangler pages deploy dist --project-name hotspot-harmony`):
+The web app is a Cloudflare Worker with static assets only, configured in `web/wrangler.jsonc`. Build it
+with the address of the API and upload it:
 
 ```sh
-cd web && npm install && VITE_API_URL=https://<service>.onrender.com npm run build
+cd web && npm install && VITE_API_URL=https://hotspot-harmony.onrender.com npm run build
+npx wrangler login        # once
+npx wrangler deploy
 ```
 
-With the repository connected instead of an upload: root directory `web`, build command `npm run build`,
-output directory `dist`, and `VITE_API_URL` as a build variable.
+The first upload can also go through the dashboard: Workers & Pages > Create > Upload your static files,
+the folder `web/dist`, "Not found handling" set to `single-page-application`.
 
-Then put the address Pages gives the site into `HH_CORS_ORIGINS` on Render, or the browser refuses the
-API's answers.
+The site is then at `https://hotspot-harmony.<account>.workers.dev`. Put that address into
+`HH_CORS_ORIGINS` on Render (comma-separated, more than one is fine), or the browser refuses the API's
+answers.
+
+## 4. Deploys on every push to main
+
+`.github/workflows/deploy.yml` deploys the part of the demo a push to `main` changes, after its checks pass:
+
+| Push changes | Checks | Deploy |
+|---|---|---|
+| `api/`, `pipeline/`, `config/`, `Dockerfile`, `.dockerignore`, `pyproject.toml`, `uv.lock` | `pytest` | the Render deploy hook builds the image from `main` |
+| `web/` | `npm test`, `npm run build` (with `tsc`) | `wrangler deploy` uploads `web/dist` |
+
+"Run workflow" on the Deploy workflow in the Actions tab deploys both. It needs three repository secrets
+(Settings > Secrets and variables > Actions; only the owner of the repository can add them):
+
+| Secret | Where to get it |
+|---|---|
+| `RENDER_DEPLOY_HOOK_URL` | Render, the service > Settings > Deploy Hook |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare, My Profile > API Tokens > Create Token, template "Edit Cloudflare Workers" |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare, Workers & Pages overview, or `npx wrangler whoami` |
+
+Without a secret the job warns and deploys nothing, so the workflow stays green before the setup. The web
+app is built against `https://hotspot-harmony.onrender.com`; a repository variable `VITE_API_URL` points it
+elsewhere. A new record still goes through step 1: a new release, and the new link as the default of
+`DATA_URL` in the `Dockerfile`.
