@@ -21,6 +21,32 @@ export function parseViewParam(text: string | null): MapView {
 }
 
 /**
+ * What the map shows: the hotspots of one day, where it burned in the date's month, or where it burns over the
+ * filters' period. The burning calendar opens a month on the map by a click on its cell.
+ */
+export type GlobeLayer = "day" | "month" | "period";
+
+/** `?layer=` from the address; anything unknown or missing is the day. */
+export function parseLayerParam(text: string | null): GlobeLayer {
+  return text === "month" || text === "period" ? text : "day";
+}
+
+/** The months "Where it burns" colours: the date's month, the filters' period, or none for the day's hotspots. */
+export function layerPeriod(
+  layer: GlobeLayer,
+  date: string | null,
+  period: { start: string; end: string } | null,
+): { start: string; end: string } | null {
+  if (layer === "month") return date ? { start: date.slice(0, 7), end: date.slice(0, 7) } : null;
+  return layer === "period" ? period : null;
+}
+
+/** The month the map is on, which the burning calendar outlines; none while the map shows the whole period. */
+export function shownMonth(layer: GlobeLayer, date: string | null): string | null {
+  return layer === "period" || !date ? null : date.slice(0, 7);
+}
+
+/**
  * Zoom at which the flat world (512 px square at zoom 0) covers a map of this size on both sides, so no sky shows
  * around it. Zoom 0 for a map with no size yet.
  */
@@ -401,6 +427,13 @@ export function cellSentence(cell: BurnCell, years: number, unit: string, cellDe
     "Burns in {n} of {years} years, about {amount} {unit} a year ({perArea} per 100 km²), most in {month}.",
     { years, amount, unit: t(unit), perArea, month: monthName(cell.peak_month) },
   );
+}
+
+/** A cell over one month: how much burned in it, and the same per 100 km². */
+export function cellMonthSentence(cell: BurnCell, month: string, unit: string, cellDeg: number): string {
+  const amount = cell.per_year >= 10 ? formatCount(Math.round(cell.per_year)) : cell.per_year.toFixed(1);
+  const perArea = stopLabel((cell.per_year / cellAreaKm2(cell.lat, cellDeg)) * 100);
+  return t("About {amount} {unit} in {month} ({perArea} per 100 km²).", { amount, unit: t(unit), month: longMonth(month), perArea });
 }
 
 /** A cell centre as people read it: "48.13° N, 37.63° E". */

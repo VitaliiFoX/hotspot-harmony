@@ -13,7 +13,7 @@ import { type Corner, MAX_CORNERS, areaProblem, boxCorners, cornersBounds, densi
 import { type Country, type Tap, DOUBLE_TAP_MS, countryAt, resolveTap } from "../countries";
 import {
   type BurnCell, type HourCounts, type MapView, MERCATOR_LIMIT, boxRing, busiestCells, cellAreaKm2, cellSentence, cellSquares, cellStops,
-  changeLabel, flatFillZoom, hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
+  type GlobeLayer, cellMonthSentence, changeLabel, flatFillZoom, layerPeriod, longMonth, hourFilters, hourInstant, latLonLabel, longDate, stopLabel, timeLabel, nightPolygon, terminatorLine,
   regionsCenter, trendSentence,
 } from "../globe";
 
@@ -49,6 +49,9 @@ type Props = {
   areaError: string | null;
   /** The period of the filters, "YYYY-MM": "Where it burns" colours the cells over it. */
   period: { start: string; end: string } | null;
+  /** What the map shows: the day's hotspots, where it burned in the date's month, or over the whole period. */
+  layer: GlobeLayer;
+  onLayerChange: (layer: GlobeLayer) => void;
   /** A cell to fly to in "Where it burns"; `n` changes with every request, so the same cell can be asked twice. */
   focus?: { lat: number; lon: number; n: number } | null;
   /** The record of the filters: the trend map on the raw record shows the change the 2012 sensor switch fakes. */
@@ -484,7 +487,7 @@ const ZOOM_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgen
 
 export function Globe({
   regions, date, time, day, counts, focusRegion, dark, view, onViewChange, countries, onEnsureCountries, country, countryHasData,
-  onPickCountry, area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
+  onPickCountry, area, onDrawArea, areaError, period, layer, onLayerChange, focus = null, series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -501,9 +504,12 @@ export function Globe({
     setLegendOpen(!fold);
   }, [zoomedIn]);
   const [showTable, setShowTable] = useState(false);
-  // "Where it burns": the cells of the harmonized record over the period, instead of the day's hotspots.
-  const [showCells, setShowCells] = useState(false);
+  // "Where it burns": the cells of the record over the month or the period, instead of the day's hotspots.
+  const showCells = layer !== "day";
+  const shownPeriod = layerPeriod(layer, date, period);
   const [cells, setCells] = useState<{
+    /** The one month the cells cover, or null when they cover the period. */
+    month: string | null;
     years: number; unit: string; start: string; end: string; stops: number[]; cellDeg: number;
     halves: { early: string; late: string } | null; series: SeriesName; error: number;
     /** The cells that burn most, for the table that stands in for the map. */
@@ -521,6 +527,10 @@ export function Globe({
   };
   const cellViewRef = useRef(cellView);
   cellViewRef.current = cellView;
+  // One month has no halves to compare: the month opens on how much burned.
+  useEffect(() => {
+    if (layer === "month" && cellView === "change") showCellView("amount");
+  }, [layer]);
   const [cellsError, setCellsError] = useState<string | null>(null);
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
@@ -735,8 +745,9 @@ export function Globe({
       const feature = event.features?.[0];
       if (!info || !feature || draw.current.active) return;
       const cell = feature.properties as BurnCell;
-      const text =
-        cellViewRef.current === "change" && info.halves
+      const text = info.month
+        ? cellMonthSentence(cell, info.month, info.unit, info.cellDeg)
+        : cellViewRef.current === "change" && info.halves
           ? trendSentence(cell, info.halves, info.error)
           : cellSentence(cell, info.years, info.unit, info.cellDeg);
       popup.setLngLat(event.lngLat).setText(`${text} ${t("Click to make it your area.")}`).addTo(map);
@@ -858,12 +869,12 @@ export function Globe({
     const hotspotLayers = ["hotspot-heat", "hotspot-glow", "hotspot", "hotspot-hour"];
     for (const id of hotspotLayers) map.setLayoutProperty(id, "visibility", showCells ? "none" : "visible");
     map.setLayoutProperty("cells-fill", "visibility", showCells ? "visible" : "none");
-    if (!showCells || !period) return;
+    if (!showCells || !shownPeriod) return;
     const controller = new AbortController();
     setCellsError(null);
     // The raw record has no method error to fall inside: any change counts there.
     const error = series === "harmonized" ? trendError : 0;
-    fetchCells(period.start, period.end, controller.signal, { deg: tileDeg, series })
+    fetchCells(shownPeriod.start, shownPeriod.end, controller.signal, { deg: tileDeg, series })
       .then((answer) => {
         const squares = cellSquares(answer.cells, answer.cell_deg, error);
         const stops = cellStops(squares.features.map((f) => f.properties.density));
@@ -884,6 +895,7 @@ export function Globe({
               ],
         );
         setCells({
+          month: layer === "month" ? answer.start : null,
           years: answer.years, unit: answer.unit, start: answer.start, end: answer.end, stops, cellDeg: answer.cell_deg,
           halves: answer.halves, series: answer.series, error, busiest: busiestCells(answer.cells),
         });
@@ -892,7 +904,7 @@ export function Globe({
         if (reason.name !== "AbortError") setCellsError(reason.message);
       });
     return () => controller.abort();
-  }, [ready, showCells, period?.start, period?.end, tileDeg, cellView, series, trendError]);
+  }, [ready, showCells, shownPeriod?.start, shownPeriod?.end, tileDeg, cellView, series, trendError]);
 
   /** Leave the table for the globe and fly to a cell, its neighbours around it. */
   function flyToCell(cell: { lat: number; lon: number }) {
@@ -911,7 +923,7 @@ export function Globe({
     const map = mapRef.current;
     if (!focus || !ready || !map) return;
     setShowTable(false);
-    setShowCells(true);
+    if (layer === "day") onLayerChange("period");
     // Zoom 7: the cell and its neighbours, so it reads against the cells around it.
     map.flyTo({ center: [focus.lon, focus.lat], zoom: 7, duration: reducedMotion() ? 0 : 1600 });
   }, [focus?.n, ready]);
@@ -1037,7 +1049,7 @@ export function Globe({
               {t("Flat map")}
             </button>
           </div>
-          <button type="button" className="stage-toggle" aria-pressed={showCells} onClick={() => setShowCells(!showCells)}>
+          <button type="button" className="stage-toggle" aria-pressed={showCells} onClick={() => onLayerChange(showCells ? "day" : "period")}>
             {showCells ? t("Back to the day") : t("Where it burns")}
           </button>
           <button type="button" className="stage-toggle" aria-pressed={drawing} onClick={drawing ? stopDrawing : startDrawing}>
@@ -1071,17 +1083,21 @@ export function Globe({
             {cells ? (
               <table>
                 <caption>
-                  {t("Where it burns most, {start} to {end}, {record}: {unit} a year, {deg}° cells", {
-                    start: cells.start, end: cells.end, record, unit: t(cells.unit), deg: cells.cellDeg.toLocaleString(numberLocale()),
-                  })}
+                  {cells.month
+                    ? t("Where it burned most in {month}, {record}: {unit}, {deg}° cells", {
+                        month: longMonth(cells.month), record, unit: t(cells.unit), deg: cells.cellDeg.toLocaleString(numberLocale()),
+                      })
+                    : t("Where it burns most, {start} to {end}, {record}: {unit} a year, {deg}° cells", {
+                        start: cells.start, end: cells.end, record, unit: t(cells.unit), deg: cells.cellDeg.toLocaleString(numberLocale()),
+                      })}
                 </caption>
                 <thead>
                   <tr>
                     <th scope="col">{t("Cell centre")}</th>
-                    <th scope="col">{t("A year")}</th>
+                    <th scope="col">{cells.month ? t("In the month") : t("A year")}</th>
                     <th scope="col">{t("Per 100 km²")}</th>
-                    <th scope="col">{t("Years burning")}</th>
-                    <th scope="col">{t("Most in")}</th>
+                    {!cells.month && <th scope="col">{t("Years burning")}</th>}
+                    {!cells.month && <th scope="col">{t("Most in")}</th>}
                     {cells.halves && (
                       <th scope="col">
                         {t("{late} against {early}", {
@@ -1100,8 +1116,8 @@ export function Globe({
                       <th scope="row">{latLonLabel(cell.lat, cell.lon)}</th>
                       <td>{formatValue(cell.per_year)}</td>
                       <td>{stopLabel((cell.per_year / cellAreaKm2(cell.lat, cells.cellDeg)) * 100)}</td>
-                      <td>{t("{n} of {years}", { n: cell.years_burning, years: cells.years })}</td>
-                      <td>{monthTitle(cell.peak_month)}</td>
+                      {!cells.month && <td>{t("{n} of {years}", { n: cell.years_burning, years: cells.years })}</td>}
+                      {!cells.month && <td>{monthTitle(cell.peak_month)}</td>}
                       {cells.halves && <td>{changeLabel(cell.trend, cells.error)}</td>}
                       <td>
                         <button type="button" className="stage-toggle stage-table-action" onClick={() => flyToCell(cell)}>
@@ -1157,10 +1173,24 @@ export function Globe({
       {showCells && !drawing && !showTable && (
         <div className={area || country ? "stage-draw stage-cells is-raised" : "stage-draw stage-cells"} role="group" aria-label={t("What the cells show")}>
           <div className="segmented">
+            <button type="button" aria-pressed={layer === "period"} onClick={() => onLayerChange("period")}>
+              {t("Whole period")}
+            </button>
+            <button type="button" aria-pressed={layer === "month"} disabled={!date} onClick={() => onLayerChange("month")}>
+              {date ? longMonth(date.slice(0, 7)) : t("Month")}
+            </button>
+          </div>
+          <div className="segmented">
             <button type="button" aria-pressed={cellView === "amount"} onClick={() => showCellView("amount")}>
               {t("How much")}
             </button>
-            <button type="button" aria-pressed={cellView === "change"} onClick={() => showCellView("change")}>
+            <button
+              type="button"
+              aria-pressed={cellView === "change"}
+              disabled={layer === "month"}
+              title={layer === "month" ? t("One month has no change to show: choose the whole period.") : undefined}
+              onClick={() => showCellView("change")}
+            >
               {t("How it changed")}
             </button>
           </div>
@@ -1257,9 +1287,13 @@ export function Globe({
                         late: cells.halves.late.replace("-", "–"), early: cells.halves.early.replace("-", "–"), record,
                       })
                     : t("The period has fewer than two full years: choose a longer one to see a change")
-                  : t("Where it burns, {start} to {end}: {unit} a year per 100 km², {record}", {
-                      start: cells.start, end: cells.end, unit: t(cells.unit), record,
-                    })}
+                  : cells.month
+                    ? t("Where it burned in {month}: {unit} per 100 km², {record}", {
+                        month: longMonth(cells.month), unit: t(cells.unit), record,
+                      })
+                    : t("Where it burns, {start} to {end}: {unit} a year per 100 km², {record}", {
+                        start: cells.start, end: cells.end, unit: t(cells.unit), record,
+                      })}
             </p>
             {cells && cellView === "amount" && (
               <>

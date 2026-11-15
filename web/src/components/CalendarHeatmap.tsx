@@ -12,7 +12,17 @@ type Props = {
   dark: boolean;
   highlightYear: number;
   onHighlightYear: (year: number) => void;
+  /** The month the map at the top of the page is on, "YYYY-MM", outlined here; null while it shows the whole period. */
+  shownMonth?: string | null;
+  /** Called with a month, "YYYY-MM", clicked here (or chosen with Enter): the map shows where it burned in it. */
+  onShowMonth?: (month: string) => void;
 };
+
+/** The "YYYY-MM" of a cell key, "2020-8". */
+function monthOfKey(key: string): string {
+  const [year, month] = key.split("-");
+  return `${year}-${month.padStart(2, "0")}`;
+}
 
 const SENSOR_NAMES: Record<string, string> = {
   modis_terra: "MODIS Terra, scaled",
@@ -22,7 +32,9 @@ const SENSOR_NAMES: Record<string, string> = {
 };
 
 /** Years down, months across, one cell per month coloured by how much burned. */
-export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlightYear, onHighlightYear }: Props) {
+export function CalendarHeatmap({
+  months, climatology, unit, mode, dark, highlightYear, onHighlightYear, shownMonth = null, onShowMonth,
+}: Props) {
   const [tip, setTip] = useState<Tip | null>(null);
   const [active, setActive] = useState<string | null>(null);
   const grid = useRef<HTMLDivElement>(null);
@@ -41,6 +53,7 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
     rows.push({ value: formatValue(median), label: t("median for {month}", { month: monthName(cell.month) }) });
     if (median > 0) rows.push({ value: `${(cell.value / median).toFixed(2)}×`, label: t("of that median") });
     if (cell.sensor) rows.push({ value: t(SENSOR_NAMES[cell.sensor] ?? cell.sensor), label: t("sensor") });
+    if (onShowMonth) rows.push({ value: "↑", label: t("click to see where it burned on the map") });
     return { title: `${monthTitle(cell.month)} ${cell.year}`, rows };
   }
 
@@ -54,6 +67,11 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
     const moves: Record<string, [number, number]> = {
       ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0],
     };
+    if ((event.key === "Enter" || event.key === " ") && active && onShowMonth) {
+      event.preventDefault();
+      onShowMonth(monthOfKey(active));
+      return;
+    }
     const move = moves[event.key];
     if (!move || !months.length) return;
     event.preventDefault();
@@ -72,10 +90,13 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
         ref={grid}
         className="calendar-grid"
         role="application"
-        aria-label={t("Burning activity calendar, {first} to {last}. Use the arrow keys to read months, or switch to the table.", {
-          first: years[0],
-          last: years[years.length - 1],
-        })}
+        aria-label={[
+          t("Burning activity calendar, {first} to {last}. Use the arrow keys to read months, or switch to the table.", {
+            first: years[0],
+            last: years[years.length - 1],
+          }),
+          onShowMonth ? t("Press Enter to see where it burned that month on the map.") : "",
+        ].filter(Boolean).join(" ")}
         tabIndex={0}
         onKeyDown={onKeyDown}
         onBlur={() => showAt("", 0, 0)}
@@ -101,13 +122,17 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
             {MONTHS.map((_, index) => {
               const key = `${year}-${index + 1}`;
               const cell = byKey.get(key);
+              const shown = monthOfKey(key) === shownMonth;
               return (
                 <span
                   key={key}
                   data-key={key}
-                  className={`calendar-cell${cell ? "" : " is-empty"}${key === active ? " is-active" : ""}`}
+                  className={`calendar-cell${cell ? "" : " is-empty"}${key === active ? " is-active" : ""}${shown ? " is-shown" : ""}${
+                    cell && onShowMonth ? " is-pickable" : ""
+                  }`}
                   style={cell ? { background: cellColor(cell.value, min, max, mode, dark) } : undefined}
                   onPointerMove={(event) => showAt(key, event.clientX, event.clientY)}
+                  onClick={cell && onShowMonth ? () => onShowMonth(monthOfKey(key)) : undefined}
                 />
               );
             })}
@@ -128,6 +153,15 @@ export function CalendarHeatmap({ months, climatology, unit, mode, dark, highlig
             : t("up to {max} {unit}", { max: formatValue(max), unit })}
         </span>
       </div>
+      {onShowMonth && (
+        <p className="calendar-note">
+          {shownMonth && byKey.has(`${Number(shownMonth.slice(0, 4))}-${Number(shownMonth.slice(5, 7))}`)
+            ? t("Outlined: {month}, the month on the map above. Click any month to see where it burned.", {
+                month: `${monthTitle(Number(shownMonth.slice(5, 7)))} ${shownMonth.slice(0, 4)}`,
+              })
+            : t("Click a month to see where it burned on the map above.")}
+        </p>
+      )}
       <Tooltip tip={tip} />
     </div>
   );

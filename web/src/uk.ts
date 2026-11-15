@@ -467,6 +467,18 @@ export const UK: Record<string, string> = {
   "within the error": "у межах похибки",
   "Where it burns most, {start} to {end}, {record}: {unit} a year, {deg}° cells":
     "Де горить найбільше, {start} – {end}, {record}: {unit} за рік, клітинки {deg}°",
+  "Where it burned most in {month}, {record}: {unit}, {deg}° cells":
+    "Де горіло найбільше, {month}, {record}: {unit}, клітинки {deg}°",
+  "Where it burned in {month}: {unit} per 100 km², {record}": "Де горіло, {month}: {unit} на 100 км², {record}",
+  "About {amount} {unit} in {month} ({perArea} per 100 km²).": "{month}: близько {amount} {unit} ({perArea} на 100 км²).",
+  "In the month": "За місяць",
+  "Whole period": "Весь період",
+  "One month has no change to show: choose the whole period.": "За один місяць зміни не показати: виберіть весь період.",
+  "click to see where it burned on the map": "клацніть, щоб побачити на мапі, де горіло",
+  "Press Enter to see where it burned that month on the map.": "Натисніть Enter, щоб побачити на мапі, де горіло того місяця.",
+  "Outlined: {month}, the month on the map above. Click any month to see where it burned.":
+    "Обведено: {month}, місяць на мапі вгорі. Клацніть будь-який місяць, щоб побачити, де горіло.",
+  "Click a month to see where it burned on the map above.": "Клацніть місяць, щоб побачити на мапі вгорі, де горіло.",
   "{late} against {early}": "{late} проти {early}",
   "No record for {country} yet": "Для країни {country} ряду ще немає",
   "This build holds the hotspots of {regions}. Once the record of {country} is loaded, its burning activity calendar, peak months, yearly totals and unusual months appear here, counted inside its border.":

@@ -16,7 +16,8 @@ import { type FilterState, Filters } from "./components/Filters";
 import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
 import {
-  DEFAULT_TIME, type MapView, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, parseViewParam, timeLabel,
+  DEFAULT_TIME, type GlobeLayer, type MapView, clampDate, countHotspots, defaultDate, moveToMonth, parseDateParam, parseLayerParam,
+  parseTimeParam, parseViewParam, shownMonth, timeLabel,
 } from "./globe";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
 import { RecordTimeline } from "./components/RecordTimeline";
@@ -93,6 +94,8 @@ export function App() {
   });
   // The map at the top of the page: the 3D globe, or the flat world map.
   const [view, setView] = useState<MapView>(() => parseViewParam(new URLSearchParams(window.location.search).get("view")));
+  // What the map shows: the day's hotspots, where it burned in the date's month, or over the whole period.
+  const [layer, setLayer] = useState<GlobeLayer>(() => parseLayerParam(new URLSearchParams(window.location.search).get("layer")));
   const [monthDays, setMonthDays] = useState<MonthDays | null>(null);
   const [day, setDay] = useState<DayHotspots | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
@@ -229,6 +232,15 @@ export function App() {
     else query.delete("view");
     writeAddress(query);
   }, [view]);
+
+  // Only the month and the period are written, so a link to the day stays what it was.
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if ((query.get("layer") ?? "day") === layer) return;
+    if (layer === "day") query.delete("layer");
+    else query.set("layer", layer);
+    writeAddress(query);
+  }, [layer]);
 
   const month = date?.slice(0, 7) ?? null;
   useEffect(() => {
@@ -379,6 +391,14 @@ export function App() {
     return () => controller.abort();
   }, [area, filters?.start, filters?.end, meta]);
 
+  /** A month picked in the burning calendar: the map shows where it burned that month, and the date moves into it. */
+  function showMonthOnGlobe(picked: string) {
+    if (!date || !firstDay || !finalDay) return;
+    setDate(moveToMonth(date, picked, firstDay, finalDay));
+    setLayer("month");
+    document.querySelector(".stage")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function showOnGlobe(cell: { lat: number; lon: number }) {
     setGlobeFocus((current) => ({ ...cell, n: (current?.n ?? 0) + 1 }));
     document.querySelector(".stage")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -520,6 +540,8 @@ export function App() {
         onDrawArea={drawArea}
         areaError={filters?.area || picked ? error : null}
         period={filters ? { start: filters.start, end: filters.end } : null}
+        layer={layer}
+        onLayerChange={setLayer}
         focus={globeFocus}
         series={filters?.series}
         trendError={
@@ -687,6 +709,8 @@ export function App() {
                   dark={dark}
                   highlightYear={year}
                   onHighlightYear={setHighlightYear}
+                  shownMonth={shownMonth(layer, date)}
+                  onShowMonth={date ? showMonthOnGlobe : undefined}
                 />
               }
               table={<CalendarTable months={calendar.months} unit={unit} />}
