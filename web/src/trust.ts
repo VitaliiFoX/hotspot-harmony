@@ -32,6 +32,13 @@ export function percent(share: number): string {
   return `${(share * 100).toFixed(1)}%`;
 }
 
+/** A ratio as the change it means: 2.0 is "+100%", 0.902 is "−10%". */
+export function change(ratio: number): string {
+  const percentChange = Math.round((ratio - 1) * 100);
+  if (percentChange === 0) return "no change";
+  return percentChange > 0 ? `+${percentChange}%` : `−${-percentChange}%`;
+}
+
 /** A bias with its sign, so over- and under-counting read apart: 0.0076 is "+0.8%". */
 export function signedPercent(share: number): string {
   const text = percent(Math.abs(share));

@@ -28,6 +28,10 @@ export type RecordPart = { sensor: string; label: string; from: string; to: stri
 export type ErrorScale = "country_year" | "country_month" | "tile_year" | "tile_month";
 export type CheckErrors = { bias: number } & Record<ErrorScale, number>;
 export type TrustCheck = "harmonized" | "single_factor" | "raw_viirs";
+/** Checks of the record's other parts, when the report has them: NOAA-20 from 2022, Terra alone before July 2002. */
+export type ExtraCheck = "noaa20" | "terra_only";
+/** Mean yearly total of `after` over `before` (inclusive years), in the raw and in the harmonized record. */
+export type SensorJump = { before: string; after: string; raw: number; harmonized: number };
 export type TrustCountry = {
   method: string;
   /** How docs/VALIDATION.md names the method, e.g. "the context model". */
@@ -35,7 +39,8 @@ export type TrustCountry = {
   /** True when the method was chosen again for every held-out year (`make validate NESTED=1`). */
   method_chosen_per_held_out_year: boolean;
   held_out_months: number;
-  checks: Record<TrustCheck, CheckErrors>;
+  checks: Record<TrustCheck, CheckErrors> & Partial<Record<ExtraCheck, CheckErrors>>;
+  sensor_jump?: SensorJump | null;
 };
 /** GET /api/validation: what `make validate` wrote to data/agg/harmonization_report.json. */
 export type Validation = {

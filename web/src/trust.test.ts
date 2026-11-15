@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TrustCountry } from "./api";
-import { expectedError, percent, reportTime, scalesWhereFactorWins, signedPercent, validateCommand } from "./trust";
+import { change, expectedError, percent, reportTime, scalesWhereFactorWins, signedPercent, validateCommand } from "./trust";
 
 // Made up in the shape of Argentina in docs/VALIDATION.md, where one scaling factor wins per country and year.
 const argentina: TrustCountry = {
@@ -57,5 +57,14 @@ describe("reportTime", () => {
   it("writes the UTC time of the report in words", () => {
     expect(reportTime("2026-11-14T21:50:59Z")).toBe("14 November 2026, 21:50 UTC");
     expect(reportTime(null)).toBe("an unknown time");
+  });
+});
+
+describe("change", () => {
+  it("reads a ratio as the change it means, as the sensor jump check gives them", () => {
+    expect(change(1.998)).toBe("+100%"); // Ukraine, raw record
+    expect(change(0.902)).toBe("−10%"); // Ukraine, harmonized
+    expect(change(1.323)).toBe("+32%");
+    expect(change(1.004)).toBe("no change");
   });
 });

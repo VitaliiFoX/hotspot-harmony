@@ -131,7 +131,8 @@ def sensor_jump(df: pd.DataFrame) -> dict | None:
     out = {}
     for name, mask, value in (("raw", df.in_raw, 1.0), ("harmonized", df.in_series, df.weight)):
         yearly = (df.assign(v=value)[mask]).groupby("y").v.sum()
-        before, after = yearly.reindex(range(2007, 2012)).mean(), yearly.reindex(range(2012, 2017)).mean()
+        before = yearly.reindex(range(hz.JUMP_BEFORE[0], hz.JUMP_BEFORE[1] + 1)).mean()
+        after = yearly.reindex(range(hz.JUMP_AFTER[0], hz.JUMP_AFTER[1] + 1)).mean()
         if not (before > 0 and after > 0):
             return None
         out[name] = {"before": round(float(before), 1), "after": round(float(after), 1),

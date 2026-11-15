@@ -66,6 +66,9 @@ GAP_MIN_TWIN = 50  # ...or when the other VIIRS sensor has at least this many ce
 GAP_MAX_TWIN_RATIO = 0.1  # ...and this one has under a tenth of them (same instrument, 50 minutes apart)
 METHOD_MARGIN = 0.002  # anything boosted must beat the plain table by 0.2 points of monthly error to be used
 METHODS = ("bins", "boosted", "context", "bins+context", "boosted+context")
+# The sensor jump check compares the mean yearly total of these two windows, inclusive, around the 2012 switch.
+JUMP_BEFORE = (2007, 2011)
+JUMP_AFTER = (2012, 2016)
 METHOD_NAMES = {  # how docs/VALIDATION.md and the web app name each method
     "bins": "the table by fire power",
     "boosted": "the boosted weight",

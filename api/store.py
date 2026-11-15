@@ -41,7 +41,7 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 from pipeline.config import Config
-from pipeline.harmonize import METHOD_NAMES, RECORD
+from pipeline.harmonize import JUMP_AFTER, JUMP_BEFORE, METHOD_NAMES, RECORD
 
 RAW_SWITCH = (2012, 2)  # first month the raw series takes from VIIRS S-NPP (it started on 2012-01-20)
 RECORD_FIRST = (2000, 11)  # first full month of the FIRMS archive
@@ -58,6 +58,9 @@ CHECKS = {
     "single_factor": "baseline_single_factor",
     "raw_viirs": "baseline_raw_viirs",
 }
+# Checks served when the report has them: they hold the error of the record's other parts (NOAA-20 from 2022,
+# Terra alone before July 2002), which the verdict needs.
+EXTRA_CHECKS = {"noaa20": "noaa20_independent", "terra_only": "terra_only_leave_one_year_out"}
 SCALES = ("country_year", "country_month", "tile_year", "tile_month")
 
 
@@ -421,13 +424,27 @@ class Store:
                 "held_out_months": checks[CHECKS["harmonized"]]["n_months"],
                 "checks": {
                     check: {"bias": checks[key]["bias"], **{s: checks[key][f"wape_{s}"] for s in SCALES}}
-                    for check, key in CHECKS.items()
+                    for check, key in {**CHECKS, **EXTRA_CHECKS}.items()
+                    if key in checks
                 },
+                "sensor_jump": self._sensor_jump(entry.get("sensor_jump")),
             }
         return {
             "source": f"data/agg/{REPORT}",
             **{key: self.report.get(key) for key in ("generated_at_utc", "unit", "metric", "fit_period")},
             "countries": countries,
+        }
+
+    @staticmethod
+    def _sensor_jump(jump: dict | None) -> dict | None:
+        """The jump check of one country: mean yearly total after the 2012 switch over before, raw and harmonized."""
+        if not jump:
+            return None
+        return {
+            "before": f"{JUMP_BEFORE[0]}-{JUMP_BEFORE[1]}",
+            "after": f"{JUMP_AFTER[0]}-{JUMP_AFTER[1]}",
+            "raw": jump["raw"]["jump_ratio"],
+            "harmonized": jump["harmonized"]["jump_ratio"],
         }
 
     def meta(self) -> dict:

@@ -480,6 +480,10 @@ REPORT = {
                 "baseline_raw_viirs": held_out(1.067, 1.067, 1.067, 1.073, 1.104),
                 "noaa20_independent": held_out(0.035, 0.043, 0.05, 0.137, 0.216),
             },
+            "sensor_jump": {
+                "raw": {"before": 100.0, "after": 200.0, "jump_ratio": 2.0},
+                "harmonized": {"before": 100.0, "after": 90.0, "jump_ratio": 0.9},
+            },
         },
         "Farland": {"method": "bins", "source": "pooled"},  # borrowed its calibration: nothing to check
     },
@@ -510,7 +514,10 @@ def test_validation_gives_the_held_out_error_and_the_two_baselines_of_each_check
                                       "tile_year": 0.213, "tile_month": 0.307},
                     "raw_viirs": {"bias": 1.067, "country_year": 1.067, "country_month": 1.067,
                                   "tile_year": 1.073, "tile_month": 1.104},
+                    "noaa20": {"bias": 0.035, "country_year": 0.043, "country_month": 0.05,
+                               "tile_year": 0.137, "tile_month": 0.216},
                 },
+                "sensor_jump": {"before": "2007-2011", "after": "2012-2016", "raw": 2.0, "harmonized": 0.9},
             },
         },
     }
@@ -559,3 +566,14 @@ def test_day_says_whether_its_sensor_was_down(tmp_path):
 def test_without_a_report_no_day_is_a_sensor_gap(client):
     assert client.get("/api/hotspots/days?month=2013-08").json()["gap_days"] == []
     assert client.get("/api/hotspots/day?date=2013-08-05").json()["sensor_gap"] is False
+
+
+def test_validation_without_a_jump_check_or_extra_checks_leaves_them_out(tmp_path):
+    config = build_data(tmp_path, harmonized=True)
+    bare = json.loads(json.dumps(REPORT))
+    del bare["countries"]["Testland"]["sensor_jump"]
+    del bare["countries"]["Testland"]["validation"]["noaa20_independent"]
+    (tmp_path / "agg" / "harmonization_report.json").write_text(json.dumps(bare))
+    testland = TestClient(create_app(data_dir=tmp_path, config_path=config)).get("/api/validation").json()
+    assert testland["countries"]["Testland"]["sensor_jump"] is None
+    assert set(testland["countries"]["Testland"]["checks"]) == {"harmonized", "single_factor", "raw_viirs"}
