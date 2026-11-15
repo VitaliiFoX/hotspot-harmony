@@ -19,6 +19,7 @@ import {
   DEFAULT_TIME, type MapView, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, parseViewParam, timeLabel,
 } from "./globe";
 import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./components/PeakMonths";
+import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { InShort } from "./components/InShort";
 import { TopPlaces } from "./components/TopPlaces";
@@ -30,7 +31,7 @@ import { type ThemeChoice, useDarkMode } from "./hooks";
 import { LANGUAGES, type Lang, formatCount, language, t, tn } from "./i18n";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
-import { monthError, sameMonthRatio, verdictKind } from "./trust";
+import { monthError, sameMonthRatio } from "./trust";
 import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
@@ -467,9 +468,6 @@ export function App() {
         })(),
         yearly: calendar.yearly,
         unit,
-        headline: headline
-          ? { year: headline.year, month: headline.month, ratio: headline.ratio, kind: verdictKind(headline.ratio, headlineError?.share ?? null) }
-          : null,
         unusual,
         yearError: harmonizedTrust ? harmonizedTrust.checks.harmonized[wholeRegion ? "country_year" : "tile_year"] : null,
       })
@@ -586,22 +584,20 @@ export function App() {
             countries={countries ?? []}
             onEnsureCountries={() => void ensureCountries()}
             onPickCountry={pickCountry}
-          />
-        )}
-
-        {meta && (
-          <nav className="presets" aria-label={t("Example areas")}>
-            <span>{t("Examples")}</span>
-            {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
-              <a
-                key={preset.name}
-                href={presetHref(preset, presetView)}
-                title={t(preset.note)}
-              >
-                {t(preset.name)}
-              </a>
-            ))}
-          </nav>
+          >
+            <nav className="presets" aria-label={t("Example areas")}>
+              <span>{t("Examples")}</span>
+              {PRESETS.filter((preset) => meta.regions.some((r) => r.name === preset.region)).map((preset) => (
+                <a
+                  key={preset.name}
+                  href={presetHref(preset, presetView)}
+                  title={t(preset.note)}
+                >
+                  {t(preset.name)}
+                </a>
+              ))}
+            </nav>
+          </Filters>
         )}
 
         {noData && picked && meta && filters && (
@@ -640,38 +636,8 @@ export function App() {
             {serverText(warning)}
           </p>
         ))}
-        {!noData && calendar?.series === "raw" && meta && (
-          <p className="notice">
-            {t(
-              "Raw record: MODIS before {month}, VIIRS S-NPP from then on, counted as {unit} with no correction. VIIRS sees many small fires that MODIS misses, so the values jump at that month and cannot be compared across it.",
-              { month: monthLabel(meta.raw_sensor_switch), unit },
-            )}
-          </p>
-        )}
-        {!noData && calendar?.series === "harmonized" && meta?.harmonized_record && (
-          <p className="notice">
-            {t(
-              "Harmonized record, in {unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so {first} and {last} can be compared. {parts}.",
-              {
-                unit,
-                first: meta.harmonized_record[0].from.slice(0, 4),
-                last: meta.last_month?.slice(0, 4) ?? "",
-                parts: meta.harmonized_record
-                  .map((part) =>
-                    part.to
-                      ? t("{label}: {from} to {to}", { label: t(part.label), from: monthLabel(part.from), to: monthLabel(part.to) })
-                      : t("{label}: from {from}", { label: t(part.label), from: monthLabel(part.from) }),
-                  )
-                  .join("; "),
-              },
-            )}
-            {trusted && (
-              <>
-                {" "}
-                <a href="#trust">{t("How far to trust it")}</a>
-              </>
-            )}
-          </p>
+        {!noData && calendar && meta && (
+          <RecordTimeline meta={meta} series={calendar.series} unit={unit} trusted={Boolean(trusted)} />
         )}
 
         {!noData && !calendar && !error && <p className="notice">{t("Loading the record...")}</p>}
@@ -736,6 +702,7 @@ export function App() {
             />
 
             <ChartCard
+              id="peak-months"
               title={t("Peak burning months")}
               subtitle={
                 t(
@@ -782,6 +749,7 @@ export function App() {
                 pngName={exportName([`season-${year}`, ...fileParts], "png")}
               />
               <ChartCard
+                id="burning-per-year"
                 title={t("Burning per year")}
                 subtitle={
                   rawLine && meta

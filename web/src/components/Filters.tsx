@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { t } from "../i18n";
 import type { Meta, SeriesName } from "../api";
 import type { Corner } from "../area";
@@ -35,13 +36,15 @@ type Props = {
   onEnsureCountries?: () => void;
   /** Take a country found by the region search as the area of interest, by its border. */
   onPickCountry?: (name: string) => void;
+  /** Shown between the record switch and the download, such as the example areas. */
+  children?: ReactNode;
 };
 
 const BOX_LABELS = ["West", "South", "East", "North"] as const;
 
-/** One row of controls that scope everything below it. */
+/** The controls that scope everything below them: what and where on the first row, which record on the second. */
 export function Filters({
-  meta, value, onChange, onDownload, downloading, problem, hasData = true, countries = [], onEnsureCountries, onPickCountry,
+  meta, value, onChange, onDownload, downloading, problem, hasData = true, countries = [], onEnsureCountries, onPickCountry, children,
 }: Props) {
   function pickRegion(name: string) {
     const region = meta.regions.find((r) => r.name === name);
@@ -101,48 +104,59 @@ export function Filters({
               ? t("Area of interest: {country}, inside its border. Its bounds, degrees", { country: t(value.country) })
               : t("Area of interest, degrees")}
         </legend>
-        {BOX_LABELS.map((label, index) => (
-          <label key={label} className="coordinate">
-            <span>{t(label)}</span>
-            <input
-              type="number"
-              step="0.25"
-              value={value.box[index]}
-              readOnly={fixed}
-              aria-invalid={problem !== null}
-              onChange={(event) => setBox(index, event.target.value)}
-            />
-          </label>
-        ))}
-        {fixed && (
-          <button type="button" onClick={() => pickRegion(value.region)}>
-            {drawn ? t("Remove the drawn area") : t("Back to the box of {region}", { region: t(value.region) })}
-          </button>
-        )}
-      </fieldset>
-      <fieldset>
-        <legend>{t("Record")}</legend>
-        <div className="segmented">
-          {(["harmonized", "raw"] as SeriesName[]).map((name) => {
-            const available = meta.series.includes(name);
-            return (
-              <button
-                key={name}
-                type="button"
-                aria-pressed={value.series === name}
-                disabled={!available}
-                title={available ? undefined : t("The pipeline has not produced this record yet")}
-                onClick={() => onChange({ ...value, series: name })}
-              >
-                {name === "raw" ? t("Raw") : t("Harmonized")}
-              </button>
-            );
-          })}
+        <div className="coordinates">
+          {BOX_LABELS.map((label, index) => (
+            <label key={label} className="coordinate">
+              <span>{t(label)}</span>
+              <input
+                type="number"
+                step="0.25"
+                value={value.box[index]}
+                readOnly={fixed}
+                aria-invalid={problem !== null}
+                onChange={(event) => setBox(index, event.target.value)}
+              />
+            </label>
+          ))}
+          {fixed && (
+            <button type="button" onClick={() => pickRegion(value.region)}>
+              {drawn ? t("Remove the drawn area") : t("Back to the box of {region}", { region: t(value.region) })}
+            </button>
+          )}
         </div>
       </fieldset>
-      <button type="button" className="primary" onClick={onDownload} disabled={downloading || problem !== null || !hasData}>
-        {downloading ? t("Preparing CSV...") : t("Download hotspots (CSV)")}
-      </button>
+      <div className="filters-actions">
+        <fieldset className="filters-record">
+          <legend>{t("Record")}</legend>
+          <div className="segmented">
+            {(["harmonized", "raw"] as SeriesName[]).map((name) => {
+              const available = meta.series.includes(name);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={value.series === name}
+                  disabled={!available}
+                  title={available ? undefined : t("The pipeline has not produced this record yet")}
+                  onClick={() => onChange({ ...value, series: name })}
+                >
+                  {name === "raw" ? t("Raw") : t("Harmonized")}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+        {children}
+        <button
+          type="button"
+          className="filters-download"
+          onClick={onDownload}
+          disabled={downloading || problem !== null || !hasData}
+          aria-busy={downloading}
+        >
+          {downloading ? t("Preparing CSV...") : t("Download hotspots (CSV)")}
+        </button>
+      </div>
       {problem && (
         <p className="filter-problem" role="alert">
           {problem}

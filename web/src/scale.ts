@@ -181,7 +181,7 @@ export function monthSpans(months: readonly number[]): string {
   return names.length === 1 ? names[0] : t("{list} and {last}", { list: names.slice(0, -1).join(", "), last: names[names.length - 1] });
 }
 
-type RecordPartLike = { sensor: string; label: string; from: string; to: string | null };
+export type RecordPartLike = { sensor: string; label: string; from: string; to: string | null };
 
 function monthIndex(yyyyMm: string): number {
   return Number(yyyyMm.slice(0, 4)) * 12 + Number(yyyyMm.slice(5, 7)) - 1;
@@ -212,5 +212,52 @@ export function partsOfYear(parts: readonly RecordPartLike[], year: number): str
   return parts
     .filter((part) => monthIndex(part.from) <= year * 12 + 11 && (part.to === null || monthIndex(part.to) >= year * 12))
     .map((part) => part.label);
+}
+
+function monthOf(index: number): string {
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+}
+
+/** "2000-11", "2002-06" -> "Nov 2000 – Jun 2002": the dates of a part of the record on the timeline. */
+export function monthRange(from: string, to: string): string {
+  const short = (yyyyMm: string) => `${monthShort(Number(yyyyMm.slice(5, 7)))} ${yyyyMm.slice(0, 4)}`;
+  return `${short(from)} – ${short(to)}`;
+}
+
+/**
+ * The parts of the raw record the page knows: MODIS up to the month before `sensorSwitch`, VIIRS S-NPP from it on.
+ * A part with no month in the record is left out.
+ */
+export function rawRecordParts(firstMonth: string, sensorSwitch: string, lastMonth: string): RecordPartLike[] {
+  const first = monthIndex(firstMonth);
+  const switchAt = monthIndex(sensorSwitch);
+  const last = monthIndex(lastMonth);
+  const parts: RecordPartLike[] = [];
+  if (first < switchAt) parts.push({ sensor: "modis", label: "MODIS", from: firstMonth, to: monthOf(Math.min(last, switchAt - 1)) });
+  if (switchAt <= last) parts.push({ sensor: "viirs_snpp", label: "VIIRS S-NPP", from: monthOf(Math.max(first, switchAt)), to: lastMonth });
+  return parts;
+}
+
+export type TimelinePart = {
+  sensor: string;
+  label: string;
+  from: string;
+  /** Last month of the part: an open part runs to the last month of the record. */
+  to: string;
+  /** Months in the part, both ends included, and their share of all the parts' months. */
+  months: number;
+  share: number;
+};
+
+/** The parts of a record laid end to end, each as long as its months: the segments of the timeline over the calendar. */
+export function recordTimeline(parts: readonly RecordPartLike[], lastMonth: string): TimelinePart[] {
+  const sized = parts
+    .map((part) => {
+      const to = part.to ?? lastMonth;
+      return { sensor: part.sensor, label: part.label, from: part.from, to, months: monthIndex(to) - monthIndex(part.from) + 1 };
+    })
+    .filter((part) => part.months > 0);
+  const total = sized.reduce((sum, part) => sum + part.months, 0);
+  return sized.map((part) => ({ ...part, share: part.months / total }));
 }
 
