@@ -303,6 +303,75 @@ fieldset > legend {
 .filters > .primary {
   margin-left: auto;
 }
+/* The region as a search: a button that names the place, and under it a field over the list of what it finds. */
+.region-search {
+  position: relative;
+}
+.region-search-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.region-search-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 150px;
+  font-weight: 500;
+}
+.region-search-button:hover:not(:disabled) {
+  border-color: var(--ink-2);
+}
+.region-search-button > svg {
+  flex: none;
+  color: var(--ink-2);
+}
+.region-search-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  width: 280px;
+  max-width: calc(100vw - 72px);
+  padding: 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--axis);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card), 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.region-search-pop > input {
+  width: 100%;
+}
+.region-search-pop > ul {
+  max-height: 264px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.region-search-pop li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: var(--radius-chip);
+  cursor: pointer;
+}
+.region-search-pop li[aria-selected="true"] {
+  background: var(--wash);
+}
+.region-search-pop li > small {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+.region-search-pop .region-search-empty {
+  color: var(--muted);
+  cursor: default;
+}
 /* One-click example areas under the filters: links, so each is also a view to share. */
 .presets {
   display: flex;
@@ -798,8 +867,12 @@ tbody th {
   .filters {
     padding: 16px;
   }
-  .filters > label {
+  .filters > label,
+  .filters > .region-search {
     flex: 1 1 140px;
+  }
+  .region-search-button {
+    width: 100%;
   }
   .filters > fieldset {
     flex: 1 1 100%;

@@ -1,5 +1,7 @@
 import type { Meta, SeriesName } from "../api";
 import type { Corner } from "../area";
+import type { Country, Place } from "../countries";
+import { RegionSearch } from "./RegionSearch";
 
 export type FilterState = {
   region: string;
@@ -26,12 +28,18 @@ type Props = {
   problem: string | null;
   /** False while the picked country has no record to download from. */
   hasData?: boolean;
+  /** The borders of every country, for the region search; empty until they arrive. */
+  countries?: Country[];
+  /** Take a country found by the region search as the area of interest, by its border. */
+  onPickCountry?: (name: string) => void;
 };
 
 const BOX_LABELS = ["West", "South", "East", "North"];
 
 /** One row of controls that scope everything below it. */
-export function Filters({ meta, value, onChange, onDownload, downloading, problem, hasData = true }: Props) {
+export function Filters({
+  meta, value, onChange, onDownload, downloading, problem, hasData = true, countries = [], onPickCountry,
+}: Props) {
   function pickRegion(name: string) {
     const region = meta.regions.find((r) => r.name === name);
     if (region) {
@@ -42,6 +50,11 @@ export function Filters({ meta, value, onChange, onDownload, downloading, proble
     const box = [...value.box] as FilterState["box"];
     box[index] = text;
     onChange({ ...value, box, area: null, country: null });
+  }
+  // A region is taken by its box, as the region list always did; any other country by its border.
+  function pickPlace(place: Place) {
+    if (place.kind === "region") pickRegion(place.name);
+    else onPickCountry?.(place.name);
   }
   const drawn = value.area !== null;
   // A drawn area and a picked country both fix the area of interest: the box fields then only show its bounds.
@@ -70,14 +83,12 @@ export function Filters({ meta, value, onChange, onDownload, downloading, proble
           onChange={(event) => event.target.value && onChange({ ...value, end: event.target.value })}
         />
       </label>
-      <label>
-        <span>Region</span>
-        <select value={value.region} onChange={(event) => pickRegion(event.target.value)}>
-          {meta.regions.map((region) => (
-            <option key={region.name}>{region.name}</option>
-          ))}
-        </select>
-      </label>
+      <RegionSearch
+        regions={meta.regions}
+        countries={onPickCountry ? countries : []}
+        current={value.country ?? value.region}
+        onPick={pickPlace}
+      />
       <fieldset>
         <legend>
           {drawn

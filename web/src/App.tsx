@@ -504,6 +504,8 @@ export function App() {
             downloading={downloading}
             problem={problem}
             hasData={!noData}
+            countries={countries ?? []}
+            onPickCountry={pickCountry}
           />
         )}
 

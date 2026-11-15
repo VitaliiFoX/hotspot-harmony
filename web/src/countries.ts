@@ -143,3 +143,39 @@ export async function fetchCountries(signal?: AbortSignal): Promise<Country[]> {
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return readCountries(await response.json());
 }
+
+/** One line of the region search: a region of the record, or a country picked by its border. */
+export type Place = {
+  name: string;
+  /** A region is taken by its box, as the region list always did; a country by its border. */
+  kind: "region" | "country";
+  /** False for a country no record is loaded for: picking it shows the "No record yet" card. */
+  hasData: boolean;
+};
+
+/**
+ * What the region search lists for the typed text: the regions first, in the order of the config, then the
+ * countries that are not a region, those whose name starts with the text before those that only hold it,
+ * each group by name. A country matches by its name, an alias or its code. With no text everything is listed.
+ */
+export function searchPlaces(regions: readonly Region[], countries: readonly Country[], query: string): Place[] {
+  const wanted = plain(query);
+  const rank = (names: string[]): number => {
+    if (wanted === "") return 0;
+    const plains = names.map(plain);
+    if (plains.some((name) => name.startsWith(wanted))) return 0;
+    return plains.some((name) => name.includes(wanted)) ? 1 : -1;
+  };
+  const places: Place[] = regions
+    .filter((region) => rank([region.name]) >= 0)
+    .map((region) => ({ name: region.name, kind: "region", hasData: true }));
+  const others = countries
+    .filter((country) => !regions.some((region) => namesCountry(region.name, country)))
+    .map((country) => ({ country, rank: rank([country.name, ...country.aliases, country.iso]) }))
+    .filter((item) => item.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.country.name.localeCompare(b.country.name, "en"));
+  for (const { country } of others) {
+    places.push({ name: country.name, kind: "country", hasData: regionOfCountry(regions, country) !== null });
+  }
+  return places;
+}
