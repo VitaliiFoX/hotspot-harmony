@@ -3,6 +3,7 @@ import {
   type AreaGeometry, type Bbox, type Calendar, type Cells, type DayHotspots, type Meta, type MonthDays, type SeriesName, type Validation,
   boxPolygon, fetchCalendar, fetchDayHotspots, fetchHotspotsCsv, fetchPeriodHotspots, fetchMeta, fetchMonthDays, fetchTopCells, fetchValidation,
 } from "./api";
+import { currentView, saveView } from "./address";
 import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
 } from "./area";
@@ -53,10 +54,10 @@ function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } 
 
 /** Open the page again in another language: every text, number and date follows it. */
 function switchLanguage(lang: Lang) {
-  const query = new URLSearchParams(window.location.search);
+  const query = currentView();
   if (lang === "en") query.delete("lang");
   else query.set("lang", lang);
-  writeAddress(query);
+  saveView(query);
   window.location.reload();
 }
 
@@ -67,15 +68,9 @@ function serverText(text: string): string {
   return t(text);
 }
 
-/** Put the view into the address, keeping the commas, colons and semicolons of its values readable. */
-function writeAddress(query: URLSearchParams) {
-  const text = query.toString().replaceAll("%2C", ",").replaceAll("%3A", ":").replaceAll("%3B", ";");
-  window.history.replaceState(null, "", `?${text}`);
-}
-
 export function App() {
   const [themeChoice, setThemeChoice] = useState<ThemeChoice>(
-    () => (new URLSearchParams(window.location.search).get("theme") as ThemeChoice | null) ?? "auto",
+    () => (currentView().get("theme") as ThemeChoice | null) ?? "auto",
   );
   const dark = useDarkMode(themeChoice);
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -93,20 +88,20 @@ export function App() {
   const [date, setDate] = useState<string | null>(null);
   // Time of day on the globe, in minutes after 00:00 UTC.
   const [time, setTime] = useState<number>(() => {
-    const query = new URLSearchParams(window.location.search);
+    const query = currentView();
     return parseTimeParam(query.get("time"), query.get("hour")) ?? DEFAULT_TIME;
   });
   // One day, a calendar month or a period from day to day. In a month or a period `date` is the day the panel's
   // calendar is turned to, and the slider runs over the days of the span instead of the minutes of a day.
   const [spanView, setSpanView] = useState<View>(() => {
-    const query = new URLSearchParams(window.location.search);
+    const query = currentView();
     return parseView(query.get("span") ?? query.get("view"));
   });
   const [periodSpan, setPeriodSpan] = useState<Span | null>(null);
   // Day of the span the slider is on; null is its last day, where a new span opens.
   const [cursor, setCursor] = useState<number | null>(null);
   // The map at the top of the page: the 3D globe, or the flat world map.
-  const [mapView, setMapView] = useState<MapView>(() => parseViewParam(new URLSearchParams(window.location.search).get("view")));
+  const [mapView, setMapView] = useState<MapView>(() => parseViewParam(currentView().get("view")));
   const [monthDays, setMonthDays] = useState<MonthDays | null>(null);
   const [day, setDay] = useState<DayHotspots | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
@@ -165,7 +160,7 @@ export function App() {
           return;
         }
         // A link can carry a view: ?region=Ukraine&box=29,50,32,51.5&start=2010-01&end=2025-12&series=raw
-        const query = new URLSearchParams(window.location.search);
+        const query = currentView();
         const box = query.get("box")?.split(",") ?? [];
         // A drawn area comes as &area=lon,lat;lon,lat;... and wins over the box, which then holds its bounds.
         // It also names the region, as when it is drawn here, so a link without &region= still says the right one.
@@ -196,10 +191,10 @@ export function App() {
       .catch((reason: Error) => setError(t("Cannot reach the API: {reason}. Start it with `make api`.", { reason: reason.message })));
   }, []);
 
-  // Keep the address in step with the filters, so the current view can be shared as a link.
+  // Keep the view in step with the filters, so "Share this view" and a reload give the page as it is on screen.
   useEffect(() => {
     if (!filters) return;
-    const query = new URLSearchParams(window.location.search);
+    const query = currentView();
     query.set("region", filters.region);
     query.set("box", filters.box.join(","));
     query.set("start", filters.start);
@@ -209,7 +204,7 @@ export function App() {
     else query.delete("area");
     if (filters.country) query.set("country", filters.country);
     else query.delete("country");
-    writeAddress(query);
+    saveView(query);
   }, [filters]);
 
   // The country behind the filters, and the region whose record holds it; without one there is nothing to show yet.
@@ -243,7 +238,7 @@ export function App() {
 
   useEffect(() => {
     if (!date) return;
-    const query = new URLSearchParams(window.location.search);
+    const query = currentView();
     query.delete("hour");
     if (query.get("view") && query.get("view") !== "flat") query.delete("view");
     if (span && spanView === "period") {
@@ -257,7 +252,7 @@ export function App() {
       query.delete("to");
     }
     query.set("time", timeLabel(time));
-    writeAddress(query);
+    saveView(query);
   }, [date, time, spanView, span]);
 
   /** Switch between one day, its month and a period; a period opens as the week up to the day on screen. */
@@ -301,11 +296,11 @@ export function App() {
 
   // Only the flat map is written, so a link to the globe stays what it was.
   useEffect(() => {
-    const query = new URLSearchParams(window.location.search);
+    const query = currentView();
     if ((query.get("view") === "flat") === (mapView === "flat")) return;
     if (mapView === "flat") query.set("view", "flat");
     else query.delete("view");
-    writeAddress(query);
+    saveView(query);
   }, [mapView]);
 
   const month = date?.slice(0, 7) ?? null;
@@ -581,9 +576,9 @@ export function App() {
     downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
   }
 
-  // What an example link keeps of the current view: the theme, the language and the flat map. The view is taken from
-  // state, as the address catches up with it only after this render.
-  const presetView = new URLSearchParams(window.location.search);
+  // What an example link keeps of the current view: the theme, the language and the flat map. The map is taken from
+  // state, as the kept view catches up with it only after this render.
+  const presetView = currentView();
   if (mapView === "flat") presetView.set("view", "flat");
   else presetView.delete("view");
 
