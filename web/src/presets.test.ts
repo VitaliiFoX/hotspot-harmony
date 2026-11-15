@@ -23,6 +23,14 @@ describe("presetHref", () => {
       "?region=Ukraine&area=29.2,50.9;30.9,50.9;30.9,51.6;29.2,51.6&end=2020-12&date=2020-04-08&time=23:59",
     );
   });
+  it("keeps the flat map when the page shows it, and writes nothing for the globe", () => {
+    expect(presetHref(chornobyl, new URLSearchParams("view=flat"))).toBe(
+      "?view=flat&region=Ukraine&area=29.2,50.9;30.9,50.9;30.9,51.6;29.2,51.6&end=2020-12&date=2020-04-08&time=23:59",
+    );
+    expect(presetHref(chornobyl, new URLSearchParams("view=globe"))).toBe(
+      "?region=Ukraine&area=29.2,50.9;30.9,50.9;30.9,51.6;29.2,51.6&end=2020-12&date=2020-04-08&time=23:59",
+    );
+  });
   it("keeps the theme the page is in, and nothing else of the current view", () => {
     const current = new URLSearchParams("theme=dark&region=Argentina&box=1,2,3,4&date=2025-08-20");
     expect(presetHref(chornobyl, current)).toBe(

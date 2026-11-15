@@ -4,7 +4,7 @@ type Props = { children: ReactNode };
 type State = { failed: boolean };
 
 /**
- * Keeps the rest of the page alive when the globe cannot start. MapLibre throws while mounting when the
+ * Keeps the rest of the page alive when the map (globe or flat) cannot start. MapLibre throws while mounting when the
  * browser has no WebGL2 (GPU disabled, some remote desktops and locked-down machines); without this
  * boundary React unmounts the whole app and the page goes blank.
  */
@@ -21,7 +21,7 @@ export class GlobeBoundary extends Component<Props, State> {
       <div className="page">
         <h1>Hotspot Harmony</h1>
         <p className="notice" role="status">
-          The 3D globe needs WebGL2, which this browser does not offer. The burning activity calendar below works
+          The map needs WebGL2, which this browser does not offer. The burning activity calendar below works
           without it.
         </p>
       </div>

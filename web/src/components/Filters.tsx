@@ -81,7 +81,7 @@ export function Filters({ meta, value, onChange, onDownload, downloading, proble
       <fieldset>
         <legend>
           {drawn
-            ? `Area of interest: drawn on the globe, ${value.area?.length} corners. Its bounds, degrees`
+            ? `Area of interest: drawn on the map, ${value.area?.length} corners. Its bounds, degrees`
             : value.country
               ? `Area of interest: ${value.country}, inside its border. Its bounds, degrees`
               : "Area of interest, degrees"}

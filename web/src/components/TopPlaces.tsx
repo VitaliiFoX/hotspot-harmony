@@ -46,7 +46,7 @@ export function TopPlaces({ top, onShow }: Props) {
                 <td>{MONTHS_LONG[cell.peak_month - 1]}</td>
                 <td>
                   <button type="button" className="ghost" onClick={() => onShow(cell)}>
-                    Show on the globe
+                    Show on the map
                   </button>
                 </td>
               </tr>

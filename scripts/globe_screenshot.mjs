@@ -4,13 +4,18 @@
 // Usage: node scripts/globe_screenshot.mjs <url> <out.png> [zoom-in clicks] [wait ms] [JS to run before the shot]
 // e.g.   node scripts/globe_screenshot.mjs "http://localhost:5173/?theme=dark" out.png 0 12000 \
 //          "window.__hhMap.jumpTo({center:[30.52,50.45], zoom:12})"
+// The flat map: add view=flat, e.g. "http://localhost:5173/?theme=light&view=flat".
 // window.__hhMap is the MapLibre map, exposed by the dev server only. Needs Google Chrome and Node 22+.
 import { spawn } from "node:child_process";
 import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const [url, out, clicks = "0", waitMs = "12000", flyTo = ""] = process.argv.slice(2);
-const chrome = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", [
+// Chrome is looked up where macOS and Windows install it; set CHROME to use another one.
+const chromePath = process.env.CHROME ?? (process.platform === "win32"
+  ? "C:/Program Files/Google/Chrome/Application/chrome.exe"
+  : "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+const chrome = spawn(chromePath, [
   "--headless=new", "--remote-debugging-port=9333", "--window-size=1440,900", "--hide-scrollbars",
   `--user-data-dir=${mkdtempSync(join(tmpdir(), "cdp-"))}`, "about:blank"], { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

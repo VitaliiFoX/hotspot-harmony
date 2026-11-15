@@ -14,6 +14,24 @@ export const PREFERRED_DATE = "2025-08-20";
 export const DEFAULT_TIME = 23 * 60 + 59;
 export const LAST_MINUTE = 24 * 60 - 1;
 
+/** How the map at the top of the page is shown: the 3D globe, or the flat world map (Web Mercator). */
+export type MapView = "globe" | "flat";
+export const DEFAULT_VIEW: MapView = "globe";
+
+/** `?view=` from the address; anything unknown or missing is the globe. */
+export function parseViewParam(text: string | null): MapView {
+  return text === "flat" || text === "globe" ? text : DEFAULT_VIEW;
+}
+
+/**
+ * Zoom at which the flat world (512 px square at zoom 0) covers a map of this size on both sides, so no sky shows
+ * around it. Zoom 0 for a map with no size yet.
+ */
+export function flatFillZoom(width: number, height: number): number {
+  const side = Math.max(width, height);
+  return side > 0 ? Math.log2(side / 512) : 0;
+}
+
 /** "YYYY-MM-DD" if the text is a real calendar date written that way, otherwise null. */
 export function parseDateParam(text: string | null): string | null {
   if (!text || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
