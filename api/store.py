@@ -21,7 +21,8 @@ How far the harmonized record can be trusted is read from data/agg/harmonization
 `make validate` writes: per country, the error on years the method did not see and two baselines.
 
 The hotspots of one UTC day, and the hotspot count of each day of a month, are read from data/points with
-the default filters of the config and one sensor per date, by the rule of the raw series.
+the default filters of the config and one sensor per date, by the rule of the raw series. Days the report lists as
+a gap of that sensor are flagged, because their zero is missing data.
 Months before RECORD_FIRST are dropped: the archive starts on 2000-11-01 UTC, and a local solar day can
 still fall on 31 October in the western hemisphere.
 """
@@ -121,6 +122,12 @@ class Store:
         self._load(data_dir / "agg")
         report = data_dir / "agg" / REPORT
         self.report: dict | None = json.loads(report.read_text()) if report.exists() else None
+        # Days a sensor was down, as pipeline.harmonize finds them: per country, then joined, since an outage is the
+        # same day everywhere. On those days the day view's zero is missing data, not a quiet day.
+        self.gap_days: dict[str, set[str]] = {}
+        for entry in (self.report or {}).get("countries", {}).values():
+            for sensor, days in (entry.get("sensor_gap_days") or {}).items():
+                self.gap_days.setdefault(sensor, set()).update(days)
         self.regions_shape = unary_union([box(*r.bbox) for r in cfg.regions])
 
     def _load(self, agg: Path) -> None:
@@ -364,6 +371,7 @@ class Store:
             "sensor": sensor,
             "unit": UNITS["raw_hotspots"],
             "days": [{"day": d, "value": counts.get(d, 0)} for d in range(1, first.days_in_month + 1)],
+            "gap_days": sorted(int(d[8:10]) for d in self.gap_days.get(sensor, ()) if d.startswith(month)),
         }
 
     def hotspot_day(self, date: str, limit: int) -> dict:
@@ -394,6 +402,7 @@ class Store:
             "truncated": count > len(rows),
             "regions": regions,
             "hotspots": [[lon, lat, minute, index.get(country, 0)] for lon, lat, minute, country in rows],
+            "sensor_gap": date in self.gap_days.get(sensor, set()),
         }
 
     def validation(self) -> dict:
