@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   PEAK_SHARE, THERMAL, ZERO_FILL, brokenLinePath, cellColor, columnPath, formatTick, formatValue, lastDay, monthLabel,
-  monthRange, monthRank, monthSpans, niceTicks, partsOfYear, peakMonths, position, rampColor, rampGradient, rawRecordParts, recordSpans,
+  monthRange, monthRank, monthSpans, monthTick, niceTicks, partsOfYear, peakMonths, position, rampColor, rampGradient, rawRecordParts, recordSpans,
   recordTimeline, seasonSpan, stripLanes, valuesByYear,
 } from "./scale";
 
@@ -309,5 +309,17 @@ describe("rawRecordParts", () => {
 describe("monthRange", () => {
   it("names the first and last month of a part, shortened", () => {
     expect(monthRange("2000-11", "2002-06")).toBe("Nov 2000 – Jun 2002");
+  });
+});
+
+describe("monthTick", () => {
+  it("writes three letters where a month has room for them", () => {
+    expect(monthTick(8, 30)).toBe("Aug");
+    expect(monthTick(1, 64)).toBe("Jan");
+  });
+  it("writes the first letter where the three would touch their neighbours", () => {
+    // A phone: twelve months across 280 px leave 23 px each.
+    expect(monthTick(8, 280 / 12)).toBe("A");
+    expect(monthTick(12, 0)).toBe("D");
   });
 });

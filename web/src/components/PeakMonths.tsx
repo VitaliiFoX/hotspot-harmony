@@ -1,8 +1,9 @@
-import { monthShort, monthTitle, t, tn } from "../i18n";
+import { monthTitle, t, tn } from "../i18n";
 import { type KeyboardEvent, type PointerEvent, useState } from "react";
 import type { Climatology } from "../api";
 import { useElementWidth } from "../hooks";
-import { MONTHS, PEAK_SHARE, columnPath, formatValue, monthSpans, peakMonths } from "../scale";
+import { HeatGradient, heatPaint, useHeatId } from "./HeatGradient";
+import { MONTHS, PEAK_SHARE, columnPath, formatValue, monthSpans, monthTick, peakMonths } from "../scale";
 import { type Tip, Tooltip } from "./Tooltip";
 
 type Props = { climatology: Climatology[]; unit: string };
@@ -36,7 +37,7 @@ export function PeakMonthsSummary({ climatology }: { climatology: Climatology[] 
   );
 }
 
-/** Each calendar month's share of a typical year; the peak burning months stand out in the accent colour. */
+/** Each calendar month's share of a typical year; the peak burning months stand out in the warm gradient. */
 export function PeakMonthsChart({ climatology, unit }: Props) {
   const [ref, width] = useElementWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
@@ -51,6 +52,7 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
   const thickness = Math.max(1, Math.min(40, slot - 6));
   const baseline = MARGIN.top + innerHeight;
   const y = (share: number) => MARGIN.top + innerHeight * (1 - share / top);
+  const heat = useHeatId();
 
   function onPointerMove(event: PointerEvent<SVGSVGElement>) {
     const box = event.currentTarget.getBoundingClientRect();
@@ -89,7 +91,7 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
     <div ref={ref}>
       <ul className="legend">
         <li>
-          <span className="box-key" style={{ background: "var(--accent)" }} />
+          <span className="box-key heat-key" />
           {t("Peak burning months: together at least {share} of a typical year", { share: percent(PEAK_SHARE) })}
         </li>
         <li>
@@ -112,6 +114,7 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
           onKeyDown={onKeyDown}
           onBlur={() => setActive(null)}
         >
+          <HeatGradient id={heat} from={baseline} to={y(top)} />
           <line className="axis" x1={MARGIN.left} x2={width - MARGIN.right} y1={baseline} y2={baseline} />
           {MONTHS.map((name, index) => {
             const left = MARGIN.left + index * slot + (slot - thickness) / 2;
@@ -120,6 +123,7 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
               <g key={name}>
                 <path
                   className={`column${inPeak ? "" : " is-quiet"}${index === active ? " is-active" : ""}`}
+                  style={inPeak ? { fill: heatPaint(heat) } : undefined}
                   d={columnPath(left, baseline, thickness, baseline - y(shares[index]))}
                 />
                 {inPeak && (
@@ -128,7 +132,7 @@ export function PeakMonthsChart({ climatology, unit }: Props) {
                   </text>
                 )}
                 <text className="tick" x={MARGIN.left + (index + 0.5) * slot} y={HEIGHT - 8} textAnchor="middle">
-                  {monthShort(index + 1)}
+                  {monthTick(index + 1, slot)}
                 </text>
               </g>
             );

@@ -117,6 +117,8 @@ const OSM_ATTRIBUTION =
 const STREET_ZOOM = 8;
 /** Zoomed in past this, the date panel and the legend fold into small buttons to leave the map clear. */
 const CARD_ZOOM = 4;
+/** The width under which the stage stacks its cards around the map (the 899 px rules of globe.css). */
+const NARROW_QUERY = "(max-width: 899px)";
 /** The globe turns on its own while it is shown whole: one turn in two minutes, west to east. */
 const SPIN_DEG_PER_S = 3;
 const SPIN_MAX_ZOOM = 3;
@@ -431,10 +433,14 @@ function fillZoom(element: HTMLElement): number {
   return flatFillZoom(element.clientWidth, element.clientHeight);
 }
 
-/** Zoom at which the globe's radius is about a third of the shorter side of the map. */
+/**
+ * Zoom at which the globe's radius is about a third of the shorter side of the map. On a narrow screen no card
+ * lies over the map, so the globe takes nearly all of its width.
+ */
 function fittingZoom(element: HTMLElement): number {
   const side = Math.min(element.clientWidth, element.clientHeight) || 600;
-  return Math.max(0.5, Math.log2((0.36 * side * 2 * Math.PI) / 512));
+  const share = window.matchMedia(NARROW_QUERY).matches ? 0.45 : 0.36;
+  return Math.max(0.5, Math.log2((share * side * 2 * Math.PI) / 512));
 }
 
 function fitRegion(map: MapLibreMap, region: Region): void {
@@ -510,18 +516,43 @@ export function Globe({
   countryHasData, onPickCountry, area, onDrawArea, areaError, period, focus = null, series = "harmonized", trendError = 0, panel,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
+  // Where the title card ends, for the zoom buttons and the table under it: its buttons take one row or two,
+  // by the width of the window and the language.
+  const head = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const card = head.current;
+    const stage = card?.parentElement;
+    if (!card || !stage) return;
+    const measure = () => stage.style.setProperty("--head-bottom", `${card.offsetTop + card.offsetHeight}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, []);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
   const [street, setStreet] = useState(false);
   const [zoomedIn, setZoomedIn] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
+  // Under 900 px the cards stack around the map instead of floating over it: the map comes first and the date
+  // panel waits folded into one bar under it, so a phone opens on the globe and not on a screen of controls.
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
+  useEffect(() => {
+    const query = window.matchMedia(NARROW_QUERY);
+    const onChange = (event: MediaQueryListEvent) => setNarrow(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  const [panelOpen, setPanelOpen] = useState(() => !window.matchMedia(NARROW_QUERY).matches);
   const [legendOpen, setLegendOpen] = useState(true);
   // Crossing CARD_ZOOM folds the cards away (zooming in) or brings them back (zooming out); the buttons
-  // open and close them by hand in between. Narrow screens stack the cards under the map, so they stay.
+  // open and close them by hand in between. On a narrow screen nothing covers the map, so the zoom folds nothing.
+  const wasZoomedIn = useRef(false);
   useEffect(() => {
-    const fold = zoomedIn && window.innerWidth >= 900;
-    setPanelOpen(!fold);
-    setLegendOpen(!fold);
+    if (wasZoomedIn.current === zoomedIn) return;
+    wasZoomedIn.current = zoomedIn;
+    if (window.matchMedia(NARROW_QUERY).matches) return;
+    setPanelOpen(!zoomedIn);
+    setLegendOpen(!zoomedIn);
   }, [zoomedIn]);
   const [showTable, setShowTable] = useState(false);
   // "Where it burns": the cells of the harmonized record over the period, instead of the day's hotspots.
@@ -1067,9 +1098,8 @@ export function Globe({
       className={["stage", street && "is-street", showTable && "is-table", showTable && !panelOpen && "is-table-wide"].filter(Boolean).join(" ")}
       aria-label={view === "flat" ? t("Map of hotspots") : t("Globe of hotspots")}
     >
-      <div className="stage-head">
-        <h1>Hotspot Harmony</h1>
-        <p>{t("Satellite fire hotspots, day by day")}</p>
+      <div className="stage-head" ref={head}>
+        <p className="stage-title">{t("Satellite fire hotspots, day by day")}</p>
         <div className="stage-actions">
           <a className="stage-next" href="#calendar">
             {t("Burning activity calendar, 2000 to 2025")} <span aria-hidden="true">↓</span>
@@ -1095,23 +1125,37 @@ export function Globe({
         </div>
       </div>
 
-      {panelOpen ? (
+      {(narrow || !panelOpen) && (
+        <button
+          type="button"
+          className="stage-pill stage-pill-panel"
+          aria-label={panelOpen ? t("Hide the date panel") : t("Show the date panel")}
+          aria-expanded={panelOpen}
+          onClick={() => setPanelOpen(!panelOpen)}
+        >
+          <CalendarIcon />
+          <span className="stage-pill-text">
+            {span
+              ? t("{span}, through {day}", { span: spanLabel(span), day: cursorLabel(span, time) })
+              : date
+                ? `${longDate(date)}, ${timeLabel(time)} UTC`
+                : t("Date and time")}
+          </span>
+          {counts && <strong>{formatCount(counts.throughHour)}</strong>}
+          <svg className="stage-pill-chevron" width="12" height="8" viewBox="0 0 12 8" aria-hidden="true" focusable="false">
+            <path d="M1.5 1.5l4.5 4.5 4.5-4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+      {panelOpen && (
         <>
           {panel}
-          <button type="button" className="stage-fold stage-fold-panel" aria-label={t("Hide the date panel")} title={t("Hide")} onClick={() => setPanelOpen(false)}>
-            <FoldIcon />
-          </button>
+          {!narrow && (
+            <button type="button" className="stage-fold stage-fold-panel" aria-label={t("Hide the date panel")} title={t("Hide")} onClick={() => setPanelOpen(false)}>
+              <FoldIcon />
+            </button>
+          )}
         </>
-      ) : (
-        <button type="button" className="stage-pill stage-pill-panel" aria-label={t("Show the date panel")} onClick={() => setPanelOpen(true)}>
-          <CalendarIcon />
-          {span
-            ? t("{span}, through {day}", { span: spanLabel(span), day: cursorLabel(span, time) })
-            : date
-              ? `${longDate(date)}, ${timeLabel(time)} UTC`
-              : t("Date and time")}
-          {counts && <strong>{formatCount(counts.throughHour)}</strong>}
-        </button>
       )}
 
       <div className="stage-map">

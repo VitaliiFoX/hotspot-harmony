@@ -26,6 +26,7 @@ import { PeakMonthsChart, PeakMonthsSummary, PeakMonthsTable } from "./component
 import { RecordTimeline } from "./components/RecordTimeline";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
 import { InShort } from "./components/InShort";
+import { PageNav } from "./components/PageNav";
 import { RecordSkeleton } from "./components/Skeleton";
 import { ShareButton } from "./components/ShareButton";
 import { TopPlaces } from "./components/TopPlaces";
@@ -34,11 +35,12 @@ import { summaryLines, unusualMonths, UNUSUAL_SHOWN } from "./insights";
 import { TrustBlock } from "./components/TrustBlock";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
-import { LANGUAGES, type Lang, formatCount, language, t, tn } from "./i18n";
+import { type Lang, formatCount, t, tn } from "./i18n";
+import { type Section, sectionNumber } from "./nav";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
 import { PRESETS, presetHref } from "./presets";
 import { monthError, sameMonthRatio } from "./trust";
-import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, peakMonths, seasonSpan } from "./scale";
+import { PEAK_SHARE, type ScaleMode, lastDay, monthLabel, monthRange, peakMonths, seasonSpan } from "./scale";
 
 /** The typed box as numbers, or the reason it cannot be used. */
 function readBox(box: FilterState["box"]): { bbox: Bbox } | { problem: string } {
@@ -587,6 +589,36 @@ export function App() {
     downloadBlob(new Blob([csv], { type: "text/csv" }), exportName(["burning-activity-calendar", ...fileParts], "csv"));
   }
 
+  // The sections of the report under the map, in page order: the bar at the top links to them and each carries its
+  // number. One with nothing to show is left out, so the numbers have no gap.
+  const hasPlaces = Boolean(topCells && topCells.cells.length > 0);
+  const sections: Section[] =
+    calendar && !noData
+      ? [
+          { id: "overview", label: t("Overview") },
+          { id: "months", label: t("Calendar") },
+          { id: "season", label: t("Season") },
+          { id: "years", label: t("By year") },
+          ...(hasPlaces ? [{ id: "places", label: t("Places") }] : []),
+          ...(validation && filters ? [{ id: "method", label: t("Trust") }] : []),
+        ]
+      : [];
+  const labelOf = (id: string) => sections.find((section) => section.id === id)?.label ?? "";
+  const label = (id: string) => (
+    <p className="section-label" aria-hidden="true">
+      <span>{sectionNumber(sections, id)}</span>
+      {labelOf(id)}
+    </p>
+  );
+  // How the area of interest is cut out, said next to its name when it is not the region's whole box.
+  const areaKind = filters?.area
+    ? t("drawn area")
+    : picked
+      ? t("inside its border")
+      : filters && !wholeRegion
+        ? t("typed box")
+        : null;
+
   // What an example link keeps of the current view: the theme, the language and the flat map. The map is taken from
   // state, as the kept view catches up with it only after this render.
   const presetView = currentView();
@@ -595,6 +627,15 @@ export function App() {
 
   return (
     <>
+      <PageNav
+        sections={sections}
+        series={filters?.series}
+        available={meta?.series}
+        onSeries={(series) => setFilters((current) => (current ? { ...current, series } : current))}
+        theme={themeChoice}
+        onTheme={setThemeChoice}
+        onLanguage={switchLanguage}
+      />
       <GlobeBoundary>
       <Globe
         regions={meta?.regions ?? []}
@@ -649,32 +690,19 @@ export function App() {
       />
       </GlobeBoundary>
       <div className="page" id="calendar">
-        <header className="top">
+        <header className="report-head">
           <div>
-            <p className="subtitle">{t("Burning activity calendar from satellite fire hotspots, 2000 to 2025")}</p>
-            {picked && <h2 className="place">{t(picked.name)}</h2>}
+            <p className="eyebrow">{t("Burning activity calendar from satellite fire hotspots, 2000 to 2025")}</p>
+            {filters && <h2 className="place">{t(picked?.name ?? filters.region)}</h2>}
+            {filters && (
+              <ul className="report-meta">
+                <li>{monthRange(filters.start, filters.end)}</li>
+                <li>{filters.series === "raw" ? t("Raw record") : t("Harmonized record")}</li>
+                {areaKind && <li>{areaKind}</li>}
+              </ul>
+            )}
           </div>
-          <div className="top-options">
-            <ShareButton className="ghost share" />
-            <label className="theme">
-              <span>{t("Language")}</span>
-              <select value={language()} onChange={(event) => switchLanguage(event.target.value as Lang)}>
-                {LANGUAGES.map((item) => (
-                  <option key={item.lang} value={item.lang}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="theme">
-              <span>{t("Theme")}</span>
-              <select value={themeChoice} onChange={(event) => setThemeChoice(event.target.value as ThemeChoice)}>
-                <option value="auto">{t("System")}</option>
-                <option value="light">{t("Light")}</option>
-                <option value="dark">{t("Dark")}</option>
-              </select>
-            </label>
-          </div>
+          <ShareButton className="share" />
         </header>
 
         {meta && filters && (
@@ -749,116 +777,128 @@ export function App() {
 
         {!noData && calendar && (
           <main className={loading ? "content is-loading" : "content"} aria-busy={loading}>
-            <HeadlineCard
-              anomaly={calendar.season_peak ?? calendar.anomaly}
-              climatology={calendar.climatology}
-              months={calendar.months}
-              unit={unit}
-              busiest={Boolean(calendar.season_peak)}
-              error={headlineError}
-              raw={headlineRaw}
-              recordEnd={meta?.last_month ?? null}
-              series={filters?.series ?? calendar.series}
-              available={meta?.series ?? []}
-              onSeries={(series) => setFilters((current) => (current ? { ...current, series } : current))}
-            />
-
-            <InShort lines={inShort} />
-
-            <ChartCard
-              id="burning-calendar"
-              title={t("Burning activity calendar")}
-              subtitle={tn(
-                calendar.cells_used,
-                "Monthly {unit} in the area, over {count} grid cell with burning",
-                "Monthly {unit} in the area, over {count} grid cells with burning",
-                { unit, count: formatCount(calendar.cells_used) },
-              )}
-              options={
-                <div className="segmented" role="group" aria-label={t("Colour scale")}>
-                  {(["linear", "log"] as ScaleMode[]).map((mode) => (
-                    <button key={mode} type="button" aria-pressed={scaleMode === mode} onClick={() => setScaleMode(mode)}>
-                      {mode === "log" ? t("Log scale") : t("Linear scale")}
-                    </button>
-                  ))}
-                </div>
-              }
-              chart={
-                <CalendarHeatmap
-                  months={calendar.months}
+            <section className="section" id="overview" aria-label={labelOf("overview")}>
+              {label("overview")}
+              <div className="overview">
+                <HeadlineCard
+                  anomaly={calendar.season_peak ?? calendar.anomaly}
                   climatology={calendar.climatology}
+                  months={calendar.months}
                   unit={unit}
-                  mode={scaleMode}
-                  highlightYear={year}
-                  onHighlightYear={setHighlightYear}
-                  shownMonths={date ? spanMonths(date, span) : []}
-                  onShowMonth={date ? showMonthOnGlobe : undefined}
+                  busiest={Boolean(calendar.season_peak)}
+                  error={headlineError}
+                  raw={headlineRaw}
+                  recordEnd={meta?.last_month ?? null}
+                  series={filters?.series ?? calendar.series}
+                  available={meta?.series ?? []}
+                  onSeries={(series) => setFilters((current) => (current ? { ...current, series } : current))}
                 />
-              }
-              table={<CalendarTable months={calendar.months} unit={unit} />}
-              pngName={exportName(["burning-activity-calendar", ...fileParts], "png")}
-              downloads={
-                <button type="button" className="ghost download" onClick={saveCalendarCsv}>
-                  {t("Download calendar data (CSV)")}
-                </button>
-              }
-            />
 
-            <UnusualMonths
-              unusual={unusual}
-              total={allUnusual.length}
-              unit={unit}
-              raw={calendar.series === "raw"}
-              onShow={showYearOnCalendar}
-            />
+                <InShort lines={inShort} />
+              </div>
+            </section>
 
-            <ChartCard
-              id="peak-months"
-              title={t("Peak burning months")}
-              subtitle={
-                t(
-                  "The fewest months that together hold {share}% of a typical year, where a typical year adds up each month's median over every year of the record. Burning activity, not fire risk.",
-                  { share: Math.round(PEAK_SHARE * 100) },
-                ) +
-                (calendar.series === "raw"
-                  ? ` ${t("Counted on the raw record, which jumps in 2012; the harmonized record compares the years fairly.")}`
-                  : "")
-              }
-              chart={
-                <>
-                  <PeakMonthsSummary climatology={calendar.climatology} />
-                  <PeakMonthsChart climatology={calendar.climatology} unit={unit} />
-                </>
-              }
-              table={
-                <>
-                  <PeakMonthsSummary climatology={calendar.climatology} />
-                  <PeakMonthsTable climatology={calendar.climatology} unit={unit} />
-                </>
-              }
-              pngName={exportName(["peak-burning-months", ...fileParts], "png")}
-            />
-
-            {topCells && <TopPlaces top={topCells} onShow={showOnGlobe} />}
-
-            <div className="pair">
+            <section className="section" id="months" aria-label={labelOf("months")}>
+              {label("months")}
               <ChartCard
-                title={t("{year} against the usual season", { year })}
-                subtitle={t("Monthly {unit}; median and middle half over all years", { unit })}
+                id="burning-calendar"
+                title={t("Burning activity calendar")}
+                subtitle={tn(
+                  calendar.cells_used,
+                  "Monthly {unit} in the area, over {count} grid cell with burning",
+                  "Monthly {unit} in the area, over {count} grid cells with burning",
+                  { unit, count: formatCount(calendar.cells_used) },
+                )}
                 options={
-                  <label className="inline">
-                    <span>{t("Year")}</span>
-                    <select value={year} onChange={(event) => setHighlightYear(Number(event.target.value))}>
-                      {calendar.yearly.map((item) => (
-                        <option key={item.year}>{item.year}</option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="segmented" role="group" aria-label={t("Colour scale")}>
+                    {(["linear", "log"] as ScaleMode[]).map((mode) => (
+                      <button key={mode} type="button" aria-pressed={scaleMode === mode} onClick={() => setScaleMode(mode)}>
+                        {mode === "log" ? t("Log scale") : t("Linear scale")}
+                      </button>
+                    ))}
+                  </div>
                 }
-                chart={<SeasonalChart months={calendar.months} climatology={calendar.climatology} year={year} unit={unit} />}
-                table={<SeasonalTable months={calendar.months} climatology={calendar.climatology} year={year} unit={unit} />}
-                pngName={exportName([`season-${year}`, ...fileParts], "png")}
+                chart={
+                  <CalendarHeatmap
+                    months={calendar.months}
+                    climatology={calendar.climatology}
+                    unit={unit}
+                    mode={scaleMode}
+                    highlightYear={year}
+                    onHighlightYear={setHighlightYear}
+                    shownMonths={date ? spanMonths(date, span) : []}
+                    onShowMonth={date ? showMonthOnGlobe : undefined}
+                  />
+                }
+                table={<CalendarTable months={calendar.months} unit={unit} />}
+                pngName={exportName(["burning-activity-calendar", ...fileParts], "png")}
+                downloads={
+                  <button type="button" className="ghost download" onClick={saveCalendarCsv}>
+                    {t("Download calendar data (CSV)")}
+                  </button>
+                }
               />
+
+              <UnusualMonths
+                unusual={unusual}
+                total={allUnusual.length}
+                unit={unit}
+                raw={calendar.series === "raw"}
+                onShow={showYearOnCalendar}
+              />
+            </section>
+
+            <section className="section" id="season" aria-label={labelOf("season")}>
+              {label("season")}
+              <div className="pair">
+                <ChartCard
+                  id="peak-months"
+                  title={t("Peak burning months")}
+                  subtitle={
+                    t(
+                      "The fewest months that together hold {share}% of a typical year, where a typical year adds up each month's median over every year of the record. Burning activity, not fire risk.",
+                      { share: Math.round(PEAK_SHARE * 100) },
+                    ) +
+                    (calendar.series === "raw"
+                      ? ` ${t("Counted on the raw record, which jumps in 2012; the harmonized record compares the years fairly.")}`
+                      : "")
+                  }
+                  chart={
+                    <>
+                      <PeakMonthsSummary climatology={calendar.climatology} />
+                      <PeakMonthsChart climatology={calendar.climatology} unit={unit} />
+                    </>
+                  }
+                  table={
+                    <>
+                      <PeakMonthsSummary climatology={calendar.climatology} />
+                      <PeakMonthsTable climatology={calendar.climatology} unit={unit} />
+                    </>
+                  }
+                  pngName={exportName(["peak-burning-months", ...fileParts], "png")}
+                />
+                <ChartCard
+                  title={t("{year} against the usual season", { year })}
+                  subtitle={t("Monthly {unit}; median and middle half over all years", { unit })}
+                  options={
+                    <label className="inline">
+                      <span>{t("Year")}</span>
+                      <select value={year} onChange={(event) => setHighlightYear(Number(event.target.value))}>
+                        {calendar.yearly.map((item) => (
+                          <option key={item.year}>{item.year}</option>
+                        ))}
+                      </select>
+                    </label>
+                  }
+                  chart={<SeasonalChart months={calendar.months} climatology={calendar.climatology} year={year} unit={unit} />}
+                  table={<SeasonalTable months={calendar.months} climatology={calendar.climatology} year={year} unit={unit} />}
+                  pngName={exportName([`season-${year}`, ...fileParts], "png")}
+                />
+              </div>
+            </section>
+
+            <section className="section" id="years" aria-label={labelOf("years")}>
+              {label("years")}
               <ChartCard
                 id="burning-per-year"
                 title={t("Burning per year")}
@@ -882,9 +922,21 @@ export function App() {
                 table={<YearlyTable yearly={calendar.yearly} unit={unit} line={rawLine} record={recordParts} />}
                 pngName={exportName(["burning-per-year", ...fileParts], "png")}
               />
-            </div>
+            </section>
 
-            {validation && filters && <TrustBlock validation={validation} region={filters.region} wholeRegion={wholeRegion} />}
+            {hasPlaces && topCells && (
+              <section className="section" id="places" aria-label={labelOf("places")}>
+                {label("places")}
+                <TopPlaces top={topCells} onShow={showOnGlobe} />
+              </section>
+            )}
+
+            {validation && filters && (
+              <section className="section" id="method" aria-label={labelOf("method")}>
+                {label("method")}
+                <TrustBlock validation={validation} region={filters.region} wholeRegion={wholeRegion} />
+              </section>
+            )}
           </main>
         )}
 

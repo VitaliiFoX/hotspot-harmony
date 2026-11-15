@@ -16,6 +16,67 @@ Built during the 2026 NASA Space Apps Challenge for the challenge
 
 *Ukraine per year. The line is the raw record: it doubles from 2012, when VIIRS replaces MODIS. The columns, harmonized, do not. The strip on top says where each year comes from: MODIS as reported up to 2021, VIIRS NOAA-20 harmonized to MODIS from 2022.*
 
+## For reviewers, human or AI: start here
+
+**Claim.** The jump in fire counts in 2012 is the sensor, not the fire. This repository rebuilds 25 years of NASA FIRMS
+hotspots as one record in a single unit, MODIS-equivalent fire cell-days, checks it on years the method never saw, and
+serves it as a burning activity calendar for any area you pick: a region, a country, or a polygon drawn on a globe.
+
+Every number below comes from a file the pipeline writes, with the command that writes it. Nothing is typed in by hand.
+
+### The challenge's asks, and where each one is
+
+| The challenge asks for | In the app | Code | Tests |
+|---|---|---|---|
+| One comparable MODIS + VIIRS record | Record switch "Harmonized / Raw"; the yearly chart draws the raw record as a line over the harmonized columns, so the 2012 jump shows and its removal too | [`pipeline/harmonize.py`](pipeline/harmonize.py), method in [`docs/METHOD.md`](docs/METHOD.md), decision in [ADR 0001](docs/adr/0001-harmonize-to-modis-equivalent-fire-cell-days.md) | [`pipeline/tests/test_harmonize.py`](pipeline/tests/test_harmonize.py) |
+| Proof that it works | "How far to trust this" card: error on held-out years against two baselines | [`pipeline/validate.py`](pipeline/validate.py), output [`docs/VALIDATION.md`](docs/VALIDATION.md) (generated) | `make validate NESTED=1` rewrites the report |
+| Burning activity calendar | Month x year heat map; on the globe one day (to the minute), one month, or any period from day to day | [`web/src/components/CalendarHeatmap.tsx`](web/src/components/CalendarHeatmap.tsx), [`web/src/components/DateTimePanel.tsx`](web/src/components/DateTimePanel.tsx), [`web/src/period.ts`](web/src/period.ts) | [`web/src/period.test.ts`](web/src/period.test.ts), [`api/tests/test_api.py`](api/tests/test_api.py) |
+| Area of interest: region, country, polygon | Region search; double-click a country on the globe; "Draw an area" | [`web/src/area.ts`](web/src/area.ts), [`web/src/countries.ts`](web/src/countries.ts), `parse_area` in [`api/store.py`](api/store.py) | [`web/src/area.test.ts`](web/src/area.test.ts), [`web/src/countries.test.ts`](web/src/countries.test.ts) |
+| Patterns | "Peak burning months", "Where it burns" (how much, how it changed), "Where in this area it burns most" | [`web/src/scale.ts`](web/src/scale.ts) (`peakMonths`), [`web/src/globe.ts`](web/src/globe.ts) (`trendChange`) | [`web/src/scale.test.ts`](web/src/scale.test.ts), [`web/src/globe.test.ts`](web/src/globe.test.ts) |
+| Anomalies | Headline card (the season against every year), "Unusual months" (robust z, kept only beyond the method's error) | [`web/src/insights.ts`](web/src/insights.ts), [`web/src/trust.ts`](web/src/trust.ts) | [`web/src/insights.test.ts`](web/src/insights.test.ts), [`web/src/trust.test.ts`](web/src/trust.test.ts) |
+| Critical periods | "Peak burning months": the fewest months that hold 60% of a typical year | `peakMonths`, `monthSpans` in [`web/src/scale.ts`](web/src/scale.ts) | [`web/src/scale.test.ts`](web/src/scale.test.ts) |
+| Exports | Calendar data as CSV (with the area as WKT), every chart as PNG, hotspots as CSV | [`web/src/exports.ts`](web/src/exports.ts), `/api/hotspots.csv` | [`web/src/exports.test.ts`](web/src/exports.test.ts) |
+
+Not built: a week view of its own (a seven-day period on the globe stands in for it), and a forecast.
+
+### Check the claims yourself
+
+```bash
+make data             # download FIRMS archives, build the record, validate it (no key needed, about 10 minutes)
+make validate NESTED=1  # the held-out check quoted below, method chosen again for every held-out year (~25 min)
+make test             # 100+ Python tests and 250+ web tests, all on small fixtures worked out by hand
+make api & make web   # the app on http://localhost:5173
+```
+
+The figures to compare against are in [How far to trust it](#how-far-to-trust-it) and in the "Numbers" section of
+[`CLAUDE.md`](CLAUDE.md). A sensor ratio far from those means a bug upstream.
+
+### How the code is laid out
+
+```
+FIRMS CSV archives
+  -> pipeline/ingest.py      download into data/raw/
+  -> pipeline/normalize.py   one point schema, data/points/ (Parquet)
+  -> pipeline/aggregate.py   0.25-degree cell x month x sensor, and 1 km fire cell-days per local day
+  -> pipeline/harmonize.py   VIIRS fire cell-days weighted to MODIS-equivalent, data/agg/harmonized.parquet
+  -> pipeline/validate.py    held-out error and baselines, docs/VALIDATION.md, harmonization_report.json
+  -> api/main.py, api/store.py   FastAPI over DuckDB views of those files (endpoints at /docs)
+  -> web/src/App.tsx         React page: globe (components/Globe.tsx), calendar, charts, trust card
+```
+
+| Start here | Why |
+|---|---|
+| [`GLOSSARY.md`](GLOSSARY.md) | one word per concept (fire cell-day, record, harmonized, area of interest); code and docs use these words |
+| [`docs/METHOD.md`](docs/METHOD.md) | the harmonization, what was tried and left out, and why |
+| [`api/store.py`](api/store.py) | the contract of every file the API reads, in its module docstring |
+| [`web/src/App.tsx`](web/src/App.tsx) | how the page fetches and wires everything; pure logic sits in tested `web/src/*.ts` files beside it |
+| [`CLAUDE.md`](CLAUDE.md) | rules for coding agents, reference numbers, FIRMS facts that are easy to get wrong |
+| [`data/README.md`](data/README.md) | every generated file, which step writes it, and what is in it |
+
+Pure logic is kept out of React components and tested: each `web/src/<name>.ts` that holds logic has a
+`<name>.test.ts` beside it. Three files hold none and have no test of their own: `api.ts` (the calls to the API),
+`hooks.ts` (two React hooks) and `uk.ts` (the Ukrainian texts, which `i18n.test.ts` checks against the page).
+
 ## Why
 
 Satellites have recorded active fires since 2000, but the record is split between sensors that
@@ -49,6 +110,7 @@ on which satellite was flying.
 | Globe or flat map | done; a switch on the map lays the same world flat (Web Mercator) with every layer, the drawn area and the tiles kept; the choice travels in the link (`&view=flat`) |
 | Example areas | done; links in the filters card open the Chornobyl exclusion zone in April 2020 and the southern steppe in summer 2015, each as a drawn area with its busiest day on the globe |
 | Link to a view | done; the address bar stays clean and the view survives a reload; "Share this view" copies a link that opens the same filters, area, day on the globe, theme and language |
+| Page layout, phones and tablets | done; the page opens with a bar over the map that stays at the top of the window all the way down: the name of the project, the map and the sections of the report (Overview, Calendar, Season, By year, Places, Trust) with the one on screen marked, the record switch, the language and the theme; the report opens with the name of the place and its period. Under 900 px the map comes first and the date panel folds into one bar under it; charts shorten their month labels, the busiest cells turn into blocks and the unusual months into a row to swipe. The period is two lists (month, year), the same in every browser |
 | "How far to trust this" in the web app | done; under the charts, for the chosen country: the held-out error per month (per 1-degree tile when the area is smaller than the country), the two baselines, and the run that wrote the figures |
 | Hotspots of every country for the globe's day view | file built, not served yet; `make day-points` reads the 48 FIRMS global zips (9.4 GB) one at a time into `data/day_points/`: 277 million hotspots of 234 countries, 2000-11 to 2025-12, in 1.14 GB (MODIS before 2012-02, VIIRS S-NPP after, filters applied). For Ukraine and Argentina it holds exactly the hotspots of `data/points/`. On 1,459 of its 9,131 days it holds more than the API's day limit of 50,000 (the busiest, 2023-09-23, 148,702). The API's day view does not read it yet |
 | Every country harmonized and checked | pipeline done, not served yet; `make world` fits the table by fire power per country (by 10-degree squares where held-out years favour them) and checks 128 countries, with 99.8% of the world's fire cell-days, on years the method did not see: [docs/VALIDATION_WORLD.md](docs/VALIDATION_WORLD.md) (generated). The API and the web app still serve Ukraine and Argentina |
@@ -134,13 +196,14 @@ memory; `make api CONFIG=config/world.yaml` serves a world record with a single 
 
 ```
 config/regions.yaml   countries, grid size, filters
-pipeline/             ingest -> normalize -> aggregate -> harmonize -> validate (+ tests)
-api/                  FastAPI service over the pipeline's output (+ tests)
-web/                  React + TypeScript dashboard (Vite); charts are hand-written SVG, no chart library
-docs/                 METHOD.md, ADRs, and VALIDATION.md + the sensor jump figure (both generated)
+pipeline/             ingest -> normalize -> aggregate -> harmonize -> validate (+ tests in pipeline/tests/)
+api/                  FastAPI service over the pipeline's output (+ tests in api/tests/)
+web/                  React + TypeScript app (Vite); MapLibre for the globe, hand-written SVG charts
+docs/                 METHOD.md, ADRs, DEPLOY.md, and VALIDATION.md + the sensor jump figure (generated)
 research/             experiments that are not part of the pipeline
+scripts/              one-off tools: borders, screenshots, the English-only check
 data/                 generated, git-ignored (see data/README.md)
-CLAUDE.md             instructions for AI coding agents
+CLAUDE.md, AGENTS.md  instructions for AI coding agents
 GLOSSARY.md           the project's vocabulary
 .claude/skills/       agent skills (see "Working with AI agents")
 ```
@@ -150,6 +213,7 @@ GLOSSARY.md           the project's vocabulary
 The repo is set up so that a coding agent can start work without a briefing:
 
 - [`CLAUDE.md`](CLAUDE.md) holds the rules, the data facts that are easy to get wrong, and the open decisions.
+  [`AGENTS.md`](AGENTS.md) points other agents to it.
 - [`GLOSSARY.md`](GLOSSARY.md) fixes one word per concept, for people and agents alike.
 - [`.claude/skills/`](.claude/skills/) holds eleven skills from
   [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `.claude/skills/NOTICE.md`).
@@ -216,7 +280,9 @@ The same credits are in the globe's legend.
   fixed in follow-up pull requests.
 - **Competitor scan.** The assistant read the public repositories of other entries to this challenge
   (their README files and code) and summarised their methods, validation and demos, so that we could
-  see where this project stands. Ideas only: no code was copied.
+  see where this project stands. It also looked at the public demo page of one entry before reworking
+  the layout of our page (a bar with the sections, numbered sections, the phone layout). Ideas only: no
+  code, text or assets were copied.
 - **Inside the product, no language model runs.** The harmonization fits its own small models to the
   FIRMS data (a table by fire power, and gradient boosting from scikit-learn where it beats the table on
   held-out years); anomalies and peak burning months are plain statistics.
