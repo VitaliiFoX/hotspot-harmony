@@ -24,6 +24,29 @@ export type Meta = {
 
 export type RecordPart = { sensor: string; label: string; from: string; to: string | null };
 
+/** Error of a check at each scale, as a share of what MODIS reported (WAPE), and its bias. */
+export type ErrorScale = "country_year" | "country_month" | "tile_year" | "tile_month";
+export type CheckErrors = { bias: number } & Record<ErrorScale, number>;
+export type TrustCheck = "harmonized" | "single_factor" | "raw_viirs";
+export type TrustCountry = {
+  method: string;
+  /** How docs/VALIDATION.md names the method, e.g. "the context model". */
+  method_name: string;
+  /** True when the method was chosen again for every held-out year (`make validate NESTED=1`). */
+  method_chosen_per_held_out_year: boolean;
+  held_out_months: number;
+  checks: Record<TrustCheck, CheckErrors>;
+};
+/** GET /api/validation: what `make validate` wrote to data/agg/harmonization_report.json. */
+export type Validation = {
+  source: string;
+  generated_at_utc: string | null;
+  unit: string | null;
+  metric: string | null;
+  fit_period: [string, string] | null;
+  countries: Record<string, TrustCountry>;
+};
+
 export type MonthValue = { year: number; month: number; value: number; sensor: string | null };
 export type Climatology = { month: number; median: number; p25: number; p75: number; years: number };
 export type Anomaly = {
@@ -104,6 +127,12 @@ function post(path: string, body: unknown, signal?: AbortSignal): Promise<Respon
 
 export async function fetchMeta(): Promise<Meta> {
   const response = await fetch(`${BASE}/api/meta`);
+  if (!response.ok) throw await failure(response);
+  return response.json();
+}
+
+export async function fetchValidation(): Promise<Validation> {
+  const response = await fetch(`${BASE}/api/validation`);
   if (!response.ok) throw await failure(response);
   return response.json();
 }

@@ -6,6 +6,7 @@
     POST /api/hotspots.csv   the hotspots inside an area between two dates
     GET  /api/hotspots/days  the hotspot count of each UTC day of one month, all regions together
     GET  /api/hotspots/day   the hotspots of one UTC day, all regions together, earliest first
+    GET  /api/validation     how far the harmonized record can be trusted: held-out error and two baselines
 
 Run locally:  make api   (needs `make data` first)
 Settings: HH_DATA_DIR (default ./data), HH_CONFIG (default config/regions.yaml),
@@ -98,6 +99,10 @@ def create_app(
     @app.get("/api/hotspots/day")
     def hotspot_day(date: Annotated[str, Query(pattern=DAY, description="YYYY-MM-DD (UTC)")]) -> dict:
         return store.hotspot_day(date, day_limit)
+
+    @app.get("/api/validation")
+    def validation() -> dict:
+        return store.validation()
 
     return app
 

@@ -17,6 +17,9 @@ Contract for data/agg/harmonized.parquet (one row per cell and month that has bu
     sensor_used          sensor behind the harmonized value in that month
 A cell belongs to an area when its centre is inside it, so any grid size works.
 
+How far the harmonized record can be trusted is read from data/agg/harmonization_report.json, which
+`make validate` writes: per country, the error on years the method did not see and two baselines.
+
 The hotspots of one UTC day, and the hotspot count of each day of a month, are read from data/points with
 the default filters of the config and one sensor per date, by the rule of the raw series.
 Months before RECORD_FIRST are dropped: the archive starts on 2000-11-01 UTC, and a local solar day can
@@ -24,6 +27,7 @@ still fall on 31 October in the western hemisphere.
 """
 
 import calendar as months_calendar
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,7 +40,7 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 from pipeline.config import Config
-from pipeline.harmonize import RECORD
+from pipeline.harmonize import METHOD_NAMES, RECORD
 
 RAW_SWITCH = (2012, 2)  # first month the raw series takes from VIIRS S-NPP (it started on 2012-01-20)
 RECORD_FIRST = (2000, 11)  # first full month of the FIRMS archive
@@ -46,6 +50,14 @@ UNITS = {
     "raw_hotspots": "hotspots",
 }
 CSV_COLUMNS = "lat, lon, acq_datetime_utc, sensor, satellite, confidence_class, frp, daynight, type, country"
+REPORT = "harmonization_report.json"
+# The checks of the report the page shows: the method on held-out years, then the two baselines it must beat.
+CHECKS = {
+    "harmonized": "viirs_to_modis_leave_one_year_out",
+    "single_factor": "baseline_single_factor",
+    "raw_viirs": "baseline_raw_viirs",
+}
+SCALES = ("country_year", "country_month", "tile_year", "tile_month")
 
 
 class ApiError(Exception):
@@ -107,6 +119,8 @@ class Store:
         self.con = duckdb.connect()
         self.spans: dict[str, Span] = {}
         self._load(data_dir / "agg")
+        report = data_dir / "agg" / REPORT
+        self.report: dict | None = json.loads(report.read_text()) if report.exists() else None
         self.regions_shape = unary_union([box(*r.bbox) for r in cfg.regions])
 
     def _load(self, agg: Path) -> None:
@@ -373,6 +387,31 @@ class Store:
             "truncated": count > len(rows),
             "regions": regions,
             "hotspots": [[lon, lat, minute, index.get(country, 0)] for lon, lat, minute, country in rows],
+        }
+
+    def validation(self) -> dict:
+        """The held-out error of the harmonized record and its two baselines, per country that was checked."""
+        if self.report is None:
+            raise ApiError(404, f"no validation report yet: run `make validate NESTED=1` to write data/agg/{REPORT}")
+        countries = {}
+        for name, entry in self.report.get("countries", {}).items():
+            checks = entry.get("validation") or {}
+            if not all(key in checks for key in CHECKS.values()):
+                continue  # a country that borrowed the pooled calibration has no check of its own
+            countries[name] = {
+                "method": entry["method"],
+                "method_name": METHOD_NAMES.get(entry["method"], entry["method"]),
+                "method_chosen_per_held_out_year": bool(entry.get("method_chosen_per_held_out_year")),
+                "held_out_months": checks[CHECKS["harmonized"]]["n_months"],
+                "checks": {
+                    check: {"bias": checks[key]["bias"], **{s: checks[key][f"wape_{s}"] for s in SCALES}}
+                    for check, key in CHECKS.items()
+                },
+            }
+        return {
+            "source": f"data/agg/{REPORT}",
+            **{key: self.report.get(key) for key in ("generated_at_utc", "unit", "metric", "fit_period")},
+            "countries": countries,
         }
 
     def meta(self) -> dict:
