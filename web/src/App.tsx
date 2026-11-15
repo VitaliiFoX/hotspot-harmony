@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  type Bbox, type Calendar, type DayHotspots, type Meta, type MonthDays, type Polygon, type SeriesName, boxPolygon, fetchCalendar,
-  fetchDayHotspots, fetchHotspotsCsv, fetchMeta, fetchMonthDays,
+  type Bbox, type Calendar, type DayHotspots, type Meta, type MonthDays, type Polygon, type SeriesName, type Validation, boxPolygon,
+  fetchCalendar, fetchDayHotspots, fetchHotspotsCsv, fetchMeta, fetchMonthDays, fetchValidation,
 } from "./api";
 import {
   type Corner, boundsText, boxCorners, cornersBounds, cornersPolygon, cornersWkt, formatAreaParam, parseAreaParam, regionOfArea, roundCorner,
@@ -16,6 +16,7 @@ import { Globe } from "./components/Globe";
 import { GlobeBoundary } from "./components/GlobeBoundary";
 import { DEFAULT_TIME, clampDate, countHotspots, defaultDate, parseDateParam, parseTimeParam, timeLabel } from "./globe";
 import { SeasonalChart, SeasonalTable } from "./components/SeasonalChart";
+import { TrustBlock } from "./components/TrustBlock";
 import { YearlyChart, YearlyTable } from "./components/YearlyChart";
 import { type ThemeChoice, useDarkMode } from "./hooks";
 import { CalendarCache, type CalendarBody, delayFor, otherSeries } from "./requests";
@@ -45,6 +46,8 @@ export function App() {
   );
   const dark = useDarkMode(themeChoice);
   const [meta, setMeta] = useState<Meta | null>(null);
+  // How far the harmonized record can be trusted; null until the API answers, or when it has no report.
+  const [validation, setValidation] = useState<Validation | null>(null);
   const [filters, setFilters] = useState<FilterState | null>(null);
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   const [date, setDate] = useState<string | null>(null);
@@ -70,6 +73,11 @@ export function App() {
   const [exportNote, setExportNote] = useState<string | null>(null);
   const cache = useRef(new CalendarCache());
   const lastView = useRef<FilterState | null>(null);
+
+  useEffect(() => {
+    // A missing report (404) only hides the trust block: the calendar works without it.
+    fetchValidation().then(setValidation).catch(() => setValidation(null));
+  }, []);
 
   useEffect(() => {
     fetchMeta()
@@ -279,6 +287,12 @@ export function App() {
         ? { year: Number(viirsTakesOver.from.slice(0, 4)), label: "VIIRS NOAA-20 takes over" }
         : undefined;
   const year = highlightYear ?? calendar?.anomaly.year ?? 0;
+  // The trust block reads the country figure only when the area is the region's whole box, as checked.
+  const regionBox = meta?.regions.find((r) => r.name === filters?.region)?.bbox;
+  const wholeRegion = Boolean(
+    filters && !filters.area && regionBox && filters.box.every((text, i) => Number(text) === regionBox[i]),
+  );
+  const trusted = validation && filters ? validation.countries[filters.region] : undefined;
 
   // Parts every exported file is named by: what, where, when and which record.
   const fileParts = filters && calendar ? [filters.region, filters.start, filters.end, calendar.series] : [];
@@ -367,6 +381,12 @@ export function App() {
         {calendar?.series === "harmonized" && meta?.harmonized_record && (
           <p className="notice">
             {`Harmonized record, in ${calendar.unit}: each value is the number of 1 km cells with fire on a day, as MODIS Terra + Aqua would have reported them, so ${meta.harmonized_record[0].from.slice(0, 4)} and ${meta.last_month?.slice(0, 4)} can be compared. ${meta.harmonized_record.map((part) => `${part.label}: ${part.to ? `${monthLabel(part.from)} to ${monthLabel(part.to)}` : `from ${monthLabel(part.from)}`}`).join("; ")}.`}
+            {trusted && (
+              <>
+                {" "}
+                <a href="#trust">How far to trust it</a>
+              </>
+            )}
           </p>
         )}
 
@@ -436,6 +456,8 @@ export function App() {
                 pngName={exportName(["burning-per-year", ...fileParts], "png")}
               />
             </div>
+
+            {validation && filters && <TrustBlock validation={validation} region={filters.region} wholeRegion={wholeRegion} />}
           </main>
         )}
 

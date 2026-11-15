@@ -66,6 +66,13 @@ GAP_MIN_TWIN = 50  # ...or when the other VIIRS sensor has at least this many ce
 GAP_MAX_TWIN_RATIO = 0.1  # ...and this one has under a tenth of them (same instrument, 50 minutes apart)
 METHOD_MARGIN = 0.002  # anything boosted must beat the plain table by 0.2 points of monthly error to be used
 METHODS = ("bins", "boosted", "context", "bins+context", "boosted+context")
+METHOD_NAMES = {  # how docs/VALIDATION.md and the web app name each method
+    "bins": "the table by fire power",
+    "boosted": "the boosted weight",
+    "context": "the context model",
+    "bins+context": "the mean of the table by fire power and the context model",
+    "boosted+context": "the mean of the boosted weight and the context model",
+}
 FIT_THREADS = 8
 WEIGHT_FEATURES = ["lfrp", "lfrp_max", "has_day", "n_det", "n_day", "n_night", "n_high", "scan", "track"]
 CONTEXT_FEATURES = [

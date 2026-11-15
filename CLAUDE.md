@@ -54,6 +54,7 @@ Not verified yet. Confirm with the `research` skill before relying on any of the
 - A cell belongs to an area of interest when its centre is inside it.
 - Regions are known by bounding box only. An area in a neighbouring country that falls inside a region's box gets zeros and a warning, not an error. Real borders are not in the repo yet.
 - API tests go through HTTP on a record small enough to work out on paper (`api/tests/test_api.py`). Extend that record when adding behaviour.
+- `/api/validation` serves the held-out error and the two baselines from `data/agg/harmonization_report.json`, read at start; without the file it answers 404 and the web app hides its "How far to trust this" block (`web/src/components/TrustBlock.tsx`, wording and choices in `web/src/trust.ts`, tested). The single-factor baseline is fitted on all years, the scored one included, so the block must never call it held out. Ship the report from `make validate NESTED=1` with any deployment: an older report shows the method as "chosen once on all years".
 
 ## Web app
 

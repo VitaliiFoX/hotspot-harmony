@@ -639,6 +639,45 @@ tbody th {
   font-size: 12px;
 }
 
+/* How far to trust this: the held-out error first, the two baselines next to it, then where it comes from. */
+.trust .subtitle {
+  max-width: 72ch;
+}
+.trust-figures {
+  display: grid;
+  grid-template-columns: 1.6fr repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.trust-figures .tile {
+  box-shadow: none;
+}
+.trust-table .trust-ours > * {
+  color: var(--ink);
+  font-weight: 600;
+}
+.trust-table tbody th {
+  white-space: normal;
+}
+.trust-note,
+.trust-source {
+  margin-top: 12px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.trust-source {
+  color: var(--muted);
+  font-size: 12px;
+}
+.trust code {
+  font-size: 0.95em;
+  overflow-wrap: anywhere;
+}
+.trust a,
+.notice a {
+  color: var(--accent);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   button,
   input,
@@ -668,7 +707,8 @@ tbody th {
 }
 
 @media (max-width: 900px) {
-  .tiles {
+  .tiles,
+  .trust-figures {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .tile-hero {
@@ -687,7 +727,8 @@ tbody th {
   }
 }
 @media (max-width: 560px) {
-  .tiles {
+  .tiles,
+  .trust-figures {
     grid-template-columns: minmax(0, 1fr);
   }
   .filters {

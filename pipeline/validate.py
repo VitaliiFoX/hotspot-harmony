@@ -256,21 +256,12 @@ def plot_sensor_jump(record: pd.DataFrame, country: str, report: dict, out: Path
     plt.close(fig)
 
 
-METHOD_NAMES = {
-    "bins": "the table by fire power",
-    "boosted": "the boosted weight",
-    "context": "the context model",
-    "bins+context": "the mean of the table by fire power and the context model",
-    "boosted+context": "the mean of the boosted weight and the context model",
-}
-
-
 def method_line(entry: dict) -> str:
     """Which method this country got, and the held-out errors the choice was made on."""
     tried = entry.get("method_held_out_month_error") or {}
-    line = f"Method: {METHOD_NAMES[entry['method']]}."
+    line = f"Method: {hz.METHOD_NAMES[entry['method']]}."
     if tried:
-        scores_text = ", ".join(f"{METHOD_NAMES[m].removeprefix('the ')} {e:.1%}" for m, e in tried.items())
+        scores_text = ", ".join(f"{hz.METHOD_NAMES[m].removeprefix('the ')} {e:.1%}" for m, e in tried.items())
         line += (
             f" Chosen on years held out three at a time, country x month error: {scores_text}. "
             f"Anything but the table is used only when it wins by more than {hz.METHOD_MARGIN * 100:.1f} points."
@@ -279,7 +270,7 @@ def method_line(entry: dict) -> str:
             by_method: dict[str, list[str]] = {}
             for year, method in (entry.get("method_by_held_out_year") or {}).items():
                 by_method.setdefault(method, []).append(str(year))
-            parts = [f"{METHOD_NAMES[m]} for {', '.join(ys)}" for m, ys in by_method.items()]
+            parts = [f"{hz.METHOD_NAMES[m]} for {', '.join(ys)}" for m, ys in by_method.items()]
             line += (
                 " In the leave-one-year-out check above the choice is made again for every year from the other"
                 f" years alone: {'; '.join(parts)}."

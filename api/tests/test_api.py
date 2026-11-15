@@ -6,6 +6,7 @@ The test area covers A and B. The raw series takes MODIS before 2012-02 and VIIR
 
 import csv
 import io
+import json
 
 import duckdb
 import pytest
@@ -431,3 +432,81 @@ def test_config_can_come_from_the_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("HH_CONFIG", str(config))
     client = TestClient(create_app(data_dir=tmp_path))
     assert [r["name"] for r in client.get("/api/meta").json()["regions"]] == ["Testland"]
+
+
+# What `make validate` writes, cut down to the parts the API reads plus one it leaves out.
+def held_out(bias, country_year, country_month, tile_year, tile_month):
+    return {
+        "bias": bias,
+        "wape_country_year": country_year,
+        "wape_country_month": country_month,
+        "wape_tile_year": tile_year,
+        "wape_tile_month": tile_month,
+        "n_months": 119,
+    }
+
+
+REPORT = {
+    "generated_at_utc": "2026-11-15T06:00:00Z",
+    "unit": "MODIS-equivalent fire cell-days",
+    "metric": "WAPE = sum|prediction - truth| / sum(truth), on years the model did not see",
+    "fit_period": ["2012-02-01", "2021-12-31"],
+    "countries": {
+        "Testland": {
+            "method": "bins+context",
+            "method_chosen_per_held_out_year": True,
+            "season_factor_by_day_of_year": [1.0] * 366,
+            "validation": {
+                "viirs_to_modis_leave_one_year_out": held_out(0.008, 0.048, 0.066, 0.139, 0.228),
+                "baseline_single_factor": held_out(0.0, 0.035, 0.097, 0.213, 0.307),
+                "baseline_raw_viirs": held_out(1.067, 1.067, 1.067, 1.073, 1.104),
+                "noaa20_independent": held_out(0.035, 0.043, 0.05, 0.137, 0.216),
+            },
+        },
+        "Farland": {"method": "bins", "source": "pooled"},  # borrowed its calibration: nothing to check
+    },
+}
+
+
+def test_validation_gives_the_held_out_error_and_the_two_baselines_of_each_checked_country(tmp_path):
+    config = build_data(tmp_path, harmonized=True)
+    (tmp_path / "agg" / "harmonization_report.json").write_text(json.dumps(REPORT))
+    r = TestClient(create_app(data_dir=tmp_path, config_path=config)).get("/api/validation")
+    assert r.status_code == 200
+    assert r.json() == {
+        "source": "data/agg/harmonization_report.json",
+        "generated_at_utc": "2026-11-15T06:00:00Z",
+        "unit": "MODIS-equivalent fire cell-days",
+        "metric": "WAPE = sum|prediction - truth| / sum(truth), on years the model did not see",
+        "fit_period": ["2012-02-01", "2021-12-31"],
+        "countries": {
+            "Testland": {
+                "method": "bins+context",
+                "method_name": "the mean of the table by fire power and the context model",
+                "method_chosen_per_held_out_year": True,
+                "held_out_months": 119,
+                "checks": {
+                    "harmonized": {"bias": 0.008, "country_year": 0.048, "country_month": 0.066,
+                                   "tile_year": 0.139, "tile_month": 0.228},
+                    "single_factor": {"bias": 0.0, "country_year": 0.035, "country_month": 0.097,
+                                      "tile_year": 0.213, "tile_month": 0.307},
+                    "raw_viirs": {"bias": 1.067, "country_year": 1.067, "country_month": 1.067,
+                                  "tile_year": 1.073, "tile_month": 1.104},
+                },
+            },
+        },
+    }
+
+
+def test_validation_of_a_report_that_chose_the_method_once_says_so(tmp_path):
+    config = build_data(tmp_path, harmonized=True)
+    once = json.loads(json.dumps(REPORT))
+    del once["countries"]["Testland"]["method_chosen_per_held_out_year"]  # reports before NESTED=1 lack the key
+    (tmp_path / "agg" / "harmonization_report.json").write_text(json.dumps(once))
+    body = TestClient(create_app(data_dir=tmp_path, config_path=config)).get("/api/validation").json()
+    assert body["countries"]["Testland"]["method_chosen_per_held_out_year"] is False
+
+
+def test_validation_without_a_report_says_which_command_writes_it(client_harmonized):
+    r = client_harmonized.get("/api/validation")
+    assert r.status_code == 404 and "make validate NESTED=1" in r.json()["detail"]
